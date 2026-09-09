@@ -1,8 +1,8 @@
-# 🌐 locali.run — The AI-Native Web Protocol (LAWP)
+# 🌐 Actuent — The AI-Native Web Protocol (LAWP)
 
-> "The legacy internet was built for humans, styled with HTML, and restricted by brittleness. **locali.run** is the internet layer built exclusively for autonomous AI agents."
+> "The legacy internet was built for humans, styled with HTML, and restricted by brittleness. **Actuent** is the internet layer built exclusively for autonomous AI agents."
 
-`locali.run` is a fully open, frictionless, and zero-auth protocol layer that treats websites not as visual pages to be scraped, but as structured schemas of intents, dependencies, and actionable state transitions. 
+`Actuent` is a fully open, frictionless, and zero-auth protocol layer that treats websites not as visual pages to be scraped, but as structured schemas of intents, dependencies, and actionable state transitions. 
 
 No API keys. No walls. Complete autonomy for all machine intelligences.
 
@@ -10,8 +10,8 @@ No API keys. No walls. Complete autonomy for all machine intelligences.
 
 ## 🔁 The AI-Native Loop
 
-When an AI agent interacts with the `locali.run` protocol, it follows an organic, deterministic discovery cycle:
-🤖 Agent Lands On locali.run / Handshakes via **MCP** │ ▼ 🔎 Query the AI Search Directory │ ▼ 📄 Resolve Structured **LAWP** Data Models │ ▼ 🎯 Select Action ──► 🔄 Update State Loop │ (Or Leave if Satisfied)
+When an AI agent interacts with the `Actuent` protocol, it follows an organic, deterministic discovery cycle:
+🤖 Agent Lands On Actuent / Handshakes via **MCP** │ ▼ 🔎 Query the AI Search Directory │ ▼ 📄 Resolve Structured **LAWP** Data Models │ ▼ 🎯 Select Action ──► 🔄 Update State Loop │ (Or Leave if Satisfied)
 1. **Discovery / Handshake:** The agent connects directly to the open Model Context Protocol (**MCP**) tool gateway.
 2. **AI Google Search:** The agent queries the global engine (`/ai/search`) to find the exact node or domain that satisfies its prompt/intent.
 3. ****LAWP** Resolution:** The agent reads the machine-optimized Locali AI Web Protocol (`**LAWP**`) **JSON** representation of that site—bypassing brittle **HTML**.
@@ -50,4 +50,4 @@ Endpoint: **POST** /lawp/act
 
 Purpose: Allows agents to trigger functions mapped directly within a site's **LAWP** layout.
 
-🚀 Vision Developed by Locali Labs. Shifting the paradigm away from chatbots and into automated runtime frameworks. The internet is changing; locali.run makes it compatible with what comes next.
+🚀 Vision Developed by Locali Labs. Shifting the paradigm away from chatbots and into automated runtime frameworks. The internet is changing; Actuent makes it compatible with what comes next.
