@@ -92,7 +92,7 @@ Keep content summaries under 200 words per page.
 `
 
   const completion = await groq.chat.completions.create({
-    model: "llama-3.1-8b-instant",
+    model: "openai/gpt-oss-20b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.1
   })
