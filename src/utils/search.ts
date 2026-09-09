@@ -1,4 +1,5 @@
 import { sites, Site } from "../data/sites"
+import { crawlSite } from "./crawler"
 
 function scoreMatch(site: Site, query: string): number {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
@@ -24,10 +25,26 @@ function scoreMatch(site: Site, query: string): number {
   return score
 }
 
-export function searchSites(query: string): Site[] {
-  return Object.values(sites)
+export async function searchSites(query: string): Promise<Site[]> {
+  const scored = Object.values(sites)
     .map(site => ({ site, score: scoreMatch(site, query) }))
     .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .map(r => r.site)
+
+  if (scored.length > 0) return scored
+
+  const domainMatch = query.match(/([a-zA-Z0-9-]+\.(com|io|app|ai|co|net|org|run))/i)
+  if (domainMatch) {
+    const domain = domainMatch[0].toLowerCase()
+    if (!sites[domain]) {
+      const crawled = await crawlSite(domain)
+      if (crawled) {
+        sites[domain] = crawled
+        return [crawled]
+      }
+    }
+  }
+
+  return []
 }
