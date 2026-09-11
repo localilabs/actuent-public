@@ -1,23 +1,13 @@
 {
   "version": 2,
   "builds": [
-    {
-      "src": "api/search.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "public/index.html",
-      "use": "@vercel/static"
-    }
+    { "src": "api/search.ts", "use": "@vercel/node" },
+    { "src": "api/register.ts", "use": "@vercel/node" },
+    { "src": "public/index.html", "use": "@vercel/static" }
   ],
   "routes": [
-    {
-      "src": "/api/search",
-      "dest": "/api/search.ts"
-    },
-    {
-      "src": "/",
-      "dest": "/public/index.html"
-    }
+    { "src": "/api/search", "dest": "/api/search.ts" },
+    { "src": "/api/register", "dest": "/api/register.ts" },
+    { "src": "/", "dest": "/public/index.html" }
   ]
 }
