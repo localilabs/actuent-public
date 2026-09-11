@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Actuent — Human Debug Mode</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #f0f0f0;
+      font-family: 'Courier New', monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 60px 20px;
+    }
+
+    .badge {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #888;
+      font-size: 11px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: 32px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -1px;
+    }
+
+    h1 span {
+      color: #888;
+    }
+
+    .subtitle {
+      color: #555;
+      font-size: 13px;
+      margin-bottom: 48px;
+      font-family: sans-serif;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 600px;
+      margin-bottom: 48px;
+    }
+
+    input {
+      flex: 1;
+      background: #111;
+      border: 1px solid #333;
+      color: #f0f0f0;
+      padding: 14px 18px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      border-radius: 8px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus { border-color: #555; }
+    input::placeholder { color: #444; }
+
+    button {
+      background: #f0f0f0;
+      color: #0a0a0a;
+      border: none;
+      padding: 14px 24px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: 'Courier New', monospace;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .status {
+      color: #555;
+      font-size: 12px;
+      margin-bottom: 24px;
+      font-family: sans-serif;
+      min-height: 20px;
+    }
+
+    .results { width: 100%; max-width: 800px; }
+
+    .site-card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .site-domain {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .site-name {
+      color: #555;
+      font-size: 13px;
+      font-family: sans-serif;
+    }
+
+    .section-label {
+      color: #444;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      margin-top: 20px;
+    }
+
+    .page-item {
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+    }
+
+    .page-path {
+      color: #666;
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    .page-title {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      font-family: sans-serif;
+    }
+
+    .page-content {
+      color: #555;
+      font-size: 12px;
+      font-family: sans-serif;
+      line-height: 1.5;
+    }
+
+    .action-item {
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .action-dot {
+      width: 8px;
+      height: 8px;
+      background: #f0f0f0;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+
+    .action-name {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 2px;
+      font-family: sans-serif;
+    }
+
+    .action-desc {
+      color: #555;
+      font-size: 12px;
+      font-family: sans-serif;
+    }
+
+    .intent-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .intent-tag {
+      background: #1a1a1a;
+      color: #666;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: sans-serif;
+    }
+
+    .empty {
+      color: #333;
+      font-size: 14px;
+      font-family: sans-serif;
+      text-align: center;
+      padding: 48px;
+    }
+
+    .raw-toggle {
+      color: #444;
+      font-size: 11px;
+      cursor: pointer;
+      margin-top: 16px;
+      text-decoration: underline;
+      font-family: sans-serif;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .raw-json {
+      background: #0d0d0d;
+      border: 1px solid #1a1a1a;
+      border-radius: 8px;
+      padding: 16px;
+      font-size: 11px;
+      color: #555;
+      overflow-x: auto;
+      white-space: pre;
+      margin-top: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="badge">⚠ Human Debug Mode</div>
+
+  <h1>Actuent <span>for humans</span></h1>
+  <p class="subtitle">This interface is for developers. AI agents use agents.actuent.ai</p>
+
+  <div class="search-box">
+    <input
+      type="text"
+      id="query"
+      placeholder="nike.com or 'barber amsterdam'..."
+      onkeydown="if(event.key==='Enter') search()"
+    />
+    <button onclick="search()" id="btn">Search</button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="results" id="results"></div>
+
+  <script>
+    const API = "https://actuent-public-iota.vercel.app"
+
+    async function search() {
+      const query = document.getElementById("query").value.trim()
+      if (!query) return
+
+      const btn = document.getElementById("btn")
+      const status = document.getElementById("status")
+      const results = document.getElementById("results")
+
+      btn.disabled = true
+      btn.textContent = "Searching..."
+      status.textContent = "Crawling and converting to LAWP..."
+      results.innerHTML = ""
+
+      try {
+        const res = await fetch(`${API}/api/search`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query })
+        })
+
+        const data = await res.json()
+
+        if (!data.results || data.results.length === 0) {
+          results.innerHTML = `<div class="empty">No LAWP found for "${query}"</div>`
+          status.textContent = ""
+          return
+        }
+
+        status.textContent = `${data.count} result${data.count !== 1 ? "s" : ""} found`
+        results.innerHTML = data.results.map((site, i) => `
+          <div class="site-card">
+            <div class="site-header">
+              <div>
+                <div class="site-domain">${site.domain}</div>
+                <div class="site-name">${site.name}</div>
+              </div>
+            </div>
+
+            <div class="section-label">Pages</div>
+            ${Object.entries(site.pages).map(([path, page]) => `
+              <div class="page-item">
+                <div class="page-path">${path}</div>
+                <div class="page-title">${page.title}</div>
+                <div class="page-content">${page.content}</div>
+              </div>
+            `).join("")}
+
+            <div class="section-label">Actions</div>
+            ${site.actions.map(action => `
+              <div class="action-item">
+                <div class="action-dot"></div>
+                <div>
+                  <div class="action-name">${action.name}</div>
+                  <div class="action-desc">${action.description}</div>
+                  <div class="intent-tags">
+                    ${action.intent.map(i => `<span class="intent-tag">${i}</span>`).join("")}
+                  </div>
+                </div>
+              </div>
+            `).join("")}
+
+            <button class="raw-toggle" onclick="toggleRaw(${i})">view raw LAWP</button>
+            <pre class="raw-json" id="raw-${i}">${JSON.stringify(site, null, 2)}</pre>
+          </div>
+        `).join("")
+
+      } catch(e) {
+        status.textContent = "Something went wrong"
+      } finally {
+        btn.disabled = false
+        btn.textContent = "Search"
+      }
+    }
+
+    function toggleRaw(i) {
+      const el = document.getElementById(`raw-${i}`)
+      el.style.display = el.style.display === "block" ? "none" : "block"
+    }
+  </script>
+
+</body>
+</html>
