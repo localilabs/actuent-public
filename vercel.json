@@ -1,14 +1,24 @@
 {
   "version": 2,
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ],
   "builds": [
     { "src": "api/search.ts", "use": "@vercel/node" },
     { "src": "api/register.ts", "use": "@vercel/node" },
     { "src": "public/index.html", "use": "@vercel/static" },
-    { "src": "public/docs/index.html", "use": "@vercel/static" }
+    { "src": "public/docs/index.html", "use": "@vercel/static" },
+    { "src": "public/assets/**", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/search", "dest": "/api/search.ts" },
     { "src": "/api/register", "dest": "/api/register.ts" },
+    { "src": "/assets/(.*)", "dest": "/public/assets/$1" },
     { "src": "/docs", "dest": "/public/docs/index.html" },
     { "src": "/", "dest": "/public/index.html" }
   ]
