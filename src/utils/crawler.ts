@@ -3,6 +3,56 @@ import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const SUPABASE_URL = process.env.SUPABASE_URL!
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
+
+async function getSavedSite(domain: string): Promise<Site | null> {
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/lawp_sites?domain=eq.${domain}&select=*`,
+      {
+        headers: {
+          "apikey": SUPABASE_SERVICE_KEY,
+          "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
+        }
+      }
+    )
+    const data = await res.json()
+    if (!data || data.length === 0) return null
+    const row = data[0]
+    return {
+      domain: row.domain,
+      name: row.name,
+      pages: row.pages,
+      actions: row.actions
+    }
+  } catch {
+    return null
+  }
+}
+
+async function saveSite(site: Site): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({
+        domain: site.domain,
+        name: site.name,
+        pages: site.pages,
+        actions: site.actions,
+        updated_at: new Date().toISOString()
+      })
+    })
+  } catch {
+    // never crash on save failure
+  }
+}
 
 function stripHTML(html: string): string {
   return html
@@ -14,17 +64,15 @@ function stripHTML(html: string): string {
     .slice(0, 2000)
 }
 
-function extractLinks(html: string, domain: string): string[] {
+function extractLinks(html: string): string[] {
   const matches = html.matchAll(/href=["']([^"']+)["']/gi)
   const links = new Set<string>()
-
   for (const match of matches) {
     const href = match[1]
     if (href.startsWith("/") && !href.startsWith("//")) {
       links.add(href)
     }
   }
-
   const priorityPaths = ["/about", "/services", "/contact", "/pricing", "/menu", "/booking"]
   return [...links].filter(l => priorityPaths.some(p => l.startsWith(p))).slice(0, 4)
 }
@@ -43,13 +91,15 @@ async function fetchPage(url: string): Promise<string | null> {
 }
 
 export async function crawlSite(domain: string): Promise<Site | null> {
-  const baseUrl = `https://${domain}`
+  const saved = await getSavedSite(domain)
+  if (saved) return saved
 
+  const baseUrl = `https://${domain}`
   const homeHTML = await fetchPage(baseUrl)
   if (!homeHTML) return null
 
   const homeText = stripHTML(homeHTML)
-  const extraLinks = extractLinks(homeHTML, domain)
+  const extraLinks = extractLinks(homeHTML)
 
   const pages: Record<string, { title: string; content: string }> = {
     "/": { title: domain, content: homeText }
@@ -87,7 +137,7 @@ Return ONLY valid JSON in this exact format:
   ]
 }
 
-Only include real actions the site actually supports (booking, search, contact etc).
+Only include real actions the site actually supports.
 Keep content summaries under 200 words per page.
 `
 
@@ -103,5 +153,8 @@ Keep content summaries under 200 words per page.
   const parsed = safeParseJSON(raw)
   if (!parsed || !parsed.domain) return null
 
-  return parsed as Site
+  const site = parsed as Site
+  await saveSite(site)
+
+  return site
 }
