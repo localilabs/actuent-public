@@ -59,6 +59,14 @@ async function searchSupabase(query: string): Promise<Site[]> {
   }
 }
 
+function extractDomain(query: string): string | null {
+  const match = query.match(
+    /(?:https?:\/\/)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,})/i
+  )
+  if (!match) return null
+  return match[1].toLowerCase().replace(/\/$/, "")
+}
+
 export async function searchSites(query: string): Promise<Site[]> {
   const seedResults = Object.values(sites)
     .map(site => ({ site, score: scoreMatch(site, query) }))
@@ -80,9 +88,8 @@ export async function searchSites(query: string): Promise<Site[]> {
 
   if (combined.length > 0) return combined
 
-  const domainMatch = query.match(/([a-zA-Z0-9-]+\.(com|io|app|ai|co|net|org|run))/i)
-  if (domainMatch) {
-    const domain = domainMatch[0].toLowerCase()
+  const domain = extractDomain(query)
+  if (domain) {
     const crawled = await crawlSite(domain)
     if (crawled) {
       sites[domain] = crawled
