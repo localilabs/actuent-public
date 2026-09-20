@@ -227,3 +227,5 @@ export async function crawlSite(domain: string): Promise<Site | null> {
 
   return site
 }
+
+export { diffLAWP, saveDiff, getLatestDiff } from "./diff"

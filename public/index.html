@@ -344,6 +344,39 @@
       const el = document.getElementById("raw-" + i)
       el.style.display = el.style.display === "block" ? "none" : "block"
     }
+    function scoreLAWP(site) {
+  let score = 0
+  const breakdown = []
+
+  const pageCount = Object.keys(site.pages || {}).length
+  if (pageCount >= 3) { score += 25; breakdown.push("✓ 3+ pages indexed (+25)") }
+  else if (pageCount >= 1) { score += 10; breakdown.push("△ Only 1-2 pages indexed (+10)") }
+  else { breakdown.push("✗ No pages indexed (+0)") }
+
+  const actionCount = (site.actions || []).length
+  if (actionCount >= 3) { score += 25; breakdown.push("✓ 3+ actions defined (+25)") }
+  else if (actionCount >= 1) { score += 15; breakdown.push("△ 1-2 actions defined (+15)") }
+  else { breakdown.push("✗ No actions defined (+0)") }
+
+  const avgIntentLength = actionCount > 0
+    ? site.actions.reduce((sum, a) => sum + (a.intent?.length || 0), 0) / actionCount
+    : 0
+  if (avgIntentLength >= 5) { score += 20; breakdown.push("✓ Rich intent keywords (+20)") }
+  else if (avgIntentLength >= 3) { score += 10; breakdown.push("△ Some intent keywords (+10)") }
+  else { breakdown.push("✗ Thin intent keywords (+0)") }
+
+  const avgContentLength = pageCount > 0
+    ? Object.values(site.pages).reduce((sum, p) => sum + (p.content?.length || 0), 0) / pageCount
+    : 0
+  if (avgContentLength >= 200) { score += 15; breakdown.push("✓ Rich page content (+15)") }
+  else if (avgContentLength >= 80) { score += 8; breakdown.push("△ Some page content (+8)") }
+  else { breakdown.push("✗ Thin page content (+0)") }
+
+  if (site.name && site.name !== site.domain) { score += 15; breakdown.push("✓ Site name set (+15)") }
+  else { breakdown.push("✗ No site name (+0)") }
+
+  return { score: Math.min(score, 100), breakdown }
+}
   </script>
 
 </body>
