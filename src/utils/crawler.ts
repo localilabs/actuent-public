@@ -1,3 +1,4 @@
+import { detectLanguage, translateToEnglish } from "./translate"
 import Groq from "groq-sdk"
 import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
@@ -217,9 +218,11 @@ export async function crawlSite(domain: string): Promise<Site | null> {
   if (saved) return saved
 
   const markdown = await scrapeWithFirecrawl(`https://${domain}`)
+  const lang = await detectLanguage(markdown.slice(0, 300))
+const translatedMarkdown = lang !== "en" ? await translateToEnglish(markdown, lang) : markdown
   if (!markdown) return null
 
-  const site = await convertToLAWP(domain, markdown)
+  const site = await convertToLAWP(domain, translatedMarkdown)
   if (!site) return null
 
   await saveSite(site)

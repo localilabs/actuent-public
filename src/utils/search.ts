@@ -1,8 +1,10 @@
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage } from "./crawler"
+import Groq from "groq-sdk"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 const DOMAIN_AUTHORITY: Record<string, number> = {
   "google.com": 100, "youtube.com": 98, "facebook.com": 96,
@@ -28,16 +30,13 @@ function getDomainAuthority(domain: string): number {
 function scoreMatch(site: Site, query: string): number {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   let score = 0
-
   for (const word of words) {
     if (site.name.toLowerCase().includes(word)) score += 3
     if (site.domain.toLowerCase().includes(word)) score += 2
-
     for (const page of Object.values(site.pages)) {
       if (page.title.toLowerCase().includes(word)) score += 2
       if (page.content.toLowerCase().includes(word)) score += 1
     }
-
     for (const action of site.actions) {
       for (const intent of action.intent) {
         if (intent.includes(word)) score += 3
@@ -46,34 +45,27 @@ function scoreMatch(site: Site, query: string): number {
       if (action.name.toLowerCase().includes(word)) score += 2
     }
   }
-
   const authority = getDomainAuthority(site.domain)
   const authorityBoost = score > 0 ? (authority / 100) * 5 : 0
-
   return score + authorityBoost
 }
 
 async function searchSupabase(query: string): Promise<Site[]> {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/lawp_sites?select=*`,
-      {
-        headers: {
-          "apikey": SUPABASE_SERVICE_KEY,
-          "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
-        }
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=*`, {
+      headers: {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
       }
-    )
-    if (!res.ok) return []
-    const rows = await res.json()
-
+    })
+    if (!r.ok) return []
+    const rows = await r.json()
     const asSites: Site[] = rows.map((row: any) => ({
       domain: row.domain,
       name: row.name,
       pages: row.pages,
       actions: row.actions
     }))
-
     return asSites
       .map(site => ({ site, score: scoreMatch(site, query) }))
       .filter(r => r.score > 0)
@@ -86,54 +78,60 @@ async function searchSupabase(query: string): Promise<Site[]> {
 
 async function searchPages(query: string): Promise<Site[]> {
   try {
-    const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/lawp_pages?select=*`,
-      {
-        headers: {
-          "apikey": SUPABASE_SERVICE_KEY,
-          "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
-        }
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_pages?select=*`, {
+      headers: {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
       }
-    )
-    if (!res.ok) return []
-    const rows = await res.json()
-
+    })
+    if (!r.ok) return []
+    const rows = await r.json()
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-
-    const scored = rows
-      .map((row: any) => {
-        let score = 0
-        for (const word of words) {
-          if (row.title?.toLowerCase().includes(word)) score += 3
-          if (row.content?.toLowerCase().includes(word)) score += 1
-          if (row.domain?.toLowerCase().includes(word)) score += 2
-          if (row.path?.toLowerCase().includes(word)) score += 2
-          if (Array.isArray(row.actions)) {
-            for (const action of row.actions) {
-              for (const intent of (action.intent || [])) {
-                if (intent.includes(word)) score += 3
-              }
+    const scored = rows.map((row: any) => {
+      let score = 0
+      for (const word of words) {
+        if (row.title?.toLowerCase().includes(word)) score += 3
+        if (row.content?.toLowerCase().includes(word)) score += 1
+        if (row.domain?.toLowerCase().includes(word)) score += 2
+        if (row.path?.toLowerCase().includes(word)) score += 2
+        if (Array.isArray(row.actions)) {
+          for (const action of row.actions) {
+            for (const intent of (action.intent || [])) {
+              if (intent.includes(word)) score += 3
             }
           }
         }
-        const authorityBoost = score > 0 ? (getDomainAuthority(row.domain) / 100) * 5 : 0
-        return { row, score: score + authorityBoost }
-      })
-      .filter((r: any) => r.score > 0)
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 5)
+      }
+      const authorityBoost = score > 0 ? (getDomainAuthority(row.domain) / 100) * 5 : 0
+      return { row, score: score + authorityBoost }
+    })
+    .filter((r: any) => r.score > 0)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 5)
 
     return scored.map(({ row }: any) => ({
       domain: `${row.domain}${row.path}`,
       name: row.title,
-      pages: {
-        [row.path]: {
-          title: row.title,
-          content: row.content
-        }
-      },
+      pages: { [row.path]: { title: row.title, content: row.content } },
       actions: row.actions || []
     }))
+  } catch {
+    return []
+  }
+}
+
+async function suggestDomainsForQuery(query: string): Promise<string[]> {
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "openai/gpt-oss-20b",
+      messages: [{
+        role: "user",
+        content: `A user searched for: "${query}". List 3 real websites (domain names only, no http://, comma separated) most likely to have relevant content for this query. Only use well-known real domains. Example: nike.com,adidas.com,footlocker.com`
+      }],
+      temperature: 0.1
+    })
+    const text = completion.choices?.[0]?.message?.content?.trim() || ""
+    return text.split(",").map(d => d.trim().toLowerCase()).filter(d => d.includes(".")).slice(0, 3)
   } catch {
     return []
   }
@@ -144,10 +142,7 @@ function parseFullUrl(query: string): { domain: string, path: string } | null {
     /(?:https?:\/\/)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,})(\/[^\s]*)?/i
   )
   if (!match) return null
-  return {
-    domain: match[1].toLowerCase(),
-    path: match[2] || "/"
-  }
+  return { domain: match[1].toLowerCase(), path: match[2] || "/" }
 }
 
 export async function searchSites(query: string): Promise<Site[]> {
@@ -194,5 +189,18 @@ export async function searchSites(query: string): Promise<Site[]> {
     }
   }
 
-  return []
+  const suggestedDomains = await suggestDomainsForQuery(query)
+  const crawledResults: Site[] = []
+  for (const domain of suggestedDomains) {
+    if (!seen.has(domain)) {
+      const crawled = await crawlSite(domain)
+      if (crawled) {
+        sites[domain] = crawled
+        crawledResults.push(crawled)
+        seen.add(domain)
+      }
+    }
+  }
+
+  return crawledResults
 }
