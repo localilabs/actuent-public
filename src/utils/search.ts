@@ -1,6 +1,5 @@
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage } from "./crawler"
-import { rerankWithJev } from "./ranker"
 import Groq from "groq-sdk"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -49,6 +48,19 @@ function scoreMatch(site: Site, query: string): number {
   const authority = getDomainAuthority(site.domain)
   const authorityBoost = score > 0 ? (authority / 100) * 5 : 0
   return score + authorityBoost
+
+  const lawpScore = (() => {
+  const pageCount = Object.keys(site.pages || {}).length
+  const actionCount = (site.actions || []).length
+  const avgIntent = actionCount > 0
+    ? site.actions.reduce((s, a) => s + (a.intent?.length || 0), 0) / actionCount : 0
+  let s = 0
+  if (pageCount >= 3) s += 2
+  if (actionCount >= 3) s += 2
+  if (avgIntent >= 5) s += 1
+  return s
+})()
+score += lawpScore * 0.3
 }
 
 async function searchSupabase(query: string): Promise<Site[]> {
@@ -88,34 +100,34 @@ async function searchPages(query: string): Promise<Site[]> {
     if (!r.ok) return []
     const rows = await r.json()
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return rows
-      .map((row: any) => {
-        let score = 0
-        for (const word of words) {
-          if (row.title?.toLowerCase().includes(word)) score += 3
-          if (row.content?.toLowerCase().includes(word)) score += 1
-          if (row.domain?.toLowerCase().includes(word)) score += 2
-          if (row.path?.toLowerCase().includes(word)) score += 2
-          if (Array.isArray(row.actions)) {
-            for (const action of row.actions) {
-              for (const intent of (action.intent || [])) {
-                if (intent.includes(word)) score += 3
-              }
+    const scored = rows.map((row: any) => {
+      let score = 0
+      for (const word of words) {
+        if (row.title?.toLowerCase().includes(word)) score += 3
+        if (row.content?.toLowerCase().includes(word)) score += 1
+        if (row.domain?.toLowerCase().includes(word)) score += 2
+        if (row.path?.toLowerCase().includes(word)) score += 2
+        if (Array.isArray(row.actions)) {
+          for (const action of row.actions) {
+            for (const intent of (action.intent || [])) {
+              if (intent.includes(word)) score += 3
             }
           }
         }
-        const authorityBoost = score > 0 ? (getDomainAuthority(row.domain) / 100) * 5 : 0
-        return { row, score: score + authorityBoost }
-      })
-      .filter((r: any) => r.score > 0)
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 5)
-      .map(({ row }: any) => ({
-        domain: `${row.domain}${row.path}`,
-        name: row.title,
-        pages: { [row.path]: { title: row.title, content: row.content } },
-        actions: row.actions || []
-      }))
+      }
+      const authorityBoost = score > 0 ? (getDomainAuthority(row.domain) / 100) * 5 : 0
+      return { row, score: score + authorityBoost }
+    })
+    .filter((r: any) => r.score > 0)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 5)
+
+    return scored.map(({ row }: any) => ({
+      domain: `${row.domain}${row.path}`,
+      name: row.title,
+      pages: { [row.path]: { title: row.title, content: row.content } },
+      actions: row.actions || []
+    }))
   } catch {
     return []
   }
@@ -127,7 +139,7 @@ async function suggestDomainsForQuery(query: string): Promise<string[]> {
       model: "openai/gpt-oss-20b",
       messages: [{
         role: "user",
-        content: `A user searched for: "${query}". List 3 real websites (domain names only, no http://, comma separated) most likely to have relevant content. Only use well-known real domains. Example: nike.com,adidas.com,footlocker.com`
+        content: `A user searched for: "${query}". List 3 real websites (domain names only, no http://, comma separated) most likely to have relevant content for this query. Only use well-known real domains. Example: nike.com,adidas.com,footlocker.com`
       }],
       temperature: 0.1
     })
@@ -180,9 +192,10 @@ export async function searchSites(query: string): Promise<Site[]> {
     }
   }
 
-  if (combined.length > 0) {
-    return await rerankWithJev(query, combined)
-  }
+ if (combined.length > 1) {
+  return await rerankWithJev(query, combined)
+}
+return combined
 
   if (parsed) {
     const crawled = await crawlSite(parsed.domain)
@@ -205,7 +218,5 @@ export async function searchSites(query: string): Promise<Site[]> {
     }
   }
 
-  return crawledResults.length > 0
-    ? await rerankWithJev(query, crawledResults)
-    : crawledResults
+  return crawledResults
 }
