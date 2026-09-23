@@ -1,6 +1,7 @@
 import { Router } from "express"
 import Groq from "groq-sdk"
 import { rerankWithJev } from "./ranker"
+import { vectorSearch, embedAndSaveSite } from "./embed"
 
 const router = Router()
 

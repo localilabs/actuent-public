@@ -1,10 +1,7 @@
 {
   "version": 2,
   "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }]
-    }
+    { "source": "/assets/(.*)", "headers": [{ "key": "Access-Control-Allow-Origin", "value": "*" }] }
   ],
   "builds": [
     { "src": "api/search.ts", "use": "@vercel/node" },
@@ -15,6 +12,8 @@
     { "src": "api/diff.ts", "use": "@vercel/node" },
     { "src": "api/sitemap.ts", "use": "@vercel/node" },
     { "src": "api/leaderboard.ts", "use": "@vercel/node" },
+    { "src": "api/suggest.ts", "use": "@vercel/node" },
+    { "src": "api/webhook-register.ts", "use": "@vercel/node" },
     { "src": "public/index.html", "use": "@vercel/static" },
     { "src": "public/docs/index.html", "use": "@vercel/static" },
     { "src": "public/assets/**", "use": "@vercel/static" }
@@ -25,8 +24,11 @@
     { "src": "/api/stats", "dest": "/api/stats.ts" },
     { "src": "/api/diff", "dest": "/api/diff.ts" },
     { "src": "/api/leaderboard", "dest": "/api/leaderboard.ts" },
+    { "src": "/api/suggest", "dest": "/api/suggest.ts" },
+    { "src": "/api/webhook-register", "dest": "/api/webhook-register.ts" },
     { "src": "/sitemap.xml", "dest": "/api/sitemap.ts" },
     { "src": "/leaderboard", "dest": "/api/leaderboard.ts" },
+    { "src": "/suggest", "dest": "/api/suggest.ts" },
     { "src": "/.well-known/lawp.json", "dest": "/api/well-known.ts" },
     { "src": "/badge.svg", "dest": "/api/badge.ts" },
     { "src": "/assets/(.*)", "dest": "/public/assets/$1" },

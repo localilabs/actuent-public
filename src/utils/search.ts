@@ -192,6 +192,20 @@ export async function searchSites(query: string): Promise<Site[]> {
     }
   }
 
+const vectorDomains = await vectorSearch(query, 10)
+for (const domain of vectorDomains) {
+  if (!seen.has(domain)) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?domain=eq.${domain}&select=*`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
+    })
+    const rows = await res.json()
+    if (rows?.[0]) {
+      combined.push({ domain: rows[0].domain, name: rows[0].name, pages: rows[0].pages, actions: rows[0].actions })
+      seen.add(domain)
+    }
+  }
+}
+
  if (combined.length > 1) {
   return await rerankWithJev(query, combined)
 }

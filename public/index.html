@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="https://api.actuent.ai/assets/actuent-logo.png">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
       background: #0a0a0a;
       color: #f0f0f0;
@@ -17,6 +18,7 @@
       align-items: center;
       padding: 60px 20px;
     }
+
     header {
       width: 100%;
       max-width: 800px;
@@ -25,9 +27,21 @@
       align-items: center;
       margin-bottom: 60px;
     }
-    header img { height: 28px; width: auto; }
-    header a { color: #444; font-size: 12px; text-decoration: none; transition: color 0.2s; }
+
+    header img {
+      height: 28px;
+      width: auto;
+    }
+
+    header a {
+      color: #444;
+      font-size: 12px;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
     header a:hover { color: #f0f0f0; }
+
     .badge {
       background: #1a1a1a;
       border: 1px solid #333;
@@ -39,9 +53,24 @@
       letter-spacing: 2px;
       text-transform: uppercase;
     }
-    h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; letter-spacing: -1px; text-align: center; }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: -1px;
+      text-align: center;
+    }
+
     h1 span { color: #555; }
-    .subtitle { color: #555; font-size: 13px; margin-bottom: 48px; text-align: center; }
+
+    .subtitle {
+      color: #555;
+      font-size: 13px;
+      margin-bottom: 48px;
+      text-align: center;
+    }
+
     .search-box {
       display: flex;
       gap: 12px;
@@ -49,6 +78,7 @@
       max-width: 600px;
       margin-bottom: 48px;
     }
+
     input {
       flex: 1;
       background: #111;
@@ -62,8 +92,10 @@
       transition: border-color 0.2s;
       min-width: 0;
     }
+
     input:focus { border-color: #555; }
     input::placeholder { color: #444; }
+
     button {
       background: #f0f0f0;
       color: #0a0a0a;
@@ -76,10 +108,20 @@
       transition: opacity 0.2s;
       white-space: nowrap;
     }
+
     button:hover { opacity: 0.85; }
     button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .status { color: #555; font-size: 12px; margin-bottom: 24px; min-height: 20px; text-align: center; }
+
+    .status {
+      color: #555;
+      font-size: 12px;
+      margin-bottom: 24px;
+      min-height: 20px;
+      text-align: center;
+    }
+
     .results { width: 100%; max-width: 800px; }
+
     .site-card {
       background: #111;
       border: 1px solid #222;
@@ -87,9 +129,17 @@
       padding: 24px;
       margin-bottom: 16px;
     }
-    .site-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
     .site-domain { font-size: 18px; font-weight: 700; }
     .site-name { color: #555; font-size: 13px; }
+
     .section-label {
       color: #444;
       font-size: 10px;
@@ -98,6 +148,7 @@
       margin-bottom: 12px;
       margin-top: 20px;
     }
+
     .page-item {
       background: #0d0d0d;
       border: 1px solid #1a1a1a;
@@ -105,9 +156,11 @@
       padding: 12px 16px;
       margin-bottom: 8px;
     }
+
     .page-path { color: #666; font-size: 11px; font-family: 'Courier New', monospace; margin-bottom: 4px; }
     .page-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
     .page-content { color: #555; font-size: 12px; line-height: 1.5; }
+
     .action-item {
       background: #0d0d0d;
       border: 1px solid #1a1a1a;
@@ -118,12 +171,36 @@
       align-items: flex-start;
       gap: 12px;
     }
-    .action-dot { width: 8px; height: 8px; background: #f0f0f0; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+
+    .action-dot {
+      width: 8px;
+      height: 8px;
+      background: #f0f0f0;
+      border-radius: 50%;
+      margin-top: 4px;
+      flex-shrink: 0;
+    }
+
     .action-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
     .action-desc { color: #555; font-size: 12px; }
+
     .intent-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-    .intent-tag { background: #1a1a1a; color: #666; font-size: 10px; padding: 2px 8px; border-radius: 4px; }
-    .empty { color: #333; font-size: 14px; text-align: center; padding: 48px; }
+
+    .intent-tag {
+      background: #1a1a1a;
+      color: #666;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .empty {
+      color: #333;
+      font-size: 14px;
+      text-align: center;
+      padding: 48px;
+    }
+
     .raw-toggle {
       color: #444;
       font-size: 11px;
@@ -135,6 +212,7 @@
       padding: 0;
       font-family: inherit;
     }
+
     .raw-json {
       background: #0d0d0d;
       border: 1px solid #1a1a1a;
@@ -148,25 +226,7 @@
       margin-top: 12px;
       display: none;
     }
-    .lawp-score {
-      background: #0d0d0d;
-      border: 1px solid #1a1a1a;
-      border-radius: 8px;
-      padding: 16px;
-      margin-top: 16px;
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-    }
-    .score-number {
-      font-size: 32px;
-      font-weight: 700;
-      font-family: 'Courier New', monospace;
-      letter-spacing: -1px;
-      min-width: 48px;
-    }
-    .score-label { font-size: 11px; color: #555; margin-top: 2px; }
-    .score-breakdown { font-size: 11px; color: #555; line-height: 1.8; }
+
     @media (max-width: 600px) {
       body { padding: 32px 16px; }
       h1 { font-size: 24px; }
@@ -178,6 +238,7 @@
   </style>
 </head>
 <body>
+
   <header>
     <img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent">
     <a href="https://docs.actuent.ai">Docs →</a>
@@ -188,7 +249,12 @@
   <p class="subtitle">This interface is for developers. AI agents connect via <a href="https://docs.actuent.ai" style="color:#555">agents.actuent.ai</a></p>
 
   <div class="search-box">
-    <input type="text" id="query" placeholder="nike.com or 'barber amsterdam'..." onkeydown="if(event.key==='Enter') search()"/>
+    <input
+      type="text"
+      id="query"
+      placeholder="nike.com or 'barber amsterdam'..."
+      onkeydown="if(event.key==='Enter') search()"
+    />
     <button onclick="search()" id="btn">Search</button>
   </div>
 
@@ -196,100 +262,87 @@
   <div class="results" id="results"></div>
 
   <script>
-    function scoreLAWP(site) {
-      let score = 0
-      const breakdown = []
-      const pageCount = Object.keys(site.pages || {}).length
-      if (pageCount >= 3) { score += 25; breakdown.push("✓ 3+ pages indexed") }
-      else if (pageCount >= 1) { score += 10; breakdown.push("△ 1-2 pages indexed") }
-      else { breakdown.push("✗ No pages indexed") }
-      const actionCount = (site.actions || []).length
-      if (actionCount >= 3) { score += 25; breakdown.push("✓ 3+ actions defined") }
-      else if (actionCount >= 1) { score += 15; breakdown.push("△ 1-2 actions defined") }
-      else { breakdown.push("✗ No actions defined") }
-      const avgIntent = actionCount > 0
-        ? site.actions.reduce((s, a) => s + (a.intent?.length || 0), 0) / actionCount : 0
-      if (avgIntent >= 5) { score += 20; breakdown.push("✓ Rich intent keywords") }
-      else if (avgIntent >= 3) { score += 10; breakdown.push("△ Some intent keywords") }
-      else { breakdown.push("✗ Thin intent keywords") }
-      const avgContent = pageCount > 0
-        ? Object.values(site.pages).reduce((s, p) => s + (p.content?.length || 0), 0) / pageCount : 0
-      if (avgContent >= 200) { score += 15; breakdown.push("✓ Rich page content") }
-      else if (avgContent >= 80) { score += 8; breakdown.push("△ Some page content") }
-      else { breakdown.push("✗ Thin page content") }
-      if (site.name && site.name !== site.domain) { score += 15; breakdown.push("✓ Site name set") }
-      else { breakdown.push("✗ No site name") }
-      return { score: Math.min(score, 100), breakdown }
-    }
-
     async function search() {
       const query = document.getElementById("query").value.trim()
       if (!query) return
+
       const btn = document.getElementById("btn")
       const status = document.getElementById("status")
       const results = document.getElementById("results")
+
       btn.disabled = true
       btn.textContent = "Searching..."
       status.textContent = "Crawling and converting to LAWP..."
       results.innerHTML = ""
+
       try {
-        const r = await fetch("https://api.actuent.ai/api/search", {
+        const res = await fetch("https://api.actuent.ai/api/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ query })
         })
-        if (!r.ok) throw new Error("Search failed")
-        const data = await r.json()
+
+        if (!res.ok) throw new Error("Search failed")
+
+        const data = await res.json()
+
         if (!data.results || data.results.length === 0) {
           results.innerHTML = `<div class="empty">No LAWP found for "${query}"</div>`
           status.textContent = ""
           return
         }
+
         status.textContent = `${data.count} result${data.count !== 1 ? "s" : ""} found`
-        results.innerHTML = data.results.map((site, i) => {
-          const { score, breakdown } = scoreLAWP(site)
-          const scoreColor = score >= 80 ? "#f0f0f0" : score >= 50 ? "#888" : "#555"
-          return `
-            <div class="site-card">
-              <div class="site-header">
-                <div>
-                  <div class="site-domain">${site.domain}</div>
-                  <div class="site-name">${site.name}</div>
-                </div>
+
+        results.innerHTML = data.results.map((site, i) => `
+          <div class="site-card">
+            <div class="site-header">
+              <div>
+                <div class="site-domain">${site.domain}</div>
+                <div class="site-name">${site.name}</div>
               </div>
-              <div class="section-label">Pages</div>
-              ${Object.entries(site.pages).map(([path, page]) => `
-                <div class="page-item">
-                  <div class="page-path">${path}</div>
-                  <div class="page-title">${page.title}</div>
-                  <div class="page-content">${page.content}</div>
-                </div>
-              `).join("")}
-              <div class="section-label">Actions</div>
-              ${site.actions.map(action => `
-                <div class="action-item">
-                  <div class="action-dot"></div>
-                  <div>
-                    <div class="action-name">${action.name}</div>
-                    <div class="action-desc">${action.description}</div>
-                    <div class="intent-tags">
-                      ${action.intent.map(i => `<span class="intent-tag">${i}</span>`).join("")}
-                    </div>
+            </div>
+
+            <div class="section-label">Pages</div>
+            ${Object.entries(site.pages).map(([path, page]) => `
+              <div class="page-item">
+                <div class="page-path">${path}</div>
+                <div class="page-title">${page.title}</div>
+                <div class="page-content">${page.content}</div>
+              </div>
+            `).join("")}
+
+            <div class="section-label">Actions</div>
+            ${site.actions.map(action => `
+              <div class="action-item">
+                <div class="action-dot"></div>
+                <div>
+                  <div class="action-name">${action.name}</div>
+                  <div class="action-desc">${action.description}</div>
+                  <div class="intent-tags">
+                    ${action.intent.map(i => `<span class="intent-tag">${i}</span>`).join("")}
                   </div>
                 </div>
-              `).join("")}
-              <div class="lawp-score">
-                <div>
-                  <div class="score-number" style="color:${scoreColor}">${score}</div>
-                  <div class="score-label">LAWP Score / 100</div>
-                </div>
-                <div class="score-breakdown">${breakdown.join("<br>")}</div>
               </div>
-              <button class="raw-toggle" onclick="toggleRaw(${i})">view raw LAWP</button>
-              <pre class="raw-json" id="raw-${i}">${JSON.stringify(site, null, 2)}</pre>
-            </div>
-          `
-        }).join("")
+            `).join("")}
+
+            <button class="raw-toggle" onclick="toggleRaw(${i})">view raw LAWP</button>
+            <pre class="raw-json" id="raw-${i}">${JSON.stringify(site, null, 2)}</pre>
+          </div>
+          const { score, breakdown } = scoreLAWP(site)
+          const scoreColor = score >= 80 ? "#f0f0f0" : score >= 50 ? "#888" : "#555"
+          <div style="margin-top:16px;padding:16px;background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <div style="font-size:28px;font-weight:700;font-family:'Courier New',monospace;color:${scoreColor}">${score}</div>
+          div>
+          <div style="font-size:12px;font-weight:600">LAWP Score</div>
+          <div style="font-size:11px;color:#555">out of 100</div>
+          </div>
+          </div>
+          ${breakdown.map(b => `<div style="font-size:11px;color:#555;margin-bottom:4px">${b}</div>`).join("")}
+          </div>`
+        `).join("")
+
       } catch(e) {
         status.textContent = "Search failed — check the console for details"
         results.innerHTML = `<div class="empty">Could not connect to api.actuent.ai</div>`
@@ -303,6 +356,40 @@
       const el = document.getElementById("raw-" + i)
       el.style.display = el.style.display === "block" ? "none" : "block"
     }
+    function scoreLAWP(site) {
+  let score = 0
+  const breakdown = []
+
+  const pageCount = Object.keys(site.pages || {}).length
+  if (pageCount >= 3) { score += 25; breakdown.push("✓ 3+ pages indexed (+25)") }
+  else if (pageCount >= 1) { score += 10; breakdown.push("△ Only 1-2 pages indexed (+10)") }
+  else { breakdown.push("✗ No pages indexed (+0)") }
+
+  const actionCount = (site.actions || []).length
+  if (actionCount >= 3) { score += 25; breakdown.push("✓ 3+ actions defined (+25)") }
+  else if (actionCount >= 1) { score += 15; breakdown.push("△ 1-2 actions defined (+15)") }
+  else { breakdown.push("✗ No actions defined (+0)") }
+
+  const avgIntentLength = actionCount > 0
+    ? site.actions.reduce((sum, a) => sum + (a.intent?.length || 0), 0) / actionCount
+    : 0
+  if (avgIntentLength >= 5) { score += 20; breakdown.push("✓ Rich intent keywords (+20)") }
+  else if (avgIntentLength >= 3) { score += 10; breakdown.push("△ Some intent keywords (+10)") }
+  else { breakdown.push("✗ Thin intent keywords (+0)") }
+
+  const avgContentLength = pageCount > 0
+    ? Object.values(site.pages).reduce((sum, p) => sum + (p.content?.length || 0), 0) / pageCount
+    : 0
+  if (avgContentLength >= 200) { score += 15; breakdown.push("✓ Rich page content (+15)") }
+  else if (avgContentLength >= 80) { score += 8; breakdown.push("△ Some page content (+8)") }
+  else { breakdown.push("✗ Thin page content (+0)") }
+
+  if (site.name && site.name !== site.domain) { score += 15; breakdown.push("✓ Site name set (+15)") }
+  else { breakdown.push("✗ No site name (+0)") }
+
+  return { score: Math.min(score, 100), breakdown }
+}
   </script>
+
 </body>
 </html>
