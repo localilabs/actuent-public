@@ -7,389 +7,178 @@
   <link rel="icon" type="image/png" href="https://api.actuent.ai/assets/actuent-logo.png">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: #0a0a0a;
-      color: #f0f0f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 60px 20px;
-    }
-
-    header {
-      width: 100%;
-      max-width: 800px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 60px;
-    }
-
-    header img {
-      height: 28px;
-      width: auto;
-    }
-
-    header a {
-      color: #444;
-      font-size: 12px;
-      text-decoration: none;
-      transition: color 0.2s;
-    }
-
+    body { background: #0a0a0a; color: #f0f0f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 60px 20px; }
+    header { width: 100%; max-width: 800px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 60px; }
+    header img { height: 26px; }
+    header a { color: #444; font-size: 12px; text-decoration: none; }
     header a:hover { color: #f0f0f0; }
-
-    .badge {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #888;
-      font-size: 11px;
-      padding: 4px 12px;
-      border-radius: 20px;
-      margin-bottom: 32px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      font-size: 32px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      letter-spacing: -1px;
-      text-align: center;
-    }
-
-    h1 span { color: #555; }
-
-    .subtitle {
-      color: #555;
-      font-size: 13px;
-      margin-bottom: 48px;
-      text-align: center;
-    }
-
-    .search-box {
-      display: flex;
-      gap: 12px;
-      width: 100%;
-      max-width: 600px;
-      margin-bottom: 48px;
-    }
-
-    input {
-      flex: 1;
-      background: #111;
-      border: 1px solid #333;
-      color: #f0f0f0;
-      padding: 14px 18px;
-      font-size: 14px;
-      font-family: 'Courier New', monospace;
-      border-radius: 8px;
-      outline: none;
-      transition: border-color 0.2s;
-      min-width: 0;
-    }
-
-    input:focus { border-color: #555; }
-    input::placeholder { color: #444; }
-
-    button {
-      background: #f0f0f0;
-      color: #0a0a0a;
-      border: none;
-      padding: 14px 24px;
-      font-size: 14px;
-      font-weight: 700;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: opacity 0.2s;
-      white-space: nowrap;
-    }
-
-    button:hover { opacity: 0.85; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
-
-    .status {
-      color: #555;
-      font-size: 12px;
-      margin-bottom: 24px;
-      min-height: 20px;
-      text-align: center;
-    }
-
+    .badge { background: #1a1a1a; border: 1px solid #2a2a2a; color: #666; font-size: 11px; padding: 4px 14px; border-radius: 20px; margin-bottom: 28px; letter-spacing: 2px; text-transform: uppercase; }
+    h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; letter-spacing: -1px; text-align: center; }
+    h1 span { color: #444; }
+    .sub { color: #444; font-size: 13px; margin-bottom: 44px; text-align: center; }
+    .sub a { color: #555; text-decoration: none; }
+    .search-box { display: flex; gap: 10px; width: 100%; max-width: 580px; margin-bottom: 40px; }
+    input[type="text"] { flex: 1; background: #111; border: 1px solid #2a2a2a; color: #f0f0f0; padding: 13px 16px; font-size: 14px; font-family: 'Courier New', monospace; border-radius: 8px; outline: none; min-width: 0; transition: border-color 0.2s; }
+    input[type="text"]:focus { border-color: #444; }
+    input[type="text"]::placeholder { color: #333; }
+    .search-btn { background: #f0f0f0; color: #0a0a0a; border: none; padding: 13px 22px; font-size: 14px; font-weight: 700; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: opacity 0.2s; flex-shrink: 0; }
+    .search-btn:hover { opacity: 0.85; }
+    .search-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .status { color: #444; font-size: 12px; margin-bottom: 20px; min-height: 18px; text-align: center; }
     .results { width: 100%; max-width: 800px; }
-
-    .site-card {
-      background: #111;
-      border: 1px solid #222;
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 16px;
-    }
-
-    .site-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    .site-domain { font-size: 18px; font-weight: 700; }
-    .site-name { color: #555; font-size: 13px; }
-
-    .section-label {
-      color: #444;
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 2px;
-      margin-bottom: 12px;
-      margin-top: 20px;
-    }
-
-    .page-item {
-      background: #0d0d0d;
-      border: 1px solid #1a1a1a;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-    }
-
-    .page-path { color: #666; font-size: 11px; font-family: 'Courier New', monospace; margin-bottom: 4px; }
-    .page-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .site-card { background: #0f0f0f; border: 1px solid #1a1a1a; border-radius: 10px; padding: 22px; margin-bottom: 14px; }
+    .site-header { margin-bottom: 18px; }
+    .site-domain { font-size: 17px; font-weight: 700; font-family: 'Courier New', monospace; }
+    .site-name { color: #555; font-size: 12px; margin-top: 2px; }
+    .section-label { color: #333; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 10px; margin-top: 18px; }
+    .page-item { background: #0a0a0a; border: 1px solid #161616; border-radius: 7px; padding: 10px 14px; margin-bottom: 7px; }
+    .page-path { color: #555; font-size: 10px; font-family: 'Courier New', monospace; margin-bottom: 3px; }
+    .page-title { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
     .page-content { color: #555; font-size: 12px; line-height: 1.5; }
-
-    .action-item {
-      background: #0d0d0d;
-      border: 1px solid #1a1a1a;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-    }
-
-    .action-dot {
-      width: 8px;
-      height: 8px;
-      background: #f0f0f0;
-      border-radius: 50%;
-      margin-top: 4px;
-      flex-shrink: 0;
-    }
-
-    .action-name { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
-    .action-desc { color: #555; font-size: 12px; }
-
-    .intent-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-
-    .intent-tag {
-      background: #1a1a1a;
-      color: #666;
-      font-size: 10px;
-      padding: 2px 8px;
-      border-radius: 4px;
-    }
-
-    .empty {
-      color: #333;
-      font-size: 14px;
-      text-align: center;
-      padding: 48px;
-    }
-
-    .raw-toggle {
-      color: #444;
-      font-size: 11px;
-      cursor: pointer;
-      margin-top: 16px;
-      text-decoration: underline;
-      background: none;
-      border: none;
-      padding: 0;
-      font-family: inherit;
-    }
-
-    .raw-json {
-      background: #0d0d0d;
-      border: 1px solid #1a1a1a;
-      border-radius: 8px;
-      padding: 16px;
-      font-size: 11px;
-      font-family: 'Courier New', monospace;
-      color: #555;
-      overflow-x: auto;
-      white-space: pre;
-      margin-top: 12px;
-      display: none;
-    }
-
+    .action-item { background: #0a0a0a; border: 1px solid #161616; border-radius: 7px; padding: 10px 14px; margin-bottom: 7px; display: flex; gap: 10px; align-items: flex-start; }
+    .action-dot { width: 7px; height: 7px; background: #f0f0f0; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+    .action-name { font-size: 12px; font-weight: 600; margin-bottom: 2px; }
+    .action-desc { color: #555; font-size: 11px; }
+    .intent-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+    .intent-tag { background: #161616; color: #555; font-size: 10px; padding: 2px 7px; border-radius: 4px; }
+    .lawp-score { display: flex; gap: 14px; align-items: flex-start; background: #0a0a0a; border: 1px solid #161616; border-radius: 7px; padding: 14px; margin-top: 14px; }
+    .score-num { font-size: 30px; font-weight: 700; font-family: 'Courier New', monospace; letter-spacing: -1px; min-width: 44px; }
+    .score-meta { font-size: 10px; color: #444; margin-top: 3px; }
+    .score-breakdown { font-size: 11px; color: #444; line-height: 1.9; }
+    .raw-toggle { color: #333; font-size: 11px; cursor: pointer; margin-top: 14px; text-decoration: underline; background: none; border: none; padding: 0; font-family: inherit; display: block; }
+    .raw-toggle:hover { color: #666; }
+    .raw-json { background: #0a0a0a; border: 1px solid #161616; border-radius: 7px; padding: 14px; font-size: 11px; font-family: 'Courier New', monospace; color: #444; overflow-x: auto; white-space: pre; margin-top: 10px; display: none; }
+    .empty { color: #2a2a2a; font-size: 14px; text-align: center; padding: 56px; }
     @media (max-width: 600px) {
-      body { padding: 32px 16px; }
-      h1 { font-size: 24px; }
+      body { padding: 28px 14px; }
+      h1 { font-size: 22px; }
+      header { margin-bottom: 36px; }
       .search-box { flex-direction: column; }
-      button { width: 100%; }
-      header { margin-bottom: 40px; }
-      .site-card { padding: 16px; }
+      .search-btn { width: 100%; }
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent">
-    <a href="https://docs.actuent.ai">Docs →</a>
-  </header>
+<header>
+  <img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent">
+  <a href="https://docs.actuent.ai">Docs →</a>
+</header>
 
-  <div class="badge">⚠ Human Debug Mode</div>
-  <h1>Actuent <span>for humans</span></h1>
-  <p class="subtitle">This interface is for developers. AI agents connect via <a href="https://docs.actuent.ai" style="color:#555">agents.actuent.ai</a></p>
+<div class="badge">⚠ Human Debug Mode</div>
+<h1>Actuent <span>for humans</span></h1>
+<p class="sub">Developers only. AI agents connect via <a href="https://docs.actuent.ai">agents.actuent.ai</a></p>
 
-  <div class="search-box">
-    <input
-      type="text"
-      id="query"
-      placeholder="nike.com or 'barber amsterdam'..."
-      onkeydown="if(event.key==='Enter') search()"
-    />
-    <button onclick="search()" id="btn">Search</button>
-  </div>
+<div class="search-box">
+  <input type="text" id="q" placeholder="nike.com or 'barber amsterdam'..." />
+  <button class="search-btn" id="btn">Search</button>
+</div>
 
-  <div class="status" id="status"></div>
-  <div class="results" id="results"></div>
+<div class="status" id="status"></div>
+<div class="results" id="results"></div>
 
-  <script>
-    async function search() {
-      const query = document.getElementById("query").value.trim()
-      if (!query) return
+<script>
+  var API = "https://api.actuent.ai"
 
-      const btn = document.getElementById("btn")
-      const status = document.getElementById("status")
-      const results = document.getElementById("results")
+  function scoreLAWP(site) {
+    var score = 0
+    var breakdown = []
+    var pages = Object.keys(site.pages || {}).length
+    var actions = (site.actions || []).length
+    var avgIntent = actions > 0 ? site.actions.reduce(function(s,a){ return s + (a.intent ? a.intent.length : 0) }, 0) / actions : 0
+    var avgContent = pages > 0 ? Object.values(site.pages).reduce(function(s,p){ return s + (p.content ? p.content.length : 0) }, 0) / pages : 0
+    if (pages >= 3) { score += 25; breakdown.push("✓ 3+ pages indexed") }
+    else if (pages >= 1) { score += 10; breakdown.push("△ Few pages indexed") }
+    else { breakdown.push("✗ No pages") }
+    if (actions >= 3) { score += 25; breakdown.push("✓ 3+ actions") }
+    else if (actions >= 1) { score += 15; breakdown.push("△ Some actions") }
+    else { breakdown.push("✗ No actions") }
+    if (avgIntent >= 5) { score += 20; breakdown.push("✓ Rich intents") }
+    else if (avgIntent >= 3) { score += 10; breakdown.push("△ Some intents") }
+    else { breakdown.push("✗ Thin intents") }
+    if (avgContent >= 200) { score += 15; breakdown.push("✓ Rich content") }
+    else if (avgContent >= 80) { score += 8; breakdown.push("△ Some content") }
+    else { breakdown.push("✗ Thin content") }
+    if (site.name && site.name !== site.domain) { score += 15; breakdown.push("✓ Named") }
+    else { breakdown.push("✗ Unnamed") }
+    return { score: Math.min(score, 100), breakdown: breakdown }
+  }
 
-      btn.disabled = true
-      btn.textContent = "Searching..."
-      status.textContent = "Crawling and converting to LAWP..."
-      results.innerHTML = ""
+  function toggleRaw(i) {
+    var el = document.getElementById("raw-" + i)
+    el.style.display = el.style.display === "block" ? "none" : "block"
+  }
 
-      try {
-        const res = await fetch("https://api.actuent.ai/api/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query })
-        })
+  document.getElementById("q").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") doSearch()
+  })
 
-        if (!res.ok) throw new Error("Search failed")
+  document.getElementById("btn").addEventListener("click", doSearch)
 
-        const data = await res.json()
+  function doSearch() {
+    var query = document.getElementById("q").value.trim()
+    if (!query) return
 
-        if (!data.results || data.results.length === 0) {
-          results.innerHTML = `<div class="empty">No LAWP found for "${query}"</div>`
-          status.textContent = ""
-          return
-        }
+    var btn = document.getElementById("btn")
+    var status = document.getElementById("status")
+    var results = document.getElementById("results")
 
-        status.textContent = `${data.count} result${data.count !== 1 ? "s" : ""} found`
+    btn.disabled = true
+    btn.textContent = "Searching..."
+    status.textContent = "Fetching LAWP..."
+    results.innerHTML = ""
 
-        results.innerHTML = data.results.map((site, i) => `
-          <div class="site-card">
-            <div class="site-header">
-              <div>
-                <div class="site-domain">${site.domain}</div>
-                <div class="site-name">${site.name}</div>
-              </div>
-            </div>
+    fetch(API + "/api/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: query })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status)
+      return r.json()
+    })
+    .then(function(data) {
+      btn.disabled = false
+      btn.textContent = "Search"
 
-            <div class="section-label">Pages</div>
-            ${Object.entries(site.pages).map(([path, page]) => `
-              <div class="page-item">
-                <div class="page-path">${path}</div>
-                <div class="page-title">${page.title}</div>
-                <div class="page-content">${page.content}</div>
-              </div>
-            `).join("")}
-
-            <div class="section-label">Actions</div>
-            ${site.actions.map(action => `
-              <div class="action-item">
-                <div class="action-dot"></div>
-                <div>
-                  <div class="action-name">${action.name}</div>
-                  <div class="action-desc">${action.description}</div>
-                  <div class="intent-tags">
-                    ${action.intent.map(i => `<span class="intent-tag">${i}</span>`).join("")}
-                  </div>
-                </div>
-              </div>
-            `).join("")}
-
-            <button class="raw-toggle" onclick="toggleRaw(${i})">view raw LAWP</button>
-            <pre class="raw-json" id="raw-${i}">${JSON.stringify(site, null, 2)}</pre>
-          </div>
-          const { score, breakdown } = scoreLAWP(site)
-          const scoreColor = score >= 80 ? "#f0f0f0" : score >= 50 ? "#888" : "#555"
-          <div style="margin-top:16px;padding:16px;background:#0d0d0d;border:1px solid #1a1a1a;border-radius:8px">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-          <div style="font-size:28px;font-weight:700;font-family:'Courier New',monospace;color:${scoreColor}">${score}</div>
-          div>
-          <div style="font-size:12px;font-weight:600">LAWP Score</div>
-          <div style="font-size:11px;color:#555">out of 100</div>
-          </div>
-          </div>
-          ${breakdown.map(b => `<div style="font-size:11px;color:#555;margin-bottom:4px">${b}</div>`).join("")}
-          </div>`
-        `).join("")
-
-      } catch(e) {
-        status.textContent = "Search failed — check the console for details"
-        results.innerHTML = `<div class="empty">Could not connect to api.actuent.ai</div>`
-      } finally {
-        btn.disabled = false
-        btn.textContent = "Search"
+      if (!data.results || data.results.length === 0) {
+        results.innerHTML = '<div class="empty">No LAWP found for "' + query + '"</div>'
+        status.textContent = ""
+        return
       }
-    }
 
-    function toggleRaw(i) {
-      const el = document.getElementById("raw-" + i)
-      el.style.display = el.style.display === "block" ? "none" : "block"
-    }
-    function scoreLAWP(site) {
-  let score = 0
-  const breakdown = []
+      status.textContent = data.count + " result" + (data.count !== 1 ? "s" : "") + " found"
 
-  const pageCount = Object.keys(site.pages || {}).length
-  if (pageCount >= 3) { score += 25; breakdown.push("✓ 3+ pages indexed (+25)") }
-  else if (pageCount >= 1) { score += 10; breakdown.push("△ Only 1-2 pages indexed (+10)") }
-  else { breakdown.push("✗ No pages indexed (+0)") }
-
-  const actionCount = (site.actions || []).length
-  if (actionCount >= 3) { score += 25; breakdown.push("✓ 3+ actions defined (+25)") }
-  else if (actionCount >= 1) { score += 15; breakdown.push("△ 1-2 actions defined (+15)") }
-  else { breakdown.push("✗ No actions defined (+0)") }
-
-  const avgIntentLength = actionCount > 0
-    ? site.actions.reduce((sum, a) => sum + (a.intent?.length || 0), 0) / actionCount
-    : 0
-  if (avgIntentLength >= 5) { score += 20; breakdown.push("✓ Rich intent keywords (+20)") }
-  else if (avgIntentLength >= 3) { score += 10; breakdown.push("△ Some intent keywords (+10)") }
-  else { breakdown.push("✗ Thin intent keywords (+0)") }
-
-  const avgContentLength = pageCount > 0
-    ? Object.values(site.pages).reduce((sum, p) => sum + (p.content?.length || 0), 0) / pageCount
-    : 0
-  if (avgContentLength >= 200) { score += 15; breakdown.push("✓ Rich page content (+15)") }
-  else if (avgContentLength >= 80) { score += 8; breakdown.push("△ Some page content (+8)") }
-  else { breakdown.push("✗ Thin page content (+0)") }
-
-  if (site.name && site.name !== site.domain) { score += 15; breakdown.push("✓ Site name set (+15)") }
-  else { breakdown.push("✗ No site name (+0)") }
-
-  return { score: Math.min(score, 100), breakdown }
-}
-  </script>
-
+      results.innerHTML = data.results.map(function(site, i) {
+        var s = scoreLAWP(site)
+        var color = s.score >= 80 ? "#f0f0f0" : s.score >= 50 ? "#888" : "#555"
+        var pages = Object.entries(site.pages || {}).map(function(entry) {
+          var path = entry[0]
+          var page = entry[1]
+          return '<div class="page-item"><div class="page-path">' + path + '</div><div class="page-title">' + (page.title || "") + '</div><div class="page-content">' + (page.content || "") + '</div></div>'
+        }).join("")
+        var actions = (site.actions || []).map(function(a) {
+          var intents = (a.intent || []).map(function(t) { return '<span class="intent-tag">' + t + '</span>' }).join("")
+          return '<div class="action-item"><div class="action-dot"></div><div><div class="action-name">' + a.name + '</div><div class="action-desc">' + a.description + '</div><div class="intent-tags">' + intents + '</div></div></div>'
+        }).join("")
+        return '<div class="site-card">' +
+          '<div class="site-header"><div class="site-domain">' + site.domain + '</div><div class="site-name">' + (site.name || "") + '</div></div>' +
+          '<div class="section-label">Pages</div>' + pages +
+          '<div class="section-label">Actions</div>' + (actions || '<div class="page-item"><div class="page-content" style="color:#333">No actions defined</div></div>') +
+          '<div class="lawp-score"><div><div class="score-num" style="color:' + color + '">' + s.score + '</div><div class="score-meta">LAWP Score / 100</div></div><div class="score-breakdown">' + s.breakdown.join("<br>") + '</div></div>' +
+          '<button class="raw-toggle" onclick="toggleRaw(' + i + ')">view raw LAWP</button>' +
+          '<pre class="raw-json" id="raw-' + i + '">' + JSON.stringify(site, null, 2) + '</pre>' +
+          '</div>'
+      }).join("")
+    })
+    .catch(function(err) {
+      btn.disabled = false
+      btn.textContent = "Search"
+      status.textContent = "Error: " + err.message
+      results.innerHTML = '<div class="empty">Could not connect to api.actuent.ai</div>'
+      console.error(err)
+    })
+  }
+</script>
 </body>
 </html>

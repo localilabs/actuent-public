@@ -49,11 +49,11 @@ function scoreMatch(site: Site, query: string): number {
   const actionCount = (site.actions || []).length
   const avgIntent = actionCount > 0
     ? site.actions.reduce((s, a) => s + (a.intent?.length || 0), 0) / actionCount : 0
-  let lawpScore = 0
-  if (pageCount >= 3) lawpScore += 2
-  if (actionCount >= 3) lawpScore += 2
-  if (avgIntent >= 5) lawpScore += 1
-  score += lawpScore * 0.3
+  let lawpBoost = 0
+  if (pageCount >= 3) lawpBoost += 2
+  if (actionCount >= 3) lawpBoost += 2
+  if (avgIntent >= 5) lawpBoost += 1
+  score += lawpBoost * 0.3
   const authority = getDomainAuthority(site.domain)
   const authorityBoost = score > 0 ? (authority / 100) * 5 : 0
   return score + authorityBoost
@@ -122,7 +122,7 @@ async function suggestDomainsForQuery(query: string): Promise<string[]> {
       model: "openai/gpt-oss-20b",
       messages: [{
         role: "user",
-        content: `A user searched for: "${query}". List 3 real websites (domain names only, comma separated) most likely to have relevant content. Example: nike.com,adidas.com,footlocker.com`
+        content: `User searched: "${query}". List 3 real domains most likely to have relevant content. Comma separated, no http. Example: nike.com,adidas.com,asos.com`
       }],
       temperature: 0.1
     })
@@ -139,7 +139,8 @@ function parseFullUrl(query: string): { domain: string, path: string } | null {
   return { domain: match[1].toLowerCase(), path: match[2] || "/" }
 }
 
-export async function searchSites(query: string): Promise<Site[]> {
+export async function searchSites(query: string, tier: string = "free"): Promise<Site[]> {
+  const isPro = tier === "pro"
   const parsed = parseFullUrl(query)
 
   if (parsed && parsed.path !== "/") {
@@ -160,39 +161,47 @@ export async function searchSites(query: string): Promise<Site[]> {
     .sort((a, b) => b.score - a.score)
     .map(r => r.site)
 
-  const dbResults = await searchSupabase(query)
-  const pageResults = await searchPages(query)
+  if (seedResults.length > 0) return seedResults
 
-  const seen = new Set<string>()
-  const combined: Site[] = []
-
-  for (const site of [...seedResults, ...dbResults, ...pageResults]) {
-    if (!seen.has(site.domain)) {
-      seen.add(site.domain)
-      combined.push(site)
+  if (isPro) {
+    const dbResults = await searchSupabase(query)
+    const pageResults = await searchPages(query)
+    const seen = new Set<string>()
+    const combined: Site[] = []
+    for (const site of [...dbResults, ...pageResults]) {
+      if (!seen.has(site.domain)) {
+        seen.add(site.domain)
+        combined.push(site)
+      }
     }
-  }
+    if (combined.length > 0) return combined
 
-  if (combined.length > 0) return combined
+    if (parsed) {
+      const crawled = await crawlSite(parsed.domain)
+      if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
+    }
+    const suggested = await suggestDomainsForQuery(query)
+    const crawledResults: Site[] = []
+    for (const domain of suggested) {
+      if (!seen.has(domain)) {
+        const crawled = await crawlSite(domain)
+        if (crawled) { sites[domain] = crawled; crawledResults.push(crawled); seen.add(domain) }
+      }
+    }
+    return crawledResults
+  }
 
   if (parsed) {
     const crawled = await crawlSite(parsed.domain)
-    if (crawled) {
-      sites[parsed.domain] = crawled
-      return [crawled]
-    }
+    if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
   }
-
-  const suggestedDomains = await suggestDomainsForQuery(query)
+  const suggested = await suggestDomainsForQuery(query)
+  const seen = new Set<string>()
   const crawledResults: Site[] = []
-  for (const domain of suggestedDomains) {
+  for (const domain of suggested) {
     if (!seen.has(domain)) {
       const crawled = await crawlSite(domain)
-      if (crawled) {
-        sites[domain] = crawled
-        crawledResults.push(crawled)
-        seen.add(domain)
-      }
+      if (crawled) { sites[domain] = crawled; crawledResults.push(crawled); seen.add(domain) }
     }
   }
   return crawledResults

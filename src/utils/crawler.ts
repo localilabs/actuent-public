@@ -7,6 +7,16 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
+function minimalLAWP(domain: string, content: string = ""): Site {
+  const name = domain.split(".")[0]
+  return {
+    domain,
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    pages: { "/": { title: domain, content: content.slice(0, 200) || `Website at ${domain}` } },
+    actions: []
+  }
+}
+
 async function getSavedSite(domain: string): Promise<Site | null> {
   try {
     const res = await fetch(
@@ -98,15 +108,6 @@ async function fetchContent(url: string): Promise<string | null> {
   return await scrapeBasic(url)
 }
 
-function minimalLAWP(domain: string, content: string): Site {
-  return {
-    domain,
-    name: domain.split(".")[0].charAt(0).toUpperCase() + domain.split(".")[0].slice(1),
-    pages: { "/": { title: domain, content: content.slice(0, 200) || `Website at ${domain}` } },
-    actions: []
-  }
-}
-
 async function convertToLAWP(domain: string, content: string): Promise<Site> {
   try {
     const completion = await groq.chat.completions.create({
@@ -127,32 +128,6 @@ async function convertToLAWP(domain: string, content: string): Promise<Site> {
   }
 }
 
-async function detectAndTranslate(content: string): Promise<{ content: string, lang: string }> {
-  try {
-    const sample = content.slice(0, 200)
-    const ascii = sample.replace(/[^\x00-\x7F]/g, "").length
-    const ratio = ascii / sample.length
-    if (ratio > 0.85) return { content, lang: "en" }
-
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [{
-        role: "user",
-        content: `Detect language and translate to English if not English.\n\nRespond ONLY as JSON: {"lang":"en","translated":"[text]"}\n\nText: ${content.slice(0, 1000)}`
-      }],
-      temperature: 0
-    })
-    const raw = completion.choices?.[0]?.message?.content
-    const parsed = safeParseJSON(raw || "")
-    if (parsed?.lang && parsed?.translated) {
-      return { content: parsed.translated, lang: parsed.lang }
-    }
-    return { content, lang: "en" }
-  } catch {
-    return { content, lang: "en" }
-  }
-}
-
 export async function crawlPage(domain: string, path: string): Promise<any | null> {
   const fullUrl = `${domain}${path}`
   const cached = await getPageFromDB(fullUrl)
@@ -161,10 +136,8 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
   const content = await fetchContent(`https://${domain}${path}`)
   if (!content) return null
 
-  const { content: translated } = await detectAndTranslate(content)
-
   let title = path.replace("/", "") || domain
-  let summary = translated.slice(0, 200)
+  let summary = content.slice(0, 200)
   let actions: any[] = []
 
   try {
@@ -172,7 +145,7 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
       model: "openai/gpt-oss-20b",
       messages: [{
         role: "user",
-        content: `Convert this page to LAWP format.\nDomain: ${domain}, Path: ${path}\nContent: ${translated}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`
+        content: `Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`
       }],
       temperature: 0.1
     })
@@ -190,14 +163,15 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
 }
 
 export async function crawlSite(domain: string): Promise<Site | null> {
-  const saved = await getSavedSite(domain)
-  if (saved) return saved
-
   const content = await fetchContent(`https://${domain}`)
-  if (!content) return null
 
-  const { content: translated, lang } = await detectAndTranslate(content)
-  const site = await convertToLAWP(domain, translated)
+  let site: Site
+
+  if (!content) {
+    site = minimalLAWP(domain)
+  } else {
+    site = await convertToLAWP(domain, content)
+  }
 
   const existing = await getSavedSite(domain)
   if (existing) {
@@ -207,8 +181,9 @@ export async function crawlSite(domain: string): Promise<Site | null> {
     }
   }
 
-  await saveSite(site, lang)
-  await savePage(domain, "/", Object.values(site.pages)[0]?.title || domain, Object.values(site.pages)[0]?.content || "", site.actions)
+  await saveSite(site)
+  const firstPage = Object.values(site.pages)[0]
+  await savePage(domain, "/", firstPage?.title || domain, firstPage?.content || "", site.actions)
 
   return site
 }
