@@ -29,22 +29,26 @@ function getDomainAuthority(domain: string): number {
 
 function scoreMatch(site: Site, query: string): number {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-  let score = 0
+  let keywordScore = 0
+
   for (const word of words) {
-    if (site.name.toLowerCase().includes(word)) score += 3
-    if (site.domain.toLowerCase().includes(word)) score += 2
+    if (site.name.toLowerCase().includes(word)) keywordScore += 3
+    if (site.domain.toLowerCase().includes(word)) keywordScore += 2
     for (const page of Object.values(site.pages)) {
-      if (page.title.toLowerCase().includes(word)) score += 2
-      if (page.content.toLowerCase().includes(word)) score += 1
+      if (page.title.toLowerCase().includes(word)) keywordScore += 2
+      if (page.content.toLowerCase().includes(word)) keywordScore += 1
     }
     for (const action of site.actions) {
       for (const intent of action.intent) {
-        if (intent.includes(word)) score += 3
+        if (intent.includes(word)) keywordScore += 3
       }
-      if (action.description.toLowerCase().includes(word)) score += 2
-      if (action.name.toLowerCase().includes(word)) score += 2
+      if (action.description.toLowerCase().includes(word)) keywordScore += 2
+      if (action.name.toLowerCase().includes(word)) keywordScore += 2
     }
   }
+
+  if (keywordScore === 0) return 0
+
   const pageCount = Object.keys(site.pages || {}).length
   const actionCount = (site.actions || []).length
   const avgIntent = actionCount > 0
@@ -53,17 +57,18 @@ function scoreMatch(site: Site, query: string): number {
   if (pageCount >= 3) lawpBoost += 2
   if (actionCount >= 3) lawpBoost += 2
   if (avgIntent >= 5) lawpBoost += 1
-  score += lawpBoost * 0.3
-  const authority = getDomainAuthority(site.domain)
-  const authorityBoost = score > 0 ? (authority / 100) * 5 : 0
-  return score + authorityBoost
+
+  const authorityBoost = (getDomainAuthority(site.domain) / 100) * 5
+
+  return keywordScore + lawpBoost * 0.3 + authorityBoost
 }
 
 async function searchSupabase(query: string): Promise<Site[]> {
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=*`, {
-      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
-    })
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions&limit=200`,
+      { headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` } }
+    )
     if (!r.ok) return []
     const rows = await r.json()
     const asSites: Site[] = rows.map((row: any) => ({
@@ -79,9 +84,10 @@ async function searchSupabase(query: string): Promise<Site[]> {
 
 async function searchPages(query: string): Promise<Site[]> {
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_pages?select=*`, {
-      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
-    })
+    const r = await fetch(
+      `${SUPABASE_URL}/rest/v1/lawp_pages?select=domain,path,title,content,actions&limit=200`,
+      { headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` } }
+    )
     if (!r.ok) return []
     const rows = await r.json()
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
@@ -101,10 +107,11 @@ async function searchPages(query: string): Promise<Site[]> {
             }
           }
         }
-        const authorityBoost = score > 0 ? (getDomainAuthority(row.domain) / 100) * 5 : 0
+        if (score === 0) return null
+        const authorityBoost = (getDomainAuthority(row.domain) / 100) * 5
         return { row, score: score + authorityBoost }
       })
-      .filter((r: any) => r.score > 0)
+      .filter(Boolean)
       .sort((a: any, b: any) => b.score - a.score)
       .slice(0, 5)
       .map(({ row }: any) => ({
@@ -116,27 +123,35 @@ async function searchPages(query: string): Promise<Site[]> {
   } catch { return [] }
 }
 
-async function suggestDomainsForQuery(query: string): Promise<string[]> {
-  try {
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [{
-        role: "user",
-        content: `User searched: "${query}". List 3 real domains most likely to have relevant content. Comma separated, no http. Example: nike.com,adidas.com,asos.com`
-      }],
-      temperature: 0.1
-    })
-    const text = completion.choices?.[0]?.message?.content?.trim() || ""
-    return text.split(",").map(d => d.trim().toLowerCase()).filter(d => d.includes(".")).slice(0, 3)
-  } catch { return [] }
-}
-
 function parseFullUrl(query: string): { domain: string, path: string } | null {
   const match = query.match(
     /(?:https?:\/\/)?([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,})(\/[^\s]*)?/i
   )
   if (!match) return null
   return { domain: match[1].toLowerCase(), path: match[2] || "/" }
+}
+
+async function suggestAndCrawl(query: string, seen: Set<string>): Promise<Site[]> {
+  try {
+    const completion = await groq.chat.completions.create({
+      model: "openai/gpt-oss-20b",
+      messages: [{
+        role: "user",
+        content: `User searched: "${query}". List 3 real domains most relevant. Comma separated, no http. Example: nike.com,adidas.com,asos.com`
+      }],
+      temperature: 0.1
+    })
+    const text = completion.choices?.[0]?.message?.content?.trim() || ""
+    const domains = text.split(",").map(d => d.trim().toLowerCase()).filter(d => d.includes(".")).slice(0, 3)
+    const results: Site[] = []
+    for (const domain of domains) {
+      if (!seen.has(domain)) {
+        const crawled = await crawlSite(domain)
+        if (crawled) { sites[domain] = crawled; results.push(crawled); seen.add(domain) }
+      }
+    }
+    return results
+  } catch { return [] }
 }
 
 export async function searchSites(query: string, tier: string = "free"): Promise<Site[]> {
@@ -169,40 +184,20 @@ export async function searchSites(query: string, tier: string = "free"): Promise
     const seen = new Set<string>()
     const combined: Site[] = []
     for (const site of [...dbResults, ...pageResults]) {
-      if (!seen.has(site.domain)) {
-        seen.add(site.domain)
-        combined.push(site)
-      }
+      if (!seen.has(site.domain)) { seen.add(site.domain); combined.push(site) }
     }
     if (combined.length > 0) return combined
-
     if (parsed) {
       const crawled = await crawlSite(parsed.domain)
       if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
     }
-    const suggested = await suggestDomainsForQuery(query)
-    const crawledResults: Site[] = []
-    for (const domain of suggested) {
-      if (!seen.has(domain)) {
-        const crawled = await crawlSite(domain)
-        if (crawled) { sites[domain] = crawled; crawledResults.push(crawled); seen.add(domain) }
-      }
-    }
-    return crawledResults
+    return await suggestAndCrawl(query, seen)
   }
 
+  const seen = new Set<string>()
   if (parsed) {
     const crawled = await crawlSite(parsed.domain)
     if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
   }
-  const suggested = await suggestDomainsForQuery(query)
-  const seen = new Set<string>()
-  const crawledResults: Site[] = []
-  for (const domain of suggested) {
-    if (!seen.has(domain)) {
-      const crawled = await crawlSite(domain)
-      if (crawled) { sites[domain] = crawled; crawledResults.push(crawled); seen.add(domain) }
-    }
-  }
-  return crawledResults
+  return await suggestAndCrawl(query, seen)
 }

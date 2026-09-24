@@ -2,15 +2,31 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { searchSites } from "../src/utils/search"
 
 const rateLimits = new Map<string, number[]>()
+const SUPABASE_URL = process.env.SUPABASE_URL!
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
 function isRateLimited(ip: string, maxPerMinute: number): boolean {
   const now = Date.now()
-  const windowStart = now - 60000
-  const timestamps = (rateLimits.get(ip) || []).filter(t => t > windowStart)
+  const window = now - 60000
+  const timestamps = (rateLimits.get(ip) || []).filter(t => t > window)
   if (timestamps.length >= maxPerMinute) return true
   timestamps.push(now)
   rateLimits.set(ip, timestamps)
   return false
+}
+
+async function trackSearch(query: string, domains: string[], tier: string): Promise<void> {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/searches`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ query, domains, tier, api_key: null })
+    })
+  } catch {}
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (isRateLimited(ip, maxPerMinute)) {
     return res.status(429).json({
       error: "Rate limit exceeded",
-      message: tier === "pro" ? "Pro tier: 60 requests per minute" : "Free tier: 20 requests per minute. Upgrade at actuent.ai",
+      message: tier === "pro" ? "Pro: 60 req/min" : "Free: 20 req/min — upgrade at actuent.ai",
       retry_after_seconds: 60
     })
   }
@@ -37,10 +53,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : req.body?.query
 
   if (!query || typeof query !== "string" || query.trim() === "") {
-    return res.status(400).json({ error: "Missing query. Use ?q=query or POST {query}" })
+    return res.status(400).json({ error: "Missing query" })
   }
 
   const results = await searchSites(query.trim(), tier)
+  const domains = results.map(r => r.domain)
+
+  await trackSearch(query.trim(), domains, tier)
 
   return res.status(200).json({ query, count: results.length, results })
 }
