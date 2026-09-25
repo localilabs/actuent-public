@@ -1,16 +1,5 @@
 {
   "version": 2,
-  "headers": [
-    {
-      "source": "/assets/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
-        }
-      ]
-    }
-  ],
   "builds": [
     {
       "src": "api/search.ts",
@@ -187,7 +176,10 @@
     },
     {
       "src": "/assets/(.*)",
-      "dest": "/public/assets/$1"
+      "dest": "/public/assets/$1",
+      "headers": {
+        "Access-Control-Allow-Origin": "*"
+      }
     },
     {
       "src": "/docs",
