@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     try { new URL(url) } catch { return res.status(400).json({ error: "Invalid URL" }) }
 
-    await fetch(`${SUPABASE_URL}/rest/v1/webhooks`, {
+    const saved = await fetch(`${SUPABASE_URL}/rest/v1/webhooks?on_conflict=api_key,domain`, {
       method: "POST",
       headers: {
         "apikey": SUPABASE_SERVICE_KEY,
@@ -43,6 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       body: JSON.stringify({ api_key: apiKey, domain: domain.toLowerCase(), url })
     })
+    if (!saved.ok) return res.status(500).json({ error: "Could not save the webhook — try again" })
 
     return res.status(200).json({ success: true, domain, url, message: `Webhook registered — you'll be pinged when ${domain}'s LAWP changes` })
   }

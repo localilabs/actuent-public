@@ -61,5 +61,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   await trackSearch(query.trim(), domains, tier, trackKey)
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
-  return res.status(200).json({ query, count: results.length, results: results.map(r => ({ ...r, native: !!r.native, executable: isExecutable(r) })) })
+  return res.status(200).json({ query, count: results.length, results: results.map(({ contentHash, ...r }: any) => ({ ...r, native: !!r.native, executable: isExecutable(r) })) })
 }

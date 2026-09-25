@@ -4,6 +4,7 @@ import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
+import crypto from "crypto"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -18,7 +19,7 @@ function minimalLAWP(domain: string, content: string = ""): Site {
   }
 }
 
-export async function getSavedSite(domain: string): Promise<Site | null> {
+export async function getSavedSite(domain: string): Promise<(Site & { contentHash?: string | null }) | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/lawp_sites?domain=eq.${domain}&select=*`,
@@ -26,24 +27,29 @@ export async function getSavedSite(domain: string): Promise<Site | null> {
     )
     const data = await res.json()
     if (!data || data.length === 0) return null
-    return { domain: data[0].domain, name: data[0].name, pages: data[0].pages, actions: data[0].actions, native: !!data[0].native }
+    return { domain: data[0].domain, name: data[0].name, pages: data[0].pages, actions: data[0].actions, native: !!data[0].native, contentHash: data[0].content_hash || null } as Site & { contentHash: string | null }
   } catch { return null }
 }
 
-async function saveSite(site: Site, language: string = "en"): Promise<void> {
+async function saveSite(site: Site, language: string = "en", hash?: string): Promise<void> {
   const headers = {
     "apikey": SUPABASE_SERVICE_KEY,
     "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
     "Content-Type": "application/json",
     "Prefer": "resolution=merge-duplicates"
   }
-  const row = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
+  const base = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
+  // Newest schema first; older databases lack native (lawp_actions.sql) or content_hash (groq_quota.sql).
+  const attempts = [
+    { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}) },
+    { ...base, native: !!site.native },
+    base
+  ]
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, {
-      method: "POST", headers, body: JSON.stringify({ ...row, native: !!site.native })
-    })
-    // Before lawp_actions.sql has run there's no `native` column; save without it.
-    if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify(row) })
+    for (const body of attempts) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify(body) })
+      if (res.ok) return
+    }
   } catch {}
 }
 
@@ -113,7 +119,7 @@ async function fetchContent(url: string): Promise<string | null> {
 
 async function convertToLAWP(domain: string, content: string): Promise<Site> {
   try {
-    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`)
+    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`)
     if (!raw) return minimalLAWP(domain, content)
     const parsed = safeParseJSON(raw)
     // Groq sometimes returns LAWP missing pages/actions; anything malformed falls back to minimal.
@@ -145,7 +151,7 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
   let actions: any[] = []
 
   try {
-    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`)
+    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`)
     const parsed = safeParseJSON(raw || "")
     if (parsed) {
       title = parsed.title || title
@@ -177,16 +183,21 @@ export async function crawlSite(domain: string): Promise<Site | null> {
 
   let site: Site
 
+  const existing = await getSavedSite(domain)
+  const hash = content ? crypto.createHash("sha256").update(content).digest("hex").slice(0, 32) : undefined
+
   if (native) {
     site = native
   } else if (!content) {
     if (!await domainExists(domain)) return null
     site = minimalLAWP(domain)
+  } else if (existing && existing.contentHash === hash && existing.actions?.length) {
+    // The site hasn't changed since its last conversion: reuse it and spend no LLM tokens.
+    return { domain: existing.domain, name: existing.name, pages: existing.pages, actions: existing.actions, native: existing.native }
   } else {
     site = await convertToLAWP(domain, content)
   }
 
-  const existing = await getSavedSite(domain)
   if (existing) {
     const changes = diffLAWP(existing, site)
     if (Object.keys(changes).length > 0) {
@@ -194,7 +205,7 @@ export async function crawlSite(domain: string): Promise<Site | null> {
     }
   }
 
-  await saveSite(site)
+  await saveSite(site, "en", hash)
   const firstPage = Object.values(site.pages)[0]
   await savePage(domain, "/", firstPage?.title || domain, firstPage?.content || "", site.actions)
 
