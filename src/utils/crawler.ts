@@ -7,6 +7,7 @@ import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
 import { fetchProducts, saveProducts } from "./products"
 import { heuristicLAWP } from "./heuristic"
+import { extractBusiness } from "./business"
 import crypto from "crypto"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -48,7 +49,7 @@ export async function getSavedSite(domain: string): Promise<SavedSite | null> {
     const row = data[0]
     return {
       domain: row.domain, name: row.name, pages: row.pages, actions: row.actions, native: !!row.native,
-      updated_at: row.updated_at || undefined, language: row.language || undefined, verified_owner: !!row.owner_key,
+      updated_at: row.updated_at || undefined, language: row.language || undefined, verified_owner: !!row.owner_key, business: row.business || undefined,
       contentHash: row.content_hash || null, ownerKey: row.owner_key || null, productsCrawledAt: row.products_crawled_at || null
     }
   } catch { return null }
@@ -64,6 +65,7 @@ async function saveSite(site: Site, language: string = "en", hash?: string): Pro
   const base = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
   // Newest schema first; older databases lack native (lawp_actions.sql) or content_hash (groq_quota.sql).
   const attempts = [
+    { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}), ...(site.business ? { business: site.business } : {}) },
     { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}) },
     { ...base, native: !!site.native },
     base
@@ -201,11 +203,11 @@ async function domainExists(domain: string): Promise<boolean> {
 
 // Returns null (and saves nothing) for domains that don't exist, so made-up
 // domains never end up in the index. Real sites that block us still get minimal LAWP.
-async function rulesFromHtml(domain: string): Promise<Site | null> {
+async function fetchHtml(domain: string): Promise<string | null> {
   try {
     const r = await fetch(`https://${domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(6000) })
     if (!r.ok || !(r.headers.get("content-type") || "").includes("html")) return null
-    return heuristicLAWP(domain, (await r.text()).slice(0, 400_000), true)
+    return (await r.text()).slice(0, 400_000)
   } catch { return null }
 }
 
@@ -215,14 +217,15 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
   const existing = await getSavedSite(domain)
   const asResult = (saved: SavedSite): Site => ({
     domain: saved.domain, name: saved.name, pages: saved.pages, actions: saved.actions, native: saved.native,
-    updated_at: saved.updated_at, language: saved.language, verified_owner: saved.verified_owner
+    updated_at: saved.updated_at, language: saved.language, verified_owner: saved.verified_owner, business: saved.business
   })
   // Respect robots.txt: if crawling is disallowed, serve what's already indexed (if anything).
   if (!native && !await robotsAllows(domain, "/")) return existing ? asResult(existing) : null
   // Claimed sites are edited by their owner; crawling must never overwrite them.
   if (!native && existing?.ownerKey) return asResult(existing)
 
-  const content = native ? null : await fetchContent(`https://${domain}`)
+  // Raw HTML is fetched alongside: schema.org business details and the rule-based fallback need it.
+  const [content, html] = native ? [null, null] : await Promise.all([fetchContent(`https://${domain}`), fetchHtml(domain)])
 
   let site: Site
 
@@ -240,10 +243,12 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     site = await convertToLAWP(domain, content, tier)
     // No LLM quota (or unusable output): build the LAWP from the page itself instead.
     if (!site.actions?.length) {
-      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? await rulesFromHtml(domain)
+      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? (html ? heuristicLAWP(domain, html, true) : null)
       if (rules) site = rules
     }
   }
+
+  if (html && !site.business) { const business = extractBusiness(html); if (business) site = { ...site, business } }
 
   if (existing) {
     const changes = diffLAWP(existing, site)

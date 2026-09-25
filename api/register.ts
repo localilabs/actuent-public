@@ -4,6 +4,7 @@ import crypto from "crypto"
 import { promises as dns } from "dns"
 import { fetchNativeSite } from "../src/utils/native"
 import { keyHash, verifyApiKey } from "../src/utils/limits"
+import { sendEmail, welcomeEmail } from "../src/utils/email"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -102,9 +103,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const site = { domain: cleanDomain, name, pages, actions }
+  const auth = { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
+  const [before] = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=owner_key&domain=eq.${encodeURIComponent(cleanDomain)}`, { headers: auth })
+    .then(r => r.ok ? r.json() : []).catch(() => [])
+  const newClaim = before?.owner_key !== keyHash(apiKey)
 
   sites[cleanDomain] = site
   await saveSite(site, apiKey)
+
+  // Welcome email the first time this key claims the site.
+  if (newClaim) {
+    const [account] = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=email&key_hash=eq.${keyHash(apiKey)}`, { headers: auth })
+      .then(r => r.ok ? r.json() : []).catch(() => [])
+    if (account?.email) { const mail = welcomeEmail(cleanDomain); await sendEmail(account.email, mail.subject, mail.html) }
+  }
 
   return res.status(200).json({
     success: true,

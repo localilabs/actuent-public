@@ -100,7 +100,7 @@ async function searchSupabase(query: string): Promise<Site[]> {
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   return rows.map((row: any) => ({
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
-    updated_at: row.updated_at || undefined, language: row.language || undefined
+    updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined
   }))
 }
 

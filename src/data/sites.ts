@@ -27,6 +27,8 @@ export type Site = {
   language?: string
   // The site's owner has claimed it on Actuent and edits it themselves
   verified_owner?: boolean
+  // Address, phone, opening hours etc. from the site's schema.org data
+  business?: any
 }
 
 export const sites: Record<string, Site> = {}

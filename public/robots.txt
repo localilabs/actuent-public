@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /site
+Allow: /badge.svg
+Allow: /og
+Disallow: /api/
+
+Sitemap: https://api.actuent.ai/sitemap.xml

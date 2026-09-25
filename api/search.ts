@@ -3,6 +3,7 @@ import { searchSites } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
+import { openNow } from "../src/utils/business"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -111,6 +112,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       executable: isExecutable(r),
       // Freshness: when this LAWP was last updated, so agents know how current it is.
       last_updated: r.updated_at || null,
+      // Business details: open right now, in the business's own time zone (null when unknown).
+      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null
     })),
     ...(products.length ? { products } : {})
