@@ -6,7 +6,7 @@ export const config = { runtime: "edge" }
 
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, children } })
 
-export default function handler(req: Request) {
+export default async function handler(req: Request) {
   const q = new URL(req.url).searchParams
   const title = (q.get("title") || "The Internet for AI").slice(0, 90)
   const subtitle = (q.get("subtitle") || "Search engine for AI agents · structured data for any website").slice(0, 140)
@@ -27,8 +27,12 @@ export default function handler(req: Request) {
     ])
   ])
 
-  return new ImageResponse(card as any, {
-    width: 1200, height: 630,
-    headers: { "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable" }
-  })
+  // The image is rendered fully before responding: a streamed ImageResponse arrived empty on Vercel.
+  try {
+    const png = await new ImageResponse(card as any, { width: 1200, height: 630 }).arrayBuffer()
+    if (!png.byteLength) throw new Error("empty image")
+    return new Response(png, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400, s-maxage=604800" } })
+  } catch (e) {
+    return new Response(`Could not render the image: ${e}`, { status: 500, headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } })
+  }
 }
