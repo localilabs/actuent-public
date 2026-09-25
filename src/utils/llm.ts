@@ -3,14 +3,13 @@ import Groq from "groq-sdk"
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 // Groq's free tier gives each model its own daily token quota, so when one model is used up
-// (or unavailable) we move on to the next. Override with GROQ_MODELS="a,b,c".
+// (or unavailable) we move on to the next. The GitHub crawlers use a different set of models
+// (actuent-crawler/llm.ts) so bulk crawling can't use up live search's quota.
+// Override with GROQ_MODELS="a,b,c".
 const MODELS = (process.env.GROQ_MODELS || [
   "openai/gpt-oss-20b",
   "openai/gpt-oss-120b",
-  "llama-3.3-70b-versatile",
-  "meta-llama/llama-4-scout-17b-16e-instruct",
-  "qwen/qwen3-32b",
-  "llama-3.1-8b-instant"
+  "llama-3.3-70b-versatile"
 ].join(",")).split(",").map(m => m.trim()).filter(Boolean)
 
 // Model → time it can be tried again. Per serverless instance, which is enough to avoid
