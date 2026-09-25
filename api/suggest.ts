@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { verifyActuentRequest } from "../src/utils/verify-actuent"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -76,6 +77,12 @@ async function submit() {
   if (req.method === "POST") {
     // Accepts the suggest form ({ domain }) and LAWP action calls ({ action: "suggest_site", input }).
     const body = req.body || {}
+    if (body.action === "suggest_site") {
+      // LAWP action calls must be signed by Actuent. The body is re-serialised exactly as Actuent sent it.
+      const signed = await verifyActuentRequest(req.headers, "POST", "https://api.actuent.ai/api/suggest", JSON.stringify(body))
+      if (!signed) return res.status(401).json({ error: "Invalid Actuent signature" })
+      if (body.test === true) return res.status(200).json({ success: true, test: true, message: "Test request received and verified — nothing was saved" })
+    }
     const lawpInput = body.action === "suggest_site" ? body.input : undefined
     const domain = typeof lawpInput === "string" ? lawpInput : lawpInput?.domain ?? body.domain
     const submitted_by = body.submitted_by
