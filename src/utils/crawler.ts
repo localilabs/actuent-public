@@ -39,17 +39,17 @@ async function saveSite(site: Site, language: string = "en"): Promise<void> {
   }
   const row = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, {
       method: "POST", headers, body: JSON.stringify({ ...row, native: !!site.native })
     })
     // Before lawp_actions.sql has run there's no `native` column; save without it.
-    if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, { method: "POST", headers, body: JSON.stringify(row) })
+    if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify(row) })
   } catch {}
 }
 
 async function savePage(domain: string, path: string, title: string, content: string, actions: any[]): Promise<void> {
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/lawp_pages`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/lawp_pages?on_conflict=full_url`, {
       method: "POST",
       headers: {
         "apikey": SUPABASE_SERVICE_KEY,

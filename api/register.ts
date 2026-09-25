@@ -45,9 +45,9 @@ async function saveSite(site: any, ownerKey: string): Promise<void> {
     "Prefer": "resolution=merge-duplicates"
   }
   const row = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, updated_at: new Date().toISOString() }
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, { method: "POST", headers, body: JSON.stringify({ ...row, owner_key: ownerKey }) })
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify({ ...row, owner_key: ownerKey }) })
   // Before lawp_actions.sql has run there's no owner_key column; save without it.
-  if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, { method: "POST", headers, body: JSON.stringify(row) })
+  if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify(row) })
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
