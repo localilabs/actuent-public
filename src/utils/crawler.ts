@@ -1,10 +1,9 @@
-import Groq from "groq-sdk"
+import { complete } from "./llm"
 import { promises as dns } from "dns"
 import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
@@ -111,15 +110,7 @@ async function fetchContent(url: string): Promise<string | null> {
 
 async function convertToLAWP(domain: string, content: string): Promise<Site> {
   try {
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [{
-        role: "user",
-        content: `Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`
-      }],
-      temperature: 0.1
-    })
-    const raw = completion.choices?.[0]?.message?.content
+    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`)
     if (!raw) return minimalLAWP(domain, content)
     const parsed = safeParseJSON(raw)
     // Groq sometimes returns LAWP missing pages/actions; anything malformed falls back to minimal.
@@ -151,15 +142,7 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
   let actions: any[] = []
 
   try {
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [{
-        role: "user",
-        content: `Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`
-      }],
-      temperature: 0.1
-    })
-    const raw = completion.choices?.[0]?.message?.content
+    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`)
     const parsed = safeParseJSON(raw || "")
     if (parsed) {
       title = parsed.title || title

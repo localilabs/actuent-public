@@ -1,10 +1,9 @@
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
-import Groq from "groq-sdk"
+import { complete } from "./llm"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 const DOMAIN_AUTHORITY: Record<string, number> = {
   "google.com": 100, "youtube.com": 98, "facebook.com": 96,
@@ -151,25 +150,18 @@ const PLACEHOLDER_DOMAINS = new Set(["example.com", "example.org", "example.net"
 
 // Last resort when the index has nothing: ask Groq for up to 3 real sites and crawl them in parallel.
 async function suggestAndCrawl(query: string, seen: Set<string>): Promise<Site[]> {
-  let domains: string[] = []
-  try {
-    const completion = await groq.chat.completions.create({
-      model: "openai/gpt-oss-20b",
-      messages: [{
-        role: "user",
-        content: `A user searched: "${query}". List up to 3 real, existing websites most relevant to this search. If the search is gibberish or no real website fits, reply with NONE. Reply with bare domains only, comma separated, no http, no explanation. Example: nike.com,adidas.com,asos.com`
-      }],
-      temperature: 0.1
-    }, { timeout: 10000, maxRetries: 0 })
-    const text = (completion.choices?.[0]?.message?.content || "").toLowerCase()
-    const found = text.match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/g) || []
-    domains = [...new Set(found)]
-      .filter(d => !seen.has(d) && !PLACEHOLDER_DOMAINS.has(d))
-      .slice(0, 3)
-  } catch (e) {
-    console.error(`suggestAndCrawl: Groq failed for "${query}":`, e)
+  const answer = await complete(
+    `A user searched: "${query}". List up to 3 real, existing websites most relevant to this search. If the search is gibberish or no real website fits, reply with NONE. Reply with bare domains only, comma separated, no http, no explanation. Example: nike.com,adidas.com,asos.com`,
+    10000
+  )
+  if (!answer) {
+    console.error(`suggestAndCrawl: no model could answer for "${query}"`)
     return []
   }
+  const found = answer.toLowerCase().match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/g) || []
+  const domains = [...new Set(found)]
+    .filter(d => !seen.has(d) && !PLACEHOLDER_DOMAINS.has(d))
+    .slice(0, 3)
 
   const crawled = await Promise.all(domains.map(async domain => {
     try {
