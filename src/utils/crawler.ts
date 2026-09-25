@@ -3,6 +3,7 @@ import { promises as dns } from "dns"
 import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
+import { fetchNativeSite } from "./native"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -25,22 +26,24 @@ export async function getSavedSite(domain: string): Promise<Site | null> {
     )
     const data = await res.json()
     if (!data || data.length === 0) return null
-    return { domain: data[0].domain, name: data[0].name, pages: data[0].pages, actions: data[0].actions }
+    return { domain: data[0].domain, name: data[0].name, pages: data[0].pages, actions: data[0].actions, native: !!data[0].native }
   } catch { return null }
 }
 
 async function saveSite(site: Site, language: string = "en"): Promise<void> {
+  const headers = {
+    "apikey": SUPABASE_SERVICE_KEY,
+    "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "resolution=merge-duplicates"
+  }
+  const row = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates"
-      },
-      body: JSON.stringify({ domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() })
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, {
+      method: "POST", headers, body: JSON.stringify({ ...row, native: !!site.native })
     })
+    // Before lawp_actions.sql has run there's no `native` column; save without it.
+    if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites`, { method: "POST", headers, body: JSON.stringify(row) })
   } catch {}
 }
 
@@ -168,11 +171,15 @@ async function domainExists(domain: string): Promise<boolean> {
 // Returns null (and saves nothing) for domains that don't exist, so made-up
 // domains never end up in the index. Real sites that block us still get minimal LAWP.
 export async function crawlSite(domain: string): Promise<Site | null> {
-  const content = await fetchContent(`https://${domain}`)
+  // A site's own LAWP always wins over crawling.
+  const native = await fetchNativeSite(domain)
+  const content = native ? null : await fetchContent(`https://${domain}`)
 
   let site: Site
 
-  if (!content) {
+  if (native) {
+    site = native
+  } else if (!content) {
     if (!await domainExists(domain)) return null
     site = minimalLAWP(domain)
   } else {

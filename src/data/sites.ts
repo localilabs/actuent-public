@@ -7,6 +7,7 @@ export type Action = {
     type: "text" | "number" | "none"
     required: boolean
   }
+  endpoint?: { url: string, method?: "POST" | "GET" }
 }
 
 export type Page = {
@@ -19,6 +20,8 @@ export type Site = {
   name: string
   pages: Record<string, Page>
   actions: Action[]
+  // True when the LAWP comes from the site's own /.well-known/lawp.json
+  native?: boolean
 }
 
 export const sites: Record<string, Site> = {}

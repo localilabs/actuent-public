@@ -29,6 +29,10 @@
     .card { background: #0f0f0f; border: 1px solid #1a1a1a; border-radius: 10px; padding: 22px; margin-bottom: 14px; }
     .site-domain { font-size: 16px; font-weight: 700; font-family: 'Courier New', monospace; }
     .site-name { color: #555; font-size: 12px; margin-top: 2px; margin-bottom: 18px; }
+    .tags { display: flex; gap: 6px; flex-wrap: wrap; margin: -8px 0 16px; }
+    .tag { font-size: 10px; padding: 3px 9px; border-radius: 20px; border: 1px solid #222; color: #666; letter-spacing: .5px; }
+    .tag.exec { background: #f0f0f0; color: #0a0a0a; border-color: #f0f0f0; font-weight: 700; }
+    .run { display: inline-block; font-size: 9px; padding: 1px 6px; border-radius: 4px; background: #f0f0f0; color: #0a0a0a; font-weight: 700; margin-left: 6px; vertical-align: middle; }
     .section { color: #2a2a2a; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; margin-top: 16px; }
     .page { background: #0a0a0a; border: 1px solid #141414; border-radius: 7px; padding: 10px 14px; margin-bottom: 6px; }
     .page-path { color: #444; font-size: 10px; font-family: 'Courier New', monospace; margin-bottom: 3px; }
@@ -136,12 +140,17 @@ function doSearch() {
 
       var actions = (site.actions || []).map(function(a) {
         var intents = (a.intent||[]).map(function(t){return '<span class="intent">'+t+'</span>'}).join("")
-        return '<div class="action"><div class="dot"></div><div><div class="action-name">'+(a.name||"")+'</div><div class="action-desc">'+(a.description||"")+'</div><div class="intents">'+intents+'</div></div></div>'
+        var run = site.native && a.endpoint && a.endpoint.url ? '<span class="run">EXECUTABLE</span>' : ''
+        return '<div class="action"><div class="dot"></div><div><div class="action-name">'+(a.name||"")+run+'</div><div class="action-desc">'+(a.description||"")+'</div><div class="intents">'+intents+'</div></div></div>'
       }).join("")
 
       return '<div class="card">' +
         '<div class="site-domain">'+site.domain+'</div>' +
         '<div class="site-name">'+(site.name||"")+'</div>' +
+        ((site.native || site.executable) ? '<div class="tags">' +
+          (site.executable ? '<span class="tag exec" title="AI agents can perform this site\'s actions via LAWP">⚡ Executable actions</span>' : '') +
+          (site.native ? '<span class="tag" title="Published by the site at /.well-known/lawp.json">Native LAWP</span>' : '') +
+        '</div>' : '') +
         '<div class="section">Pages</div>' + (pages || '<div class="page"><div class="page-content" style="color:#222">No pages</div></div>') +
         '<div class="section">Actions</div>' + (actions || '<div class="action"><div class="dot" style="background:#222"></div><div><div class="action-desc" style="color:#222">No actions defined</div></div></div>') +
         '<div class="score-box"><div><div class="score-num" style="color:'+col+'">'+s.score+'</div><div class="score-label">LAWP / 100</div></div><div class="score-lines">'+s.lines.join("<br>")+'</div></div>' +

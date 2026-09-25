@@ -58,8 +58,10 @@ function scoreMatch(site: Site, query: string): number {
   if (avgIntent >= 5) lawpBoost += 1
 
   const authorityBoost = (getDomainAuthority(site.domain) / 100) * 5
+  // Sites publishing their own LAWP rank higher, which gives sites a reason to adopt it.
+  const nativeBoost = site.native ? 3 : 0
 
-  return keywordScore + lawpBoost * 0.3 + authorityBoost
+  return keywordScore + lawpBoost * 0.3 + authorityBoost + nativeBoost
 }
 
 const SUPABASE_HEADERS = {
@@ -94,7 +96,7 @@ async function searchSupabase(query: string): Promise<Site[]> {
   const rows = await rpc("search_lawp_sites", query, 50)
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   const asSites: Site[] = rows.map((row: any) => ({
-    domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || []
+    domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native
   }))
   return asSites
     .map(site => ({ site, score: scoreMatch(site, query) }))

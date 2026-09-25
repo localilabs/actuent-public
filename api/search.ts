@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { searchSites } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, isRateLimited } from "../src/utils/limits"
+import { isExecutable } from "../src/utils/native"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -59,5 +60,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
   await trackSearch(query.trim(), domains, tier, trackKey)
 
-  return res.status(200).json({ query, count: results.length, results })
+  // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
+  return res.status(200).json({ query, count: results.length, results: results.map(r => ({ ...r, native: !!r.native, executable: isExecutable(r) })) })
 }
