@@ -211,11 +211,19 @@ export async function searchSites(query: string, tier: string = "free"): Promise
     return await suggestAndCrawl(query, seen)
   }
 
-  const seen = new Set<string>()
+  // Free: a specific domain is always crawled live, which keeps the index fresh for Pro.
   if (parsed) {
     const crawled = await crawlSite(parsed.domain)
     if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
     return []
   }
+
+  // Free keyword queries ("shoes") search the index; only guess and crawl if it has nothing.
+  const seen = new Set<string>()
+  const indexed: Site[] = []
+  for (const site of [...await searchSupabase(query), ...await searchPages(query)]) {
+    if (!seen.has(site.domain)) { seen.add(site.domain); indexed.push(site) }
+  }
+  if (indexed.length > 0) return indexed
   return await suggestAndCrawl(query, seen)
 }
