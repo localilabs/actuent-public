@@ -6,6 +6,7 @@ import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
 import { fetchProducts, saveProducts } from "./products"
+import { heuristicLAWP } from "./heuristic"
 import crypto from "crypto"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -200,6 +201,14 @@ async function domainExists(domain: string): Promise<boolean> {
 
 // Returns null (and saves nothing) for domains that don't exist, so made-up
 // domains never end up in the index. Real sites that block us still get minimal LAWP.
+async function rulesFromHtml(domain: string): Promise<Site | null> {
+  try {
+    const r = await fetch(`https://${domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(6000) })
+    if (!r.ok || !(r.headers.get("content-type") || "").includes("html")) return null
+    return heuristicLAWP(domain, (await r.text()).slice(0, 400_000), true)
+  } catch { return null }
+}
+
 export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Site | null> {
   // A site's own LAWP always wins over crawling.
   const native = await fetchNativeSite(domain)
@@ -229,6 +238,11 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     return asResult(existing)
   } else {
     site = await convertToLAWP(domain, content, tier)
+    // No LLM quota (or unusable output): build the LAWP from the page itself instead.
+    if (!site.actions?.length) {
+      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? await rulesFromHtml(domain)
+      if (rules) site = rules
+    }
   }
 
   if (existing) {
