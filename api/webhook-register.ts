@@ -1,17 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { keyHash, verifyApiKey } from "../src/utils/limits"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-async function verifyApiKey(key: string): Promise<boolean> {
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/api_keys?select=id&key=eq.${key}&active=eq.true`,
-    { headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` } }
-  )
-  if (!res.ok) return false
-  const data = await res.json()
-  return Array.isArray(data) && data.length > 0
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*")
@@ -41,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates"
       },
-      body: JSON.stringify({ api_key: apiKey, domain: domain.toLowerCase(), url })
+      body: JSON.stringify({ api_key: keyHash(apiKey), domain: domain.toLowerCase(), url })
     })
     if (!saved.ok) return res.status(500).json({ error: "Could not save the webhook — try again" })
 
@@ -51,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "DELETE") {
     const { domain } = req.body
     await fetch(
-      `${SUPABASE_URL}/rest/v1/webhooks?api_key=eq.${apiKey}&domain=eq.${domain}`,
+      `${SUPABASE_URL}/rest/v1/webhooks?api_key=eq.${keyHash(apiKey)}&domain=eq.${encodeURIComponent(domain)}`,
       {
         method: "DELETE",
         headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }

@@ -3,24 +3,11 @@ import { sites } from "../src/data/sites"
 import crypto from "crypto"
 import { promises as dns } from "dns"
 import { fetchNativeSite } from "../src/utils/native"
+import { keyHash, verifyApiKey } from "../src/utils/limits"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-async function verifyApiKey(key: string): Promise<boolean> {
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/api_keys?select=id&key=eq.${key}&active=eq.true`,
-    {
-      headers: {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`
-      }
-    }
-  )
-  if (!res.ok) return false
-  const data = await res.json()
-  return Array.isArray(data) && data.length > 0
-}
 
 // Proof that the caller controls the domain: a DNS TXT record with this token, or the site serving
 // its own /.well-known/lawp.json. Stops anyone registering LAWP for a site they don't own.
@@ -45,18 +32,18 @@ async function saveSite(site: any, ownerKey: string): Promise<void> {
     "Prefer": "resolution=merge-duplicates"
   }
   const row = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, updated_at: new Date().toISOString() }
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify({ ...row, owner_key: ownerKey }) })
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify({ ...row, owner_key: keyHash(ownerKey) }) })
   // Before lawp_actions.sql has run there's no owner_key column; save without it.
   if (!res.ok) await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?on_conflict=domain`, { method: "POST", headers, body: JSON.stringify(row) })
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*")
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS")
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
   if (req.method === "OPTIONS") return res.status(200).end()
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" })
+  if (req.method !== "POST" && req.method !== "GET") return res.status(405).json({ error: "Method not allowed" })
 
   const authHeader = req.headers["authorization"] as string || ""
   const apiKey = authHeader.replace("Bearer ", "").trim()
@@ -68,6 +55,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const isValid = await verifyApiKey(apiKey)
   if (!isValid) {
     return res.status(401).json({ error: "Invalid or inactive API key" })
+  }
+
+  // Claim flow (analytics.actuent.ai → My sites): ownership status, the DNS record to add, and
+  // what Actuent currently has for the site, so the owner can start editing from it.
+  if (req.method === "GET") {
+    const d = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0].trim()
+    if (!d.includes(".")) return res.status(400).json({ error: "Enter a domain like yoursite.com" })
+    const verified = await ownsDomain(apiKey, d)
+    const current = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,owner_key&domain=eq.${encodeURIComponent(d)}`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
+    }).then(r => r.ok ? r.json() : []).catch(() => [])
+    const row = Array.isArray(current) ? current[0] : null
+    return res.status(200).json({
+      domain: d,
+      verified,
+      claimed_by_you: !!row?.owner_key && row.owner_key === keyHash(apiKey),
+      verify: { dns_txt: { host: d, type: "TXT", value: `actuent-site-verification=${verificationToken(apiKey, d)}` }, or_well_known: `https://${d}/.well-known/lawp.json` },
+      lawp: row ? { domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [] } : { domain: d, name: "", pages: { "/": { title: "", content: "" } }, actions: [] }
+    })
   }
 
   const { domain, name, pages, actions } = req.body

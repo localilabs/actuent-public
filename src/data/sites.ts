@@ -22,6 +22,11 @@ export type Site = {
   actions: Action[]
   // True when the LAWP comes from the site's own /.well-known/lawp.json
   native?: boolean
+  // When this LAWP was last crawled/updated (ISO), and the site's original language (LAWP text is English)
+  updated_at?: string
+  language?: string
+  // The site's owner has claimed it on Actuent and edits it themselves
+  verified_owner?: boolean
 }
 
 export const sites: Record<string, Site> = {}

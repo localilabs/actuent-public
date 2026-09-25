@@ -1,0 +1,431 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Actuent API",
+    "version": "1.0.0",
+    "description": "Actuent is a search engine for AI agents. Search any topic or domain and get websites back as LAWP: structured JSON with each site's pages and the actions a visitor can take. Free without a key (20 requests/min); Pro API keys from actuent.ai give full results and 60 requests/min.",
+    "contact": {
+      "name": "localilabs",
+      "url": "https://localilabs.com",
+      "email": "support@localilabs.com"
+    },
+    "termsOfService": "https://docs.actuent.ai/terms"
+  },
+  "servers": [
+    {
+      "url": "https://api.actuent.ai"
+    }
+  ],
+  "externalDocs": {
+    "url": "https://docs.actuent.ai"
+  },
+  "security": [
+    {},
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/search": {
+      "get": {
+        "operationId": "searchWeb",
+        "summary": "Search websites and products as structured LAWP",
+        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Topic, domain or domain/path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded. See Retry-After and X-RateLimit-* headers."
+          }
+        }
+      },
+      "post": {
+        "operationId": "searchWebPost",
+        "summary": "Search (POST form)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          }
+        }
+      }
+    },
+    "/api/register": {
+      "get": {
+        "operationId": "getSiteClaim",
+        "summary": "Ownership status and current LAWP for a domain (Pro)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status, DNS verification record and current LAWP"
+          },
+          "401": {
+            "description": "Missing or invalid Pro key"
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerSite",
+        "summary": "List or update your site's LAWP (Pro, verified owners)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Site"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved"
+          },
+          "403": {
+            "description": "Domain not verified; response includes the DNS TXT record to add"
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "operationId": "getStats",
+        "summary": "Live counts of indexed sites and searches",
+        "responses": {
+          "200": {
+            "description": "Counts"
+          }
+        }
+      }
+    },
+    "/api/state": {
+      "get": {
+        "operationId": "getStateOfAIWeb",
+        "summary": "State of the AI web: readability, native LAWP, products, languages and trends",
+        "responses": {
+          "200": {
+            "description": "Aggregate statistics"
+          }
+        }
+      }
+    },
+    "/api/diff": {
+      "get": {
+        "operationId": "getLatestChange",
+        "summary": "Latest detected change to a site's LAWP",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest diff"
+          }
+        }
+      }
+    },
+    "/api/suggest": {
+      "post": {
+        "operationId": "suggestSite",
+        "summary": "Suggest a site for the index",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "domain"
+                ],
+                "properties": {
+                  "domain": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Queued"
+          }
+        }
+      }
+    },
+    "/.well-known/lawp.json": {
+      "get": {
+        "operationId": "getActuentLawp",
+        "summary": "Actuent's own LAWP (reference example with an executable action)",
+        "responses": {
+          "200": {
+            "description": "LAWP document"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Actuent Pro API key from actuent.ai (optional for search)"
+      }
+    },
+    "schemas": {
+      "Action": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "number",
+                  "none"
+                ]
+              },
+              "required": {
+                "type": "boolean"
+              }
+            }
+          },
+          "endpoint": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "POST",
+                  "GET"
+                ]
+              }
+            },
+            "description": "Present when the action can be executed (only from the site's own /.well-known/lawp.json)"
+          }
+        }
+      },
+      "Site": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "example": "abdisbarber.com"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pages": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "native": {
+            "type": "boolean",
+            "description": "The site publishes its own LAWP at /.well-known/lawp.json"
+          },
+          "executable": {
+            "type": "boolean",
+            "description": "At least one action has an endpoint agents can call"
+          },
+          "language": {
+            "type": "string",
+            "description": "ISO 639-1 code of the site's original language (LAWP text is always English)"
+          },
+          "last_updated": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "age_hours": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        }
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "In English"
+          },
+          "original_name": {
+            "type": "string"
+          },
+          "price": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price_eur": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "domain": {
+            "type": "string"
+          },
+          "image": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "available": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Site"
+            }
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            },
+            "description": "Products with prices, for shopping queries"
+          }
+        }
+      }
+    }
+  }
+}

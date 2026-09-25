@@ -99,7 +99,8 @@ async function searchSupabase(query: string): Promise<Site[]> {
   const rows = await rpc("search_lawp_sites", query, 50)
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   return rows.map((row: any) => ({
-    domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native
+    domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
+    updated_at: row.updated_at || undefined, language: row.language || undefined
   }))
 }
 
@@ -187,28 +188,33 @@ async function suggestAndCrawl(query: string, seen: Set<string>, tier: Tier): Pr
 // Semantic search: an LLM expands keyword queries with synonyms and related terms ("trainers" →
 // sneakers, running shoes, footwear), so sites match on meaning, not only exact words. Works on
 // the whole index with no embeddings to backfill. Cached per instance.
-const expansionCache = new Map<string, { terms: string[], expires: number }>()
+const expansionCache = new Map<string, { english: string, terms: string[], expires: number }>()
 
-async function expandQuery(query: string, tier: Tier): Promise<string[]> {
+// Also handles any language: the query is translated to English (the index is English), so a
+// German search finds English LAWP and results always come back in English.
+async function expandQuery(query: string, tier: Tier): Promise<{ english: string, terms: string[] }> {
   const key = query.toLowerCase().trim()
-  if (!key || key.split(/\s+/).length > 8) return []
+  if (!key || key.split(/\s+/).length > 8) return { english: query, terms: [] }
   const cached = expansionCache.get(key)
-  if (cached && cached.expires > Date.now()) return cached.terms
+  if (cached && cached.expires > Date.now()) return cached
   const answer = await complete(
-    `List up to 6 short search terms that mean the same as, or are closely related to, "${query}": synonyms, product or service categories, and common alternative words. Reply with JSON only: {"terms":["..."]}`,
+    `A user searched for: "${query}". The search may be in any language. Translate it into English (unchanged if it's already English), then list up to 6 short related English search terms: synonyms, product or service categories, and common alternative words. Reply with JSON only: {"english":"...","terms":["..."]}`,
     4000,
     tier
   )
-  const words = new Set(key.split(/\s+/))
-  const terms: string[] = (safeParseJSON(answer || "")?.terms || [])
+  const parsed = safeParseJSON(answer || "")
+  const english = typeof parsed?.english === "string" && parsed.english.trim() ? parsed.english.trim() : query
+  const words = new Set(english.toLowerCase().split(/\s+/))
+  const terms: string[] = (parsed?.terms || [])
     .filter((t: unknown) => typeof t === "string")
     .map((t: string) => t.toLowerCase().trim())
     .filter((t: string) => t && t.split(/\s+/).length <= 3 && !words.has(t))
     .slice(0, 6)
+  const result = { english, terms, expires: Date.now() + (answer ? 6 * 3600_000 : 10 * 60_000) }
   // Failures are cached briefly so a struggling model isn't hit on every search.
-  expansionCache.set(key, { terms, expires: Date.now() + (answer ? 6 * 3600_000 : 10 * 60_000) })
+  expansionCache.set(key, result)
   if (expansionCache.size > 2000) expansionCache.delete(expansionCache.keys().next().value!)
-  return terms
+  return result
 }
 
 // Priority access: live crawls (the expensive path) are capped across all free users per minute.
@@ -244,13 +250,14 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
 
   async function searchIndex(): Promise<Site[]> {
     // Only keyword queries are expanded; a domain means that exact site.
-    const expansions = parsed ? [] : await expandQuery(query, tier)
-    const expanded = expansions.join(" ")
-    const fullQuery = expanded ? `${query} ${expanded}` : query
+    const { english, terms } = parsed ? { english: query, terms: [] } : await expandQuery(query, tier)
+    const expanded = terms.join(" ")
+    const primaryQuery = english
+    const fullQuery = [english !== query ? `${query} ${english}` : query, expanded].filter(Boolean).join(" ")
 
-    // The user's own words count most; expansion terms add a smaller boost, or a lower score on their own.
+    // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
     const score = (site: Site) => {
-      const primary = scoreMatch(site, query)
+      const primary = scoreMatch(site, primaryQuery)
       const related = expanded ? scoreMatch(site, expanded) : 0
       return primary > 0 ? primary + related * 0.3 : related * 0.5
     }

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>State of the AI Web — Actuent</title>
+  <meta name="description" content="Live numbers on how readable the web is for AI agents, from the Actuent index.">
+  <link rel="icon" type="image/png" href="https://api.actuent.ai/assets/actuent-logo.png">
+  <style>
+    :root { --bg:#0a0a0a; --surface:#13131a; --border:#2a2a34; --text:#f5f5f7; --muted:#a8a8b6; --soft:#c4c4cf; --accent:#ff8a3d; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:40px 16px 72px; }
+    main { max-width:980px; margin:0 auto; }
+    .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:48px; }
+    .top img { height:22px; }
+    .top a { color:var(--accent); font-size:13px; text-decoration:none; }
+    .eyebrow { color:var(--accent); font-size:12px; letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
+    h1 { font-size:40px; letter-spacing:-1.5px; line-height:1.1; margin-bottom:12px; }
+    .lead { color:var(--soft); font-size:17px; line-height:1.6; max-width:640px; margin-bottom:40px; }
+    .hero { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:28px; margin-bottom:16px; }
+    .hero .num { font-size:64px; font-weight:800; color:var(--accent); font-family:'Courier New',monospace; letter-spacing:-2px; }
+    .hero .label { color:var(--soft); font-size:15px; margin-top:4px; }
+    .bar { height:10px; background:var(--border); border-radius:6px; margin-top:16px; overflow:hidden; }
+    .bar > div { height:100%; background:var(--accent); border-radius:6px; width:0; transition:width 1s ease; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px; margin-bottom:40px; }
+    .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; }
+    .card .num { font-size:30px; font-weight:700; font-family:'Courier New',monospace; }
+    .card .label { color:var(--muted); font-size:13px; margin-top:4px; line-height:1.4; }
+    h2 { font-size:13px; letter-spacing:2px; text-transform:uppercase; color:var(--accent); margin:0 0 12px; }
+    .cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:16px; margin-bottom:40px; }
+    ol { list-style:none; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+    li { display:flex; justify-content:space-between; gap:12px; padding:11px 16px; border-bottom:1px solid var(--border); font-size:14px; color:var(--soft); }
+    li:last-child { border-bottom:none; }
+    li span:last-child { color:var(--muted); font-family:'Courier New',monospace; }
+    .cta { background:var(--surface); border:1px solid var(--accent); border-radius:14px; padding:24px; }
+    .cta p { color:var(--soft); line-height:1.6; margin-bottom:14px; }
+    .cta a { display:inline-block; background:var(--accent); color:#0a0a0a; font-weight:700; padding:10px 18px; border-radius:8px; text-decoration:none; margin:0 8px 8px 0; font-size:14px; }
+    .cta a.secondary { background:none; color:var(--accent); border:1px solid var(--accent); }
+    .foot { color:var(--muted); font-size:12px; margin-top:24px; }
+    @media (max-width:600px) { h1 { font-size:30px; } .hero .num { font-size:48px; } }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top"><a href="https://actuent.ai"><img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent"></a><a href="https://docs.actuent.ai">Docs →</a></div>
+
+  <div class="eyebrow">Live · updated every 10 minutes</div>
+  <h1>State of the AI Web</h1>
+  <p class="lead">AI assistants increasingly browse the web for people. This is how much of it they can actually read and act on, measured live from the Actuent index.</p>
+
+  <div class="hero">
+    <div class="num" id="percent">—</div>
+    <div class="label">of indexed websites are fully readable by AI agents: a clear summary <em>and</em> actions an agent can take</div>
+    <div class="bar"><div id="bar"></div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="num" id="sites">—</div><div class="label">websites indexed</div></div>
+    <div class="card"><div class="num" id="native">—</div><div class="label">sites publish their own LAWP for AI agents</div></div>
+    <div class="card"><div class="num" id="products">—</div><div class="label">products with prices agents can compare</div></div>
+    <div class="card"><div class="num" id="searches">—</div><div class="label">AI agent searches in the last 7 days</div></div>
+  </div>
+
+  <div class="cols">
+    <div><h2>What agents search for</h2><ol id="queries"><li>Loading…</li></ol></div>
+    <div><h2>Most visited by agents</h2><ol id="topsites"><li>Loading…</li></ol></div>
+    <div><h2>Languages indexed</h2><ol id="languages"><li>Loading…</li></ol></div>
+  </div>
+
+  <div class="cta">
+    <h2>Is your site agent-ready?</h2>
+    <p>Publish your site as LAWP and AI assistants can understand it and act on it. That means bookings, messages and product search, not guessing from raw HTML.</p>
+    <a href="https://docs.actuent.ai/#checker">Check your site</a>
+    <a class="secondary" href="https://github.com/localilabs/actuent-wordpress/releases/latest">WordPress plugin</a>
+    <a class="secondary" href="https://docs.actuent.ai/#actions">How it works</a>
+  </div>
+  <p class="foot" id="foot">Data: Actuent index, made by <a href="https://localilabs.com" style="color:inherit">localilabs</a>.</p>
+</main>
+<script>
+  const LANG = { en:"English", de:"German", fr:"French", es:"Spanish", nl:"Dutch", it:"Italian", pt:"Portuguese", ja:"Japanese", da:"Danish", sv:"Swedish" }
+  function esc(v) { return String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])) }
+  function fmt(n) { return n == null ? "—" : Number(n).toLocaleString("en") }
+  function list(id, rows, left, right) {
+    document.getElementById(id).innerHTML = rows.length ? rows.map(r => `<li><span>${esc(left(r))}</span><span>${esc(right(r))}</span></li>`).join("") : "<li>Not enough data yet</li>"
+  }
+  fetch("https://api.actuent.ai/api/state").then(r => r.json()).then(d => {
+    document.getElementById("percent").textContent = d.ai_readable_percent == null ? "—" : d.ai_readable_percent + "%"
+    setTimeout(() => { document.getElementById("bar").style.width = (d.ai_readable_percent || 0) + "%" }, 100)
+    document.getElementById("sites").textContent = fmt(d.sites_indexed)
+    document.getElementById("native").textContent = fmt(d.sites_native_lawp)
+    document.getElementById("products").textContent = fmt(d.products_indexed)
+    document.getElementById("searches").textContent = fmt(d.searches_7d)
+    list("queries", d.top_queries_7d || [], r => r.query, r => fmt(r.searches))
+    list("topsites", d.top_sites_7d || [], r => r.domain, r => fmt(r.appearances))
+    list("languages", (d.languages || []).sort((a, b) => b.sites - a.sites), r => LANG[r.code] || r.code, r => fmt(r.sites))
+    document.getElementById("foot").innerHTML += ` Updated ${esc(new Date(d.generated_at).toLocaleString("en-GB"))}.`
+  }).catch(() => { document.getElementById("percent").textContent = "—" })
+</script>
+</body>
+</html>

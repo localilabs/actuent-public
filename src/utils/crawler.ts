@@ -5,6 +5,7 @@ import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
+import { fetchProducts, saveProducts } from "./products"
 import crypto from "crypto"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -33,7 +34,9 @@ function minimalLAWP(domain: string, content: string = ""): Site {
   }
 }
 
-export async function getSavedSite(domain: string): Promise<(Site & { contentHash?: string | null }) | null> {
+type SavedSite = Site & { contentHash?: string | null, ownerKey?: string | null, productsCrawledAt?: string | null }
+
+export async function getSavedSite(domain: string): Promise<SavedSite | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/lawp_sites?domain=eq.${domain}&select=*`,
@@ -41,7 +44,12 @@ export async function getSavedSite(domain: string): Promise<(Site & { contentHas
     )
     const data = await res.json()
     if (!data || data.length === 0) return null
-    return { domain: data[0].domain, name: data[0].name, pages: data[0].pages, actions: data[0].actions, native: !!data[0].native, contentHash: data[0].content_hash || null } as Site & { contentHash: string | null }
+    const row = data[0]
+    return {
+      domain: row.domain, name: row.name, pages: row.pages, actions: row.actions, native: !!row.native,
+      updated_at: row.updated_at || undefined, language: row.language || undefined, verified_owner: !!row.owner_key,
+      contentHash: row.content_hash || null, ownerKey: row.owner_key || null, productsCrawledAt: row.products_crawled_at || null
+    }
   } catch { return null }
 }
 
@@ -133,7 +141,7 @@ async function fetchContent(url: string): Promise<string | null> {
 
 async function convertToLAWP(domain: string, content: string, tier: Tier = "free"): Promise<Site> {
   try {
-    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`, 15000, tier)
+    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content.slice(0, 2000)}\n\nWrite every title, summary, description and intent in English, translating if the site is in another language. Set "language" to the ISO 639-1 code of the site's original language.\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","language":"en","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`, 15000, tier)
     if (!raw) return minimalLAWP(domain, content)
     const parsed = safeParseJSON(raw)
     // Groq sometimes returns LAWP missing pages/actions; anything malformed falls back to minimal.
@@ -145,7 +153,8 @@ async function convertToLAWP(domain: string, content: string, tier: Tier = "free
       domain,
       name: typeof parsed.name === "string" && parsed.name ? parsed.name : minimalLAWP(domain).name,
       pages,
-      actions: Array.isArray(parsed.actions) ? parsed.actions.filter((a: any) => a && a.id && Array.isArray(a.intent)) : []
+      actions: Array.isArray(parsed.actions) ? parsed.actions.filter((a: any) => a && a.id && Array.isArray(a.intent)) : [],
+      language: typeof parsed.language === "string" && /^[a-z]{2}$/i.test(parsed.language) ? parsed.language.toLowerCase() : undefined
     }
   } catch {
     return minimalLAWP(domain, content)
@@ -166,7 +175,7 @@ export async function crawlPage(domain: string, path: string, tier: Tier = "free
   let actions: any[] = []
 
   try {
-    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`, 15000, tier)
+    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content.slice(0, 2000)}\n\nWrite the title and summary in English, translating if needed. Return ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`, 15000, tier)
     const parsed = safeParseJSON(raw || "")
     if (parsed) {
       title = parsed.title || title
@@ -194,16 +203,20 @@ async function domainExists(domain: string): Promise<boolean> {
 export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Site | null> {
   // A site's own LAWP always wins over crawling.
   const native = await fetchNativeSite(domain)
+  const existing = await getSavedSite(domain)
+  const asResult = (saved: SavedSite): Site => ({
+    domain: saved.domain, name: saved.name, pages: saved.pages, actions: saved.actions, native: saved.native,
+    updated_at: saved.updated_at, language: saved.language, verified_owner: saved.verified_owner
+  })
   // Respect robots.txt: if crawling is disallowed, serve what's already indexed (if anything).
-  if (!native && !await robotsAllows(domain, "/")) {
-    const saved = await getSavedSite(domain)
-    return saved ? { domain: saved.domain, name: saved.name, pages: saved.pages, actions: saved.actions, native: saved.native } : null
-  }
+  if (!native && !await robotsAllows(domain, "/")) return existing ? asResult(existing) : null
+  // Claimed sites are edited by their owner; crawling must never overwrite them.
+  if (!native && existing?.ownerKey) return asResult(existing)
+
   const content = native ? null : await fetchContent(`https://${domain}`)
 
   let site: Site
 
-  const existing = await getSavedSite(domain)
   const hash = content ? crypto.createHash("sha256").update(content).digest("hex").slice(0, 32) : undefined
 
   if (native) {
@@ -213,7 +226,7 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     site = minimalLAWP(domain)
   } else if (existing && existing.contentHash === hash && existing.actions?.length) {
     // The site hasn't changed since its last conversion: reuse it and spend no LLM tokens.
-    return { domain: existing.domain, name: existing.name, pages: existing.pages, actions: existing.actions, native: existing.native }
+    return asResult(existing)
   } else {
     site = await convertToLAWP(domain, content, tier)
   }
@@ -225,9 +238,18 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     }
   }
 
-  await saveSite(site, "en", hash)
+  await saveSite(site, site.language || "en", hash)
   const firstPage = Object.values(site.pages)[0]
   await savePage(domain, "/", firstPage?.title || domain, firstPage?.content || "", site.actions)
 
-  return site
+  // Shops: index products with prices, at most weekly, without holding up the response for long.
+  const weekAgo = Date.now() - 7 * 86400_000
+  if (!existing?.productsCrawledAt || Date.parse(existing.productsCrawledAt) < weekAgo) {
+    await Promise.race([
+      fetchProducts(domain).then(items => saveProducts(domain, items)),
+      new Promise(r => setTimeout(r, 5000))
+    ]).catch(() => {})
+  }
+
+  return { ...site, updated_at: new Date().toISOString() }
 }
