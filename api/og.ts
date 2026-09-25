@@ -1,13 +1,16 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { ImageResponse } from "@vercel/og"
 
 // Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…
+// Runs on Vercel's Edge runtime, which @vercel/og is built for.
+export const config = { runtime: "edge" }
+
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, children } })
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const title = String(req.query.title || "The Internet for AI").slice(0, 90)
-  const subtitle = String(req.query.subtitle || "Search engine for AI agents · structured data for any website").slice(0, 140)
-  const tag = String(req.query.tag || "actuent.ai").slice(0, 40)
+export default function handler(req: Request) {
+  const q = new URL(req.url).searchParams
+  const title = (q.get("title") || "The Internet for AI").slice(0, 90)
+  const subtitle = (q.get("subtitle") || "Search engine for AI agents · structured data for any website").slice(0, 140)
+  const tag = (q.get("tag") || "actuent.ai").slice(0, 40)
 
   const card = h("div", { width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "72px", background: "#0a0a0a", color: "#f5f5f7", fontFamily: "sans-serif" }, [
     h("div", { display: "flex", alignItems: "center", gap: "20px" }, [
@@ -24,8 +27,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
   ])
 
-  const image = new ImageResponse(card as any, { width: 1200, height: 630 })
-  res.setHeader("Content-Type", "image/png")
-  res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800, immutable")
-  res.status(200).send(Buffer.from(await image.arrayBuffer()))
+  return new ImageResponse(card as any, {
+    width: 1200, height: 630,
+    headers: { "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable" }
+  })
 }
