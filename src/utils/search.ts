@@ -63,64 +63,80 @@ function scoreMatch(site: Site, query: string): number {
   return keywordScore + lawpBoost * 0.3 + authorityBoost
 }
 
-async function searchSupabase(query: string): Promise<Site[]> {
+const SUPABASE_HEADERS = {
+  "apikey": SUPABASE_SERVICE_KEY,
+  "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+  "Content-Type": "application/json"
+}
+
+// Full-text search runs inside Postgres (search_lawp_sites / search_lawp_pages), so every
+// indexed site is searchable. Falls back to scanning a 200-row sample if the functions are missing.
+async function rpc(fn: string, query: string, max: number): Promise<any[] | null> {
   try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions&limit=200`,
-      { headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` } }
-    )
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: SUPABASE_HEADERS,
+      body: JSON.stringify({ q: query, max_results: max })
+    })
+    if (!r.ok) return null
+    return await r.json()
+  } catch { return null }
+}
+
+async function fetchSample(table: string, select: string): Promise<any[]> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&limit=200`, { headers: SUPABASE_HEADERS })
     if (!r.ok) return []
-    const rows = await r.json()
-    const asSites: Site[] = rows.map((row: any) => ({
-      domain: row.domain, name: row.name, pages: row.pages, actions: row.actions
-    }))
-    return asSites
-      .map(site => ({ site, score: scoreMatch(site, query) }))
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(r => r.site)
+    return await r.json()
   } catch { return [] }
 }
 
+async function searchSupabase(query: string): Promise<Site[]> {
+  const rows = await rpc("search_lawp_sites", query, 50)
+    ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
+  const asSites: Site[] = rows.map((row: any) => ({
+    domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || []
+  }))
+  return asSites
+    .map(site => ({ site, score: scoreMatch(site, query) }))
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(r => r.site)
+}
+
 async function searchPages(query: string): Promise<Site[]> {
-  try {
-    const r = await fetch(
-      `${SUPABASE_URL}/rest/v1/lawp_pages?select=domain,path,title,content,actions&limit=200`,
-      { headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` } }
-    )
-    if (!r.ok) return []
-    const rows = await r.json()
-    const words = query.toLowerCase().split(/\s+/).filter(Boolean)
-    return rows
-      .map((row: any) => {
-        let score = 0
-        for (const word of words) {
-          if (row.title?.toLowerCase().includes(word)) score += 3
-          if (row.content?.toLowerCase().includes(word)) score += 1
-          if (row.domain?.toLowerCase().includes(word)) score += 2
-          if (row.path?.toLowerCase().includes(word)) score += 2
-          if (Array.isArray(row.actions)) {
-            for (const action of row.actions) {
-              for (const intent of (action.intent || [])) {
-                if (intent.includes(word)) score += 3
-              }
+  const rows = await rpc("search_lawp_pages", query, 50)
+    ?? await fetchSample("lawp_pages", "domain,path,title,content,actions")
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return rows
+    .map((row: any) => {
+      let score = 0
+      for (const word of words) {
+        if (row.title?.toLowerCase().includes(word)) score += 3
+        if (row.content?.toLowerCase().includes(word)) score += 1
+        if (row.domain?.toLowerCase().includes(word)) score += 2
+        if (row.path?.toLowerCase().includes(word)) score += 2
+        if (Array.isArray(row.actions)) {
+          for (const action of row.actions) {
+            for (const intent of (action.intent || [])) {
+              if (intent.includes(word)) score += 3
             }
           }
         }
-        if (score === 0) return null
-        const authorityBoost = (getDomainAuthority(row.domain) / 100) * 5
-        return { row, score: score + authorityBoost }
-      })
-      .filter(Boolean)
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 5)
-      .map(({ row }: any) => ({
-        domain: `${row.domain}${row.path}`,
-        name: row.title,
-        pages: { [row.path]: { title: row.title, content: row.content } },
-        actions: row.actions || []
-      }))
-  } catch { return [] }
+      }
+      if (score === 0) return null
+      const authorityBoost = (getDomainAuthority(row.domain) / 100) * 5
+      return { row, score: score + authorityBoost }
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, 5)
+    .map(({ row }: any) => ({
+      domain: `${row.domain}${row.path}`,
+      name: row.title,
+      pages: { [row.path]: { title: row.title, content: row.content } },
+      actions: row.actions || []
+    }))
 }
 
 function parseFullUrl(query: string): { domain: string, path: string } | null {
@@ -190,6 +206,7 @@ export async function searchSites(query: string, tier: string = "free"): Promise
     if (parsed) {
       const crawled = await crawlSite(parsed.domain)
       if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
+      return []
     }
     return await suggestAndCrawl(query, seen)
   }
@@ -198,6 +215,7 @@ export async function searchSites(query: string, tier: string = "free"): Promise
   if (parsed) {
     const crawled = await crawlSite(parsed.domain)
     if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
+    return []
   }
   return await suggestAndCrawl(query, seen)
 }
