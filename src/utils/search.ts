@@ -1,5 +1,5 @@
 import { sites, Site } from "../data/sites"
-import { crawlSite, crawlPage } from "./crawler"
+import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import Groq from "groq-sdk"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -147,27 +147,48 @@ function parseFullUrl(query: string): { domain: string, path: string } | null {
   return { domain: match[1].toLowerCase(), path: match[2] || "/" }
 }
 
+const PLACEHOLDER_DOMAINS = new Set(["example.com", "example.org", "example.net"])
+
+// Last resort when the index has nothing: ask Groq for up to 3 real sites and crawl them in parallel.
 async function suggestAndCrawl(query: string, seen: Set<string>): Promise<Site[]> {
+  let domains: string[] = []
   try {
     const completion = await groq.chat.completions.create({
       model: "openai/gpt-oss-20b",
       messages: [{
         role: "user",
-        content: `User searched: "${query}". List 3 real domains most relevant. Comma separated, no http. Example: nike.com,adidas.com,asos.com`
+        content: `A user searched: "${query}". List up to 3 real, existing websites most relevant to this search. If the search is gibberish or no real website fits, reply with NONE. Reply with bare domains only, comma separated, no http, no explanation. Example: nike.com,adidas.com,asos.com`
       }],
       temperature: 0.1
-    })
-    const text = completion.choices?.[0]?.message?.content?.trim() || ""
-    const domains = text.split(",").map(d => d.trim().toLowerCase()).filter(d => d.includes(".")).slice(0, 3)
-    const results: Site[] = []
-    for (const domain of domains) {
-      if (!seen.has(domain)) {
-        const crawled = await crawlSite(domain)
-        if (crawled) { sites[domain] = crawled; results.push(crawled); seen.add(domain) }
-      }
+    }, { timeout: 10000, maxRetries: 0 })
+    const text = (completion.choices?.[0]?.message?.content || "").toLowerCase()
+    const found = text.match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/g) || []
+    domains = [...new Set(found)]
+      .filter(d => !seen.has(d) && !PLACEHOLDER_DOMAINS.has(d))
+      .slice(0, 3)
+  } catch (e) {
+    console.error(`suggestAndCrawl: Groq failed for "${query}":`, e)
+    return []
+  }
+
+  const crawled = await Promise.all(domains.map(async domain => {
+    try {
+      return await getSavedSite(domain) ?? await crawlSite(domain)
+    } catch (e) {
+      console.error(`suggestAndCrawl: crawl failed for ${domain}:`, e)
+      return null
     }
-    return results
-  } catch { return [] }
+  }))
+
+  const results: Site[] = []
+  for (const site of crawled) {
+    if (site && !seen.has(site.domain)) {
+      sites[site.domain] = site
+      seen.add(site.domain)
+      results.push(site)
+    }
+  }
+  return results
 }
 
 export async function searchSites(query: string, tier: string = "free"): Promise<Site[]> {

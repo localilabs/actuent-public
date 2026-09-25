@@ -1,4 +1,5 @@
 import Groq from "groq-sdk"
+import { promises as dns } from "dns"
 import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
@@ -17,7 +18,7 @@ function minimalLAWP(domain: string, content: string = ""): Site {
   }
 }
 
-async function getSavedSite(domain: string): Promise<Site | null> {
+export async function getSavedSite(domain: string): Promise<Site | null> {
   try {
     const res = await fetch(
       `${SUPABASE_URL}/rest/v1/lawp_sites?domain=eq.${domain}&select=*`,
@@ -121,8 +122,17 @@ async function convertToLAWP(domain: string, content: string): Promise<Site> {
     const raw = completion.choices?.[0]?.message?.content
     if (!raw) return minimalLAWP(domain, content)
     const parsed = safeParseJSON(raw)
-    if (!parsed || !parsed.domain) return minimalLAWP(domain, content)
-    return parsed as Site
+    // Groq sometimes returns LAWP missing pages/actions; anything malformed falls back to minimal.
+    const pages = parsed?.pages
+    if (!pages || typeof pages !== "object" || Array.isArray(pages) || Object.keys(pages).length === 0) {
+      return minimalLAWP(domain, content)
+    }
+    return {
+      domain,
+      name: typeof parsed.name === "string" && parsed.name ? parsed.name : minimalLAWP(domain).name,
+      pages,
+      actions: Array.isArray(parsed.actions) ? parsed.actions.filter((a: any) => a && a.id && Array.isArray(a.intent)) : []
+    }
   } catch {
     return minimalLAWP(domain, content)
   }
@@ -162,12 +172,25 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
   return { domain, path, full_url: fullUrl, title, content: summary, actions }
 }
 
+async function domainExists(domain: string): Promise<boolean> {
+  try {
+    await Promise.race([
+      dns.lookup(domain),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("dns timeout")), 3000))
+    ])
+    return true
+  } catch { return false }
+}
+
+// Returns null (and saves nothing) for domains that don't exist, so made-up
+// domains never end up in the index. Real sites that block us still get minimal LAWP.
 export async function crawlSite(domain: string): Promise<Site | null> {
   const content = await fetchContent(`https://${domain}`)
 
   let site: Site
 
   if (!content) {
+    if (!await domainExists(domain)) return null
     site = minimalLAWP(domain)
   } else {
     site = await convertToLAWP(domain, content)
