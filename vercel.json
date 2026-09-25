@@ -51,7 +51,12 @@
     },
     {
       "src": "api/og.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "node_modules/@vercel/og/dist/**"
+        ]
+      }
     },
     {
       "src": "public/robots.txt",

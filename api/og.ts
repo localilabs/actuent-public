@@ -1,13 +1,12 @@
-import { ImageResponse } from "@vercel/og"
+import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 // Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…
-// Runs on Vercel's Edge runtime, which @vercel/og is built for.
-export const config = { runtime: "edge" }
+// Runs on Node: the Edge build here can't compile @vercel/og's WebAssembly renderer.
 
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, children } })
 
-export default async function handler(req: Request) {
-  const q = new URL(req.url).searchParams
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const q = new URL(req.url || "/", "https://api.actuent.ai").searchParams
   const title = (q.get("title") || "The Internet for AI").slice(0, 90)
   const subtitle = (q.get("subtitle") || "Search engine for AI agents · structured data for any website").slice(0, 140)
   const tag = (q.get("tag") || "actuent.ai").slice(0, 40)
@@ -29,10 +28,15 @@ export default async function handler(req: Request) {
 
   // The image is rendered fully before responding: a streamed ImageResponse arrived empty on Vercel.
   try {
-    const png = await new ImageResponse(card as any, { width: 1200, height: 630 }).arrayBuffer()
-    if (!png.byteLength) throw new Error("empty image")
-    return new Response(png, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400, s-maxage=604800" } })
+    // A real ESM import (TypeScript would turn import() into require()); the files come from includeFiles.
+    const { ImageResponse } = await (new Function("m", "return import(m)") as (m: string) => Promise<typeof import("@vercel/og")>)("@vercel/og")
+    const png = Buffer.from(await new ImageResponse(card as any, { width: 1200, height: 630 }).arrayBuffer())
+    if (!png.length) throw new Error("empty image")
+    res.setHeader("Content-Type", "image/png")
+    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800")
+    res.status(200).send(png)
   } catch (e) {
-    return new Response(`Could not render the image: ${e}`, { status: 500, headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" } })
+    res.setHeader("Cache-Control", "no-store")
+    res.status(500).send(`Could not render the image: ${e}`)
   }
 }
