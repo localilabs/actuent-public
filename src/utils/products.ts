@@ -3,7 +3,7 @@ import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
-//   • Shopify stores publish /products.json and /cart.js (currency) publicly.
+//   • Shopify stores publish /products.json and /meta.json (currency) publicly.
 //   • WooCommerce stores publish the Store API at /wp-json/wc/store/v1/products.
 // Prices are also stored in EUR so "under €100" works across currencies.
 
@@ -42,7 +42,8 @@ export async function toEur(amount: number | null, currency: string | null): Pro
 async function shopifyItems(domain: string): Promise<Item[] | null> {
   const data = await getJson(`https://${domain}/products.json?limit=250`)
   if (!Array.isArray(data?.products)) return null
-  const currency = (await getJson(`https://${domain}/cart.js`, 4000))?.currency || null
+  // Store currency: /meta.json (no cart created), falling back to /cart.json.
+  const currency = (await getJson(`https://${domain}/meta.json`, 4000))?.currency || (await getJson(`https://${domain}/cart.json`, 4000))?.currency || null
   return data.products.map((p: any) => {
     const variant = (p.variants || [])[0] || {}
     const price = variant.price != null ? Number(variant.price) : null
