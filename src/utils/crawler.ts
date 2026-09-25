@@ -10,12 +10,25 @@ import crypto from "crypto"
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
+// Turns scraped text (Jina Reader markdown or stripped HTML) into a plain readable snippet:
+// drops Jina's "Title:/URL Source:/Markdown Content:" header lines, images, link targets and markdown.
+function cleanScraped(text: string): string {
+  return String(text || "")
+    .replace(/^(Title|URL Source|Published Time|Warning|Markdown Content):.*$/gm, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[#*_>`|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 function minimalLAWP(domain: string, content: string = ""): Site {
   const name = domain.split(".")[0]
   return {
     domain,
     name: name.charAt(0).toUpperCase() + name.slice(1),
-    pages: { "/": { title: domain, content: content.slice(0, 200) || `Website at ${domain}` } },
+    pages: { "/": { title: domain, content: cleanScraped(content).slice(0, 200) || `Website at ${domain}` } },
     actions: []
   }
 }
