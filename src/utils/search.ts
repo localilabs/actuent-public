@@ -186,29 +186,35 @@ export async function searchSites(query: string, tier: string = "free"): Promise
     }
   }
 
-  const seedResults = Object.values(sites)
+  // Seed sites and sites this instance just crawled answer an exact domain lookup directly.
+  if (parsed && sites[parsed.domain]) return [sites[parsed.domain]]
+
+  // Seed sites are ranked together with the index, so one seed matching a single word
+  // ("running") can't hide every better indexed result.
+  const seedScored = Object.values(sites)
     .map(site => ({ site, score: scoreMatch(site, query) }))
     .filter(r => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map(r => r.site)
 
-  if (seedResults.length > 0) return seedResults
+  async function searchIndex(): Promise<Site[]> {
+    const dbScored = (await searchSupabase(query)).map(site => ({ site, score: scoreMatch(site, query) }))
+    const ranked = [...seedScored, ...dbScored].sort((a, b) => b.score - a.score).map(r => r.site)
+    const seen = new Set<string>()
+    const results: Site[] = []
+    for (const site of [...ranked, ...await searchPages(query)]) {
+      if (!seen.has(site.domain)) { seen.add(site.domain); results.push(site) }
+    }
+    return results
+  }
 
   if (isPro) {
-    const dbResults = await searchSupabase(query)
-    const pageResults = await searchPages(query)
-    const seen = new Set<string>()
-    const combined: Site[] = []
-    for (const site of [...dbResults, ...pageResults]) {
-      if (!seen.has(site.domain)) { seen.add(site.domain); combined.push(site) }
-    }
-    if (combined.length > 0) return combined
+    const indexed = await searchIndex()
+    if (indexed.length > 0) return indexed
     if (parsed) {
       const crawled = await crawlSite(parsed.domain)
       if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
       return []
     }
-    return await suggestAndCrawl(query, seen)
+    return await suggestAndCrawl(query, new Set())
   }
 
   // Free: a specific domain is always crawled live, which keeps the index fresh for Pro.
@@ -219,11 +225,7 @@ export async function searchSites(query: string, tier: string = "free"): Promise
   }
 
   // Free keyword queries ("shoes") search the index; only guess and crawl if it has nothing.
-  const seen = new Set<string>()
-  const indexed: Site[] = []
-  for (const site of [...await searchSupabase(query), ...await searchPages(query)]) {
-    if (!seen.has(site.domain)) { seen.add(site.domain); indexed.push(site) }
-  }
+  const indexed = await searchIndex()
   if (indexed.length > 0) return indexed
-  return await suggestAndCrawl(query, seen)
+  return await suggestAndCrawl(query, new Set())
 }
