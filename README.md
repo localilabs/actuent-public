@@ -50,4 +50,4 @@ Endpoint: **POST** /lawp/act
 
 Purpose: Allows agents to trigger functions mapped directly within a site's **LAWP** layout.
 
-🚀 Vision Developed by Locali Labs. Shifting the paradigm away from chatbots and into automated runtime frameworks. The internet is changing; Actuent makes it compatible with what comes next.
+🚀 Vision Developed by localilabs. Shifting the paradigm away from chatbots and into automated runtime frameworks. The internet is changing; Actuent makes it compatible with what comes next.
