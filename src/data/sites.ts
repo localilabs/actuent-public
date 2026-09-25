@@ -1,11 +1,23 @@
+// A field of a structured action input (LAWP 0.3) — https://github.com/localilabs/lawp/blob/main/LAWP.md#structured-inputs-v03
+export type InputField = {
+  name: string
+  type?: "string" | "number" | "integer" | "boolean" | "date" | "time" | "datetime" | "email" | "phone" | "url" | "enum"
+  required?: boolean
+  description?: string
+  options?: string[]
+  example?: unknown
+}
+
 export type Action = {
   id: string
   name: string
   description: string
   intent: string[]
   input: {
-    type: "text" | "number" | "none"
+    type: "text" | "number" | "none" | "object"
     required: boolean
+    // LAWP 0.3: the named fields of an "object" input, e.g. date, time, email
+    fields?: InputField[]
   }
   endpoint?: { url: string, method?: "POST" | "GET" }
 }
