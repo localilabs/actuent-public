@@ -23,13 +23,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#0a0a0a; color:#f0f0f0; font-family:-apple-system,sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
 img { height:24px; margin-bottom:40px; }
-.box { background:#0f0f0f; border:1px solid #1c1c1c; border-radius:12px; padding:32px; width:100%; max-width:420px; }
+.box { background:#13131a; border:1px solid #2a2a34; border-radius:12px; padding:32px; width:100%; max-width:420px; }
 h1 { font-size:18px; font-weight:600; margin-bottom:6px; }
-p { color:#555; font-size:13px; margin-bottom:24px; line-height:1.5; }
-label { font-size:11px; color:#444; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px; }
-input { width:100%; background:#181818; border:1px solid #1c1c1c; color:#f0f0f0; padding:10px 14px; font-size:13px; font-family:'Courier New',monospace; border-radius:7px; margin-bottom:16px; outline:none; }
-input:focus { border-color:#333; }
-button { width:100%; background:#f0f0f0; color:#0a0a0a; border:none; padding:11px; font-size:13px; font-weight:700; border-radius:7px; cursor:pointer; }
+p { color:#a8a8b6; font-size:13px; margin-bottom:24px; line-height:1.5; }
+label { font-size:11px; color:#a8a8b6; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px; }
+input { width:100%; background:#1c1c25; border:1px solid #2a2a34; color:#f0f0f0; padding:10px 14px; font-size:13px; font-family:'Courier New',monospace; border-radius:7px; margin-bottom:16px; outline:none; }
+input:focus { border-color:#45454f; }
+button { width:100%; background:#ff8a3d; color:#0a0a0a; border:none; padding:11px; font-size:13px; font-weight:700; border-radius:7px; cursor:pointer; }
 button:hover { opacity:0.85; }
 .success { color:#4ade80; font-size:13px; margin-top:12px; display:none; }
 .error { color:#f87171; font-size:13px; margin-top:12px; display:none; }
