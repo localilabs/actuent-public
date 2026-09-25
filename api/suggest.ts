@@ -74,8 +74,12 @@ async function submit() {
   }
 
   if (req.method === "POST") {
-    const { domain, submitted_by } = req.body
-    if (!domain || !domain.includes(".")) {
+    // Accepts the suggest form ({ domain }) and LAWP action calls ({ action: "suggest_site", input }).
+    const body = req.body || {}
+    const lawpInput = body.action === "suggest_site" ? body.input : undefined
+    const domain = typeof lawpInput === "string" ? lawpInput : lawpInput?.domain ?? body.domain
+    const submitted_by = body.submitted_by
+    if (typeof domain !== "string" || !domain.includes(".")) {
       return res.status(400).json({ error: "Invalid domain" })
     }
     const clean = domain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*/, "").trim()
