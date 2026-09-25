@@ -20,6 +20,23 @@ async function trackSearch(query: string, domains: string[], tier: string, apiKe
   } catch {}
 }
 
+// Launch-day caching: identical searches within 60s reuse the result instead of re-running search,
+// crawls and LLM calls. Separate entries per tier, so Pro never gets a free-tier result.
+const RESULT_TTL_MS = 60_000
+const resultCache = new Map<string, { body: unknown, expires: number }>()
+
+function cacheGet(key: string): unknown | null {
+  const hit = resultCache.get(key)
+  if (hit && hit.expires > Date.now()) return hit.body
+  if (hit) resultCache.delete(key)
+  return null
+}
+
+function cacheSet(key: string, body: unknown) {
+  resultCache.set(key, { body, expires: Date.now() + RESULT_TTL_MS })
+  if (resultCache.size > 1000) resultCache.delete(resultCache.keys().next().value!)
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -37,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ip = (req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim()
     const limitKey = tier === "pro" ? `search:key:${apiKey}` : `search:ip:${ip}`
     if (await isRateLimited(limitKey, maxPerMinute)) {
+      res.setHeader("Cache-Control", "no-store")
       return res.status(429).json({
         error: "Rate limit exceeded",
         message: tier === "pro" ? "Pro: 60 req/min" : "Free: 20 req/min — upgrade at actuent.ai",
@@ -53,6 +71,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "Missing query" })
   }
 
+  res.setHeader("X-Actuent-Tier", tier)
+  // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private.
+  res.setHeader("Vary", "Authorization")
+  res.setHeader("Cache-Control", req.method === "GET" && !apiKey
+    ? "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+    : "private, no-store")
+
+  const cacheKey = `${tier}:${query.trim().toLowerCase()}`
+  const cached = cacheGet(cacheKey)
+  if (cached) {
+    await trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null)
+    return res.status(200).json({ ...(cached as any), query })
+  }
+
   const results = await searchSites(query.trim(), tier)
   const domains = results.map(r => r.domain)
 
@@ -61,5 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   await trackSearch(query.trim(), domains, tier, trackKey)
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
-  return res.status(200).json({ query, count: results.length, results: results.map(({ contentHash, ...r }: any) => ({ ...r, native: !!r.native, executable: isExecutable(r) })) })
+  const body = { query, count: results.length, results: results.map(({ contentHash, ...r }: any) => ({ ...r, native: !!r.native, executable: isExecutable(r) })) }
+  if (results.length > 0) cacheSet(cacheKey, body)
+  return res.status(200).json(body)
 }

@@ -1,11 +1,12 @@
 import { Site } from "../data/sites"
+import { USER_AGENT } from "./robots"
 
 // A site's own LAWP from https://<domain>/.well-known/lawp.json. Sites that publish one are
 // "native": their LAWP is used as-is instead of crawling, and they get a ranking boost.
 export async function fetchNativeSite(domain: string): Promise<Site | null> {
   try {
     const res = await fetch(`https://${domain}/.well-known/lawp.json`, {
-      headers: { "Accept": "application/json", "User-Agent": "Actuent/1.0 (+https://actuent.ai)" },
+      headers: { "Accept": "application/json", "User-Agent": USER_AGENT },
       redirect: "manual",
       signal: AbortSignal.timeout(5000)
     })

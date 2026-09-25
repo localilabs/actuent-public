@@ -1,4 +1,5 @@
-import { complete } from "./llm"
+import { complete, Tier } from "./llm"
+import { USER_AGENT, robotsAllows } from "./robots"
 import { promises as dns } from "dns"
 import { Site } from "../data/sites"
 import { safeParseJSON } from "./parseAI"
@@ -96,7 +97,7 @@ async function scrapeWithJina(url: string): Promise<string | null> {
 async function scrapeBasic(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://actuent.ai)" },
+      headers: { "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(8000)
     })
     if (!res.ok) return null
@@ -117,9 +118,9 @@ async function fetchContent(url: string): Promise<string | null> {
   return await scrapeBasic(url)
 }
 
-async function convertToLAWP(domain: string, content: string): Promise<Site> {
+async function convertToLAWP(domain: string, content: string, tier: Tier = "free"): Promise<Site> {
   try {
-    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`)
+    const raw = await complete(`Convert this website into LAWP format.\n\nDomain: ${domain}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY valid JSON:\n{"domain":"${domain}","name":"Site name","pages":{"/":{"title":"Title","content":"Summary under 150 words"}},"actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2","k3"],"input":{"type":"text","required":false}}]}\n\nInclude 2-4 real actions only.`, 15000, tier)
     if (!raw) return minimalLAWP(domain, content)
     const parsed = safeParseJSON(raw)
     // Groq sometimes returns LAWP missing pages/actions; anything malformed falls back to minimal.
@@ -138,11 +139,12 @@ async function convertToLAWP(domain: string, content: string): Promise<Site> {
   }
 }
 
-export async function crawlPage(domain: string, path: string): Promise<any | null> {
+export async function crawlPage(domain: string, path: string, tier: Tier = "free"): Promise<any | null> {
   const fullUrl = `${domain}${path}`
   const cached = await getPageFromDB(fullUrl)
   if (cached) return cached
 
+  if (!await robotsAllows(domain, path)) return null
   const content = await fetchContent(`https://${domain}${path}`)
   if (!content) return null
 
@@ -151,7 +153,7 @@ export async function crawlPage(domain: string, path: string): Promise<any | nul
   let actions: any[] = []
 
   try {
-    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`)
+    const raw = await complete(`Convert to LAWP.\nDomain: ${domain}, Path: ${path}\nContent: ${content.slice(0, 2000)}\n\nReturn ONLY JSON: {"title":"Title","content":"Summary under 150 words","actions":[{"id":"id","name":"Name","description":"What","intent":["k1","k2"],"input":{"type":"text","required":false}}]}`, 15000, tier)
     const parsed = safeParseJSON(raw || "")
     if (parsed) {
       title = parsed.title || title
@@ -176,9 +178,14 @@ async function domainExists(domain: string): Promise<boolean> {
 
 // Returns null (and saves nothing) for domains that don't exist, so made-up
 // domains never end up in the index. Real sites that block us still get minimal LAWP.
-export async function crawlSite(domain: string): Promise<Site | null> {
+export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Site | null> {
   // A site's own LAWP always wins over crawling.
   const native = await fetchNativeSite(domain)
+  // Respect robots.txt: if crawling is disallowed, serve what's already indexed (if anything).
+  if (!native && !await robotsAllows(domain, "/")) {
+    const saved = await getSavedSite(domain)
+    return saved ? { domain: saved.domain, name: saved.name, pages: saved.pages, actions: saved.actions, native: saved.native } : null
+  }
   const content = native ? null : await fetchContent(`https://${domain}`)
 
   let site: Site
@@ -195,7 +202,7 @@ export async function crawlSite(domain: string): Promise<Site | null> {
     // The site hasn't changed since its last conversion: reuse it and spend no LLM tokens.
     return { domain: existing.domain, name: existing.name, pages: existing.pages, actions: existing.actions, native: existing.native }
   } else {
-    site = await convertToLAWP(domain, content)
+    site = await convertToLAWP(domain, content, tier)
   }
 
   if (existing) {
