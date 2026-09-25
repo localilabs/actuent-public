@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { readiness } from "../src/utils/score"
+import { ogImage } from "../src/utils/og"
 
 // Badge for READMEs and websites.
 //   /badge.svg                     → "Listed on Actuent"
@@ -22,6 +23,7 @@ function badge(top: string, bottom: string, color: string, width: number) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.query.op === "og") return ogImage(req, res)
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Content-Type", "image/svg+xml")
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0]

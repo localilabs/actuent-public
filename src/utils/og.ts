@@ -1,11 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 // Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…
-// Runs on Node: the Edge build here can't compile @vercel/og's WebAssembly renderer.
+// Runs on Node: the Edge build here can't compile @vercel/og's WebAssembly renderer. Served by
+// api/badge.ts (/og → ?op=og) to stay within the Hobby plan's 12-function limit.
 
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, children } })
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export async function ogImage(req: VercelRequest, res: VercelResponse) {
   const q = new URL(req.url || "/", "https://api.actuent.ai").searchParams
   const title = (q.get("title") || "The Internet for AI").slice(0, 90)
   const subtitle = (q.get("subtitle") || "Search engine for AI agents · structured data for any website").slice(0, 140)

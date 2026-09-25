@@ -15,7 +15,12 @@
     },
     {
       "src": "api/badge.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "node_modules/@vercel/og/**"
+        ]
+      }
     },
     {
       "src": "api/stats.ts",
@@ -48,15 +53,6 @@
     {
       "src": "api/site.ts",
       "use": "@vercel/node"
-    },
-    {
-      "src": "api/og.ts",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": [
-          "node_modules/@vercel/og/dist/**"
-        ]
-      }
     },
     {
       "src": "public/robots.txt",
@@ -157,7 +153,7 @@
     },
     {
       "src": "/og",
-      "dest": "/api/og.ts"
+      "dest": "/api/badge.ts?op=og"
     },
     {
       "src": "/robots.txt",
