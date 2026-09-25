@@ -49,13 +49,14 @@
   <p class="lead">AI assistants increasingly browse the web for people. This is how much of it they can actually read and act on, measured live from the Actuent index.</p>
 
   <div class="hero">
-    <div class="num" id="percent">—</div>
-    <div class="label">of indexed websites are fully readable by AI agents: a clear summary <em>and</em> actions an agent can take</div>
+    <div class="num" id="sites-hero">—</div>
+    <div class="label">websites indexed for AI agents, and growing daily</div>
+    <div class="label" style="margin-top:14px"><span id="percent" style="color:var(--accent);font-weight:700">—</span> fully converted so far, with an AI-written summary <em>and</em> actions an agent can take. The rest are queued for conversion.</div>
     <div class="bar"><div id="bar"></div></div>
   </div>
 
   <div class="grid">
-    <div class="card"><div class="num" id="sites">—</div><div class="label">websites indexed</div></div>
+    <div class="card"><div class="num" id="sites">—</div><div class="label">websites in the index</div></div>
     <div class="card"><div class="num" id="native">—</div><div class="label">sites publish their own LAWP for AI agents</div></div>
     <div class="card"><div class="num" id="products">—</div><div class="label">products with prices agents can compare</div></div>
     <div class="card"><div class="num" id="searches">—</div><div class="label">AI agent searches in the last 7 days</div></div>
@@ -87,6 +88,7 @@
     document.getElementById("percent").textContent = d.ai_readable_percent == null ? "—" : d.ai_readable_percent + "%"
     setTimeout(() => { document.getElementById("bar").style.width = (d.ai_readable_percent || 0) + "%" }, 100)
     document.getElementById("sites").textContent = fmt(d.sites_indexed)
+    document.getElementById("sites-hero").textContent = fmt(d.sites_indexed)
     document.getElementById("native").textContent = fmt(d.sites_native_lawp)
     document.getElementById("products").textContent = fmt(d.products_indexed)
     document.getElementById("searches").textContent = fmt(d.searches_7d)
