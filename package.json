@@ -7,7 +7,7 @@
   "dependencies": {
     "@vercel/node": "^13.0.2",
     "@vercel/og": "^0.8.6",
-    "groq-sdk": "^0.9.1"
+    "groq-sdk": "^1.6.0"
   },
   "overrides": {
     "path-to-regexp": "^6.3.0",
