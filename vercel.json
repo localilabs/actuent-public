@@ -47,6 +47,10 @@
       "use": "@vercel/static"
     },
     {
+      "src": "public/badge.js",
+      "use": "@vercel/static"
+    },
+    {
       "src": "public/state.html",
       "use": "@vercel/static"
     },
@@ -132,8 +136,20 @@
       "dest": "/api/sitemap.ts"
     },
     {
+      "src": "/sitemap-cities\\.xml",
+      "dest": "/api/sitemap.ts?part=cities"
+    },
+    {
       "src": "/sitemap-sites-([0-9]+)\\.xml",
       "dest": "/api/sitemap.ts?part=$1"
+    },
+    {
+      "src": "/site/in/([^/?]+)/([^/?]+)/?",
+      "dest": "/api/site.ts?city=$1&category=$2"
+    },
+    {
+      "src": "/site/in/([^/?]+)/?",
+      "dest": "/api/site.ts?city=$1"
     },
     {
       "src": "/site/?",
@@ -170,6 +186,19 @@
     {
       "src": "/.well-known/lawp.json",
       "dest": "/api/well-known.ts"
+    },
+    {
+      "src": "/badge.json",
+      "dest": "/api/badge.ts?format=json"
+    },
+    {
+      "src": "/badge.js",
+      "dest": "/public/badge.js",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=3600"
+      }
     },
     {
       "src": "/badge.svg",

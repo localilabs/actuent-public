@@ -1,11 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { readiness, ScoreBreakdown } from "../src/utils/score"
 import { openNow } from "../src/utils/business"
+import { CATEGORIES, HIDDEN_CATEGORIES } from "../src/utils/category"
+import { compare } from "../src/utils/competitors"
+import { slug } from "../src/utils/slug"
 
 // Public page for every indexed site: https://api.actuent.ai/site/<domain>
 // Server-rendered for search engines. Thin (minimal) entries are marked noindex.
 //   /site            → directory of agent-ready sites
 //   /site/nike.com   → what AI agents see on nike.com
+//   /site/in/copenhagen             → agent-ready businesses in a city, by category
+//   /site/in/copenhagen/restaurant  → one category in a city
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -18,10 +23,55 @@ function esc(v: unknown): string {
 
 async function rows(path: string): Promise<any[]> {
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: HEADERS })
+    let r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: HEADERS })
+    // Before list_four.sql there's no status column: ask again without that filter.
+    if (!r.ok && path.includes("status=is.null")) r = await fetch(`${SUPABASE_URL}/rest/v1/${path.replace(/&?status=is\.null/, "")}`, { headers: HEADERS })
     const data = r.ok ? await r.json() : []
     return Array.isArray(data) ? data : []
   } catch { return [] }
+}
+
+const cityName = (v: string) => v.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+
+// Cities (as businesses spell them) with their categories and counts, cached for an hour.
+let cityCache: { list: { city: string, category: string, sites: number }[], expires: number } | null = null
+export async function cityList(): Promise<{ city: string, category: string, sites: number }[]> {
+  if (cityCache && cityCache.expires > Date.now()) return cityCache.list
+  const list = (await rows("rpc/lawp_city_categories?min_sites=1")).filter(r => r.city && !HIDDEN_CATEGORIES.has(r.category))
+  cityCache = { list, expires: Date.now() + 3600_000 }
+  return list
+}
+
+// /site/in/<city>[/<category>]: businesses in a city from their own websites' schema.org address.
+async function cityPage(res: VercelResponse, citySlug: string, category: string | null) {
+  const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
+  const city = known || cityName(citySlug)
+  const pattern = encodeURIComponent(city.replace(/[*,()]/g, "").replace(/ /g, "*"))
+  const hidden = [...HIDDEN_CATEGORIES].map(c => `"${c}"`).join(",")
+  const filter = category ? `&category=eq.${encodeURIComponent(category)}` : `&category=not.in.(${encodeURIComponent(hidden)})`
+  const sites = await rows(`lawp_sites?select=domain,name,category,native,actions,business&business->address->>city=ilike.${pattern}${filter}&status=is.null&order=native.desc,updated_at.desc&limit=300`)
+  const listed = sites.filter(s => !HIDDEN_CATEGORIES.has(s.category))
+  if (!listed.length) {
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=600")
+    return res.status(404).send(layout({ title: `${city} — Actuent`, description: `No agent-ready businesses in ${city} yet.`, canonical: `${BASE}/site/in/${citySlug}`, image: ogImage(city, "Agent-ready businesses", "api.actuent.ai"), noindex: true,
+      body: `<h1>Nothing in ${esc(city)} yet</h1><p class="lead">Actuent lists businesses here once their websites publish their address. <a href="https://docs.actuent.ai/generator">Make your site agent-ready</a>.</p>` }))
+  }
+  const byCategory = new Map<string, any[]>()
+  for (const s of listed) { const c = s.category || "other"; if (!byCategory.has(c)) byCategory.set(c, []); byCategory.get(c)!.push(s) }
+  const label = category ? (CATEGORIES[category] || category) : "Agent-ready businesses"
+  const card = (s: any) => { const r = readiness(s); return `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc([s.business?.address?.street, s.domain].filter(Boolean).join(" · "))}</span></span><span>${s.business?.rating ? `<span class="tag">★ ${esc(s.business.rating.value)}</span>` : ""}<span class="tag${r.score >= 80 ? " hot" : ""}">${r.score}/100</span></span></a>` }
+  const sections = [...byCategory.entries()].sort((a, b) => b[1].length - a[1].length)
+    .map(([c, list]) => `${category ? "" : `<h2><a href="${BASE}/site/in/${esc(citySlug)}/${esc(c)}" style="color:inherit;text-decoration:none">${esc(CATEGORIES[c] || "Other")} (${list.length})</a></h2>`}<div class="card list">${list.slice(0, category ? 300 : 12).map(card).join("")}</div>`).join("")
+  const body = `<div class="eyebrow"><a href="${BASE}/site" style="color:inherit;text-decoration:none">Directory</a> · ${category ? `<a href="${BASE}/site/in/${esc(citySlug)}" style="color:inherit;text-decoration:none">${esc(city)}</a>` : esc(city)}</div>
+<h1>${esc(label)} in ${esc(city)}</h1>
+<p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see.</p>
+${sections}`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  return res.status(200).send(layout({
+    title: `${label} in ${city} — Actuent`, description: `${listed.length} ${label.toLowerCase()} in ${city} that AI agents can read and act on.`,
+    canonical: `${BASE}/site/in/${citySlug}${category ? `/${category}` : ""}`, image: ogImage(`${label} in ${city}`, "Agent-ready businesses, by Actuent", `api.actuent.ai/site/in/${citySlug}`),
+    noindex: listed.length < 3, body
+  }))
 }
 
 const STYLE = `
@@ -108,10 +158,19 @@ function ogImage(title: string, subtitle: string, tag: string) {
   return `${BASE}/og?${new URLSearchParams({ title, subtitle, tag })}`
 }
 
+async function topCities(): Promise<string> {
+  const totals = new Map<string, number>()
+  for (const r of await cityList()) totals.set(r.city, (totals.get(r.city) || 0) + Number(r.sites))
+  const top = [...totals.entries()].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 24)
+  return top.length ? `<h2>By city</h2><div>${top.map(([c, n]) => `<a class="tag" href="${BASE}/site/in/${esc(slug(c))}">${esc(c)} · ${n}</a>`).join(" ")}</div>` : ""
+}
+
 async function directory(res: VercelResponse) {
-  const sites = await rows("lawp_sites?select=domain,name,native,actions&actions=neq.%5B%5D&order=native.desc,updated_at.desc&limit=120")
+  const sites = await rows("lawp_sites?select=domain,name,native,actions&actions=neq.%5B%5D&status=is.null&order=native.desc,updated_at.desc&limit=120")
   const body = `<div class="eyebrow">Directory</div><h1>Agent-ready websites</h1>
 <p class="lead">Websites AI agents can understand and act on through Actuent: their pages, and the actions an agent can take for you.</p>
+${await topCities()}
+<h2>Recently updated</h2>
 <div class="card list">${sites.map(s => `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc(s.domain)}</span></span><span>${s.native ? '<span class="tag hot">Native LAWP</span>' : ""}<span class="tag">${(s.actions || []).length} actions</span></span></a>`).join("")}</div>`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
   return res.status(200).send(layout({
@@ -131,19 +190,31 @@ function notFound(res: VercelResponse, domain: string) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
+  if (req.query.city) {
+    const category = String(req.query.category || "")
+    return cityPage(res, slug(String(req.query.city)), category && CATEGORIES[category] ? category : null)
+  }
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/[^a-z0-9.-]/g, "")
   if (!domain) return directory(res)
 
   const [site] = await rows(`lawp_sites?select=*&domain=eq.${encodeURIComponent(domain)}`)
   if (!site) return notFound(res, domain)
-  const products = await rows(`lawp_items?select=name,url,price,currency,image,available&domain=eq.${encodeURIComponent(domain)}&order=updated_at.desc&limit=12`)
+  const [products, vs, checksLog] = await Promise.all([
+    rows(`lawp_items?select=name,url,price,currency,image,available&domain=eq.${encodeURIComponent(domain)}&order=updated_at.desc&limit=12`),
+    site.status ? Promise.resolve(null) : compare(site, rows).catch(() => null),
+    site.native ? rows(`lawp_checks?select=action_id,ok&domain=eq.${encodeURIComponent(domain)}&created_at=gte.${encodeURIComponent(new Date(Date.now() - 30 * 86400000).toISOString())}&limit=2000`) : Promise.resolve([])
+  ])
+  // Endpoint reliability over 30 days, per action (daily checks and LAWP Checker tests).
+  const reliability = new Map<string, { ok: number, total: number }>()
+  for (const c of checksLog) { const r = reliability.get(c.action_id) || { ok: 0, total: 0 }; r.total++; if (c.ok) r.ok++; reliability.set(c.action_id, r) }
 
   const { score, label, checks } = readiness(site)
   const pages = Object.entries(site.pages || {}) as [string, any][]
   const actions = (site.actions || []) as any[]
   const home = pages[0]?.[1]
   const name = site.name || domain
-  const thin = !actions.length && !site.native
+  const thin = !actions.length && !site.native || !!site.status
+  const city = site.business?.address?.city ? String(site.business.address.city) : null
   const b = site.business
   const scoreColor = score >= 80 ? "var(--good)" : score >= 45 ? "var(--accent)" : "var(--bad)"
   const open = b ? openNow(b.opening_hours, b.address?.country) : null
@@ -151,7 +222,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? `${String(home.content).slice(0, 150)}${String(home.content).length > 150 ? "…" : ""}`
     : `What AI agents see on ${domain}: pages, actions and agent-readiness score.`
 
-  const body = `<div class="eyebrow">${esc(domain)}</div>
+  const body = `<div class="eyebrow">${esc(domain)}${site.category && !HIDDEN_CATEGORIES.has(site.category) ? ` · ${city ? `<a href="${BASE}/site/in/${esc(slug(city))}/${esc(site.category)}" style="color:inherit">${esc(CATEGORIES[site.category] || site.category)} in ${esc(city)}</a>` : esc(CATEGORIES[site.category] || site.category)}` : ""}</div>
+${site.status === "parked" ? `<div class="card" style="border-color:var(--bad)">This domain looks parked or for sale, so it's left out of Actuent search.</div>` : ""}${site.status === "duplicate" && site.duplicate_of ? `<div class="card">This domain redirects to <a href="${BASE}/site/${esc(site.duplicate_of)}">${esc(site.duplicate_of)}</a>, which is shown in search instead.</div>` : ""}
 <h1>${esc(name)}</h1>
 <p class="lead">${esc(home?.content || `Actuent has indexed ${domain}.`)}</p>
 
@@ -160,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 ${improveSection(site, domain, checks)}
 
-${actions.length ? `<h2>What AI agents can do here</h2>${actions.map(a => `<div class="card"><strong>${esc(a.name || a.id)}</strong>${a.endpoint && site.native ? ' <span class="tag hot">Executable</span>' : ""}<div class="muted">${esc(a.description || "")}</div>${(a.intent || []).slice(0, 6).map((t: string) => `<span class="tag">${esc(t)}</span>`).join("")}</div>`).join("")}` : ""}
+${actions.length ? `<h2>What AI agents can do here</h2>${actions.map(a => `<div class="card"><strong>${esc(a.name || a.id)}</strong>${a.endpoint && site.native ? ' <span class="tag hot">Executable</span>' : ""}${reliability.get(a.id) ? ` <span class="tag" title="Checks in the last 30 days">${Math.round(reliability.get(a.id)!.ok / reliability.get(a.id)!.total * 100)}% reliable · ${reliability.get(a.id)!.total} checks</span>` : ""}${a.url && !(a.endpoint && site.native) ? ` <a class="tag" href="${esc(a.url)}" rel="nofollow noopener" target="_blank">Direct link →</a>` : ""}<div class="muted">${esc(a.description || "")}</div>${(a.intent || []).slice(0, 6).map((t: string) => `<span class="tag">${esc(t)}</span>`).join("")}</div>`).join("")}` : ""}
 
 ${b ? `<h2>Business details</h2><div class="card">${b.rating ? `<div><span class="stars">★ ${esc(b.rating.value)}</span>${b.rating.best ? ` / ${esc(b.rating.best)}` : " / 5"}${b.rating.count ? ` <span class="muted">(${esc(b.rating.count)} reviews)</span>` : ""}</div>` : ""}${b.address ? `<div>${esc([b.address.street, b.address.postcode, b.address.city, b.address.country].filter(Boolean).join(", "))}</div>` : ""}${b.telephone ? `<div>☎ ${esc(b.telephone)}</div>` : ""}${b.price_range ? `<div class="muted">Price range: ${esc(b.price_range)}</div>` : ""}${open !== null ? `<div class="${open ? "ok" : "no"}">${open ? "Open now" : "Closed now"}</div>` : ""}${(b.opening_hours || []).map((h: any) => `<div class="muted">${esc(h.days.join(", "))}: ${esc(h.opens)}–${esc(h.closes)}</div>`).join("")}</div>` : ""}
 
@@ -170,13 +242,17 @@ ${pages.length > 1 ? `<h2>Pages</h2>${pages.slice(0, 12).map(([path, p]) => `<di
 
 ${products.length ? `<h2>Products</h2><div class="grid">${products.map(p => `<a class="card product" href="${esc(p.url)}" rel="nofollow noopener" target="_blank" style="text-decoration:none;color:inherit">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ""}<div><div>${esc(p.name)}</div><div class="price">${p.price != null ? `${esc(p.price)} ${esc(p.currency || "")}` : ""}</div></div></a>`).join("")}</div>` : ""}
 
+${vs ? `<h2>Compared with similar sites</h2><div class="card"><div>#${vs.rank} of ${vs.total} ${esc((CATEGORIES[vs.category] || vs.category).toLowerCase())}${vs.city ? ` in ${esc(vs.city)}` : " on Actuent"}</div>
+<div class="list" style="margin-top:8px">${vs.competitors.map(c => `<a href="${BASE}/site/${esc(c.domain)}"><span>${esc(c.name)} <span class="muted">${esc(c.domain)}</span></span><span class="tag${c.score >= 80 ? " hot" : ""}">${c.score}/100</span></a>`).join("")}</div>
+${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they have that ${esc(name)} doesn't: ${vs.they_have.slice(0, 3).map(t => `${esc(t.label.toLowerCase())} (${t.count} of ${vs.competitors.length})`).join(", ")}.</div>` : ""}</div>` : ""}
+
 <h2>For AI agents</h2><div class="card"><div class="muted">Get this site as structured JSON:</div><code>GET ${BASE}/api/search?q=${esc(domain)}</code>
 <div class="muted" style="margin-top:8px">Or connect Actuent to ChatGPT or Claude: <code>https://agents.actuent.ai/api/mcp</code></div>
 <div class="muted" style="margin-top:8px">Last updated ${site.updated_at ? esc(new Date(site.updated_at).toUTCString().slice(5, 16)) : "recently"}${site.language && site.language !== "en" ? ` · original language: ${esc(site.language)}` : ""}</div></div>
 
 <h2>Is this your site?</h2><div class="card cta"><div>Claim ${esc(domain)} to edit what AI agents see, make your actions executable, and show your score:</div>
 <div style="margin-top:10px"><a href="https://analytics.actuent.ai">Claim this site →</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
-<div class="muted" style="margin-top:10px">Badge: <code>&lt;img src="${BASE}/badge.svg?domain=${esc(domain)}"&gt;</code></div></div>`
+<div class="muted" style="margin-top:10px">Show your score: <code>&lt;script src="${BASE}/badge.js" data-domain="${esc(domain)}" async&gt;&lt;/script&gt;</code> or the image <code>${BASE}/badge.svg?domain=${esc(domain)}&amp;style=card</code></div></div>`
 
   const jsonLd = {
     "@context": "https://schema.org", "@type": "WebPage", name: `${name} — AI agent profile`, url: `${BASE}/site/${domain}`,

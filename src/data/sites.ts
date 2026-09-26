@@ -43,6 +43,7 @@ export type Site = {
   verified_owner?: boolean
   // Address, phone, opening hours etc. from the site's schema.org data
   business?: any
+  category?: string
 }
 
 export const sites: Record<string, Site> = {}
