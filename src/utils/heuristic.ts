@@ -5,7 +5,54 @@
 // the LLM can improve it later (conversion = "heuristic").
 // Copied from actuent-crawler/heuristic.ts — keep in sync.
 
-type Action = { id: string, name: string, description: string, intent: string[], input: { type: "text" | "none", required: boolean } }
+type Action = { id: string, name: string, description: string, intent: string[], input: { type: "text" | "none", required: boolean }, url?: string }
+
+// Booking and ordering systems: a link or embed to one of these means the site takes bookings
+// there, so the action gets a direct link agents can hand to the user.
+const BOOKING_PROVIDERS: { host: RegExp, name: string, kind: "book" | "order" }[] = [
+  { host: /(^|\.)calendly\.com$/, name: "Calendly", kind: "book" },
+  { host: /(^|\.)cal\.com$/, name: "Cal.com", kind: "book" },
+  { host: /(^|\.)acuityscheduling\.com$|(^|\.)as\.me$/, name: "Acuity Scheduling", kind: "book" },
+  { host: /(^|\.)setmore\.com$/, name: "Setmore", kind: "book" },
+  { host: /(^|\.)simplybook\.(me|it|net)$/, name: "SimplyBook.me", kind: "book" },
+  { host: /(^|\.)booksy\.com$/, name: "Booksy", kind: "book" },
+  { host: /(^|\.)fresha\.com$/, name: "Fresha", kind: "book" },
+  { host: /(^|\.)treatwell\.[a-z.]+$/, name: "Treatwell", kind: "book" },
+  { host: /(^|\.)vagaro\.com$/, name: "Vagaro", kind: "book" },
+  { host: /(^|\.)mindbodyonline\.com$/, name: "Mindbody", kind: "book" },
+  { host: /(^|\.)planway\.com$/, name: "Planway", kind: "book" },
+  { host: /(^|\.)timma\.(fi|se|no)$/, name: "Timma", kind: "book" },
+  { host: /(^|\.)zocdoc\.com$/, name: "Zocdoc", kind: "book" },
+  { host: /(^|\.)doctolib\.[a-z]+$/, name: "Doctolib", kind: "book" },
+  { host: /(^|\.)square\.site$|(^|\.)squareup\.com$/, name: "Square", kind: "book" },
+  { host: /(^|\.)opentable\.[a-z.]+$/, name: "OpenTable", kind: "book" },
+  { host: /(^|\.)resy\.com$/, name: "Resy", kind: "book" },
+  { host: /(^|\.)exploretock\.com$/, name: "Tock", kind: "book" },
+  { host: /(^|\.)sevenrooms\.com$/, name: "SevenRooms", kind: "book" },
+  { host: /(^|\.)thefork\.[a-z.]+$/, name: "TheFork", kind: "book" },
+  { host: /(^|\.)quandoo\.[a-z.]+$/, name: "Quandoo", kind: "book" },
+  { host: /(^|\.)resdiary\.com$/, name: "ResDiary", kind: "book" },
+  { host: /(^|\.)dinnerbooking\.com$/, name: "DinnerBooking", kind: "book" },
+  { host: /(^|\.)bookatable\.[a-z.]+$/, name: "Bookatable", kind: "book" },
+  { host: /(^|\.)wolt\.com$/, name: "Wolt", kind: "order" },
+  { host: /(^|\.)just-eat\.[a-z.]+$|(^|\.)justeat\.[a-z.]+$/, name: "Just Eat", kind: "order" },
+  { host: /(^|\.)deliveroo\.[a-z.]+$/, name: "Deliveroo", kind: "order" },
+  { host: /(^|\.)ubereats\.com$/, name: "Uber Eats", kind: "order" },
+  { host: /(^|\.)doordash\.com$/, name: "DoorDash", kind: "order" },
+]
+
+export function bookingLinks(raw: string): { provider: string, kind: "book" | "order", url: string }[] {
+  const found: { provider: string, kind: "book" | "order", url: string }[] = []
+  for (const m of raw.matchAll(/(?:href|src|data-url)=["'](https?:\/\/[^"'\s]+)["']|\((https?:\/\/[^)\s]+)\)/gi)) {
+    let u: URL
+    try { u = new URL(decode(m[1] || m[2])) } catch { continue }
+    const provider = BOOKING_PROVIDERS.find(p => p.host.test(u.hostname.toLowerCase()))
+    // Skip the provider's own homepage links ("Powered by Calendly").
+    if (!provider || u.pathname.length < 2 || found.some(f => f.provider === provider.name)) continue
+    found.push({ provider: provider.name, kind: provider.kind, url: u.toString() })
+  }
+  return found
+}
 
 const LANGUAGE_NAMES: Record<string, string> = {
   de: "German", fr: "French", es: "Spanish", it: "Italian", nl: "Dutch", pt: "Portuguese", da: "Danish", sv: "Swedish",
@@ -100,6 +147,13 @@ export function heuristicLAWP(domain: string, raw: string, isHtml: boolean): any
   const actions: Action[] = []
   const add = (a: Action) => { if (!actions.some(x => x.id === a.id) && actions.length < 6) actions.push(a) }
 
+  // A booking or ordering system (Calendly, OpenTable, Wolt…) is the most useful action of all.
+  for (const b of bookingLinks(raw)) {
+    add(b.kind === "book"
+      ? { id: "book", name: "Book", description: `Book online with ${name} (via ${b.provider})`, intent: ["book", "booking", "reserve", "appointment", "schedule", "table"], input: { type: "text", required: false }, url: b.url }
+      : { id: "order", name: "Order online", description: `Order from ${name} for delivery or pickup (via ${b.provider})`, intent: ["order", "delivery", "takeaway", "pickup", "food"], input: { type: "text", required: false }, url: b.url })
+  }
+
   // A search box on the page (HTML only) is the most useful action for agents.
   if (isHtml && (/<input[^>]+type=["']search["']/i.test(raw) || /<input[^>]+name=["'](q|s|query|search|keyword|keywords)["']/i.test(raw) || /role=["']search["']/i.test(raw))) {
     add({ id: "search", name: "Search the site", description: `Search ${name}`, intent: ["search", "find", "look up"], input: { type: "text", required: true } })
@@ -129,3 +183,18 @@ export function heuristicLAWP(domain: string, raw: string, isHtml: boolean): any
 // Infrastructure hostnames (DNS, CDN, ad and certificate servers) in the Tranco list have no
 // website for people; skip them instead of indexing empty entries.
 export const INFRASTRUCTURE = /(^|\.)(awsdns-\d+|akamai\w*|akadns\w*|edgekey|edgesuite|cloudfront|fastly\w*|gstatic|googleapis|googleusercontent|doubleclick|googlesyndication|googletagmanager|googleadservices|googlevideo|ggpht|ytimg|fbcdn|amazonaws|azureedge|azurefd|trafficmanager|msedge|windowsupdate|digicert|root-servers|gtld-servers|nstld|ocsp|\w*cdn\d*|dns\d*|ntp\d*|app-measurement|crashlytics|scorecardresearch|adnxs|nr-data|dnsowl)\./i
+
+// Adds direct booking/ordering links to any LAWP (e.g. one written by the LLM): fills in `url`
+// on an existing book/order action, or adds the action when the LAWP doesn't have one.
+export function withBookingLinks(lawp: any, raw: string): any {
+  if (!lawp || !Array.isArray(lawp.actions) || !raw) return lawp
+  const actions = [...lawp.actions]
+  for (const b of bookingLinks(raw)) {
+    const i = actions.findIndex(a => a?.id === b.kind || (b.kind === "book" && /^(book|reserve|booking|make_reservation|book_appointment)/.test(String(a?.id))))
+    if (i >= 0) { if (!actions[i].url) actions[i] = { ...actions[i], url: b.url } }
+    else actions.unshift(b.kind === "book"
+      ? { id: "book", name: "Book", description: `Book online (via ${b.provider})`, intent: ["book", "booking", "reserve", "appointment", "schedule"], input: { type: "text", required: false }, url: b.url }
+      : { id: "order", name: "Order online", description: `Order for delivery or pickup (via ${b.provider})`, intent: ["order", "delivery", "takeaway", "pickup"], input: { type: "text", required: false }, url: b.url })
+  }
+  return { ...lawp, actions }
+}

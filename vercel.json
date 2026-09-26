@@ -6,6 +6,10 @@
       "use": "@vercel/node"
     },
     {
+      "src": "api/data.ts",
+      "use": "@vercel/node"
+    },
+    {
       "src": "api/register.ts",
       "use": "@vercel/node"
     },
@@ -23,31 +27,11 @@
       }
     },
     {
-      "src": "api/stats.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/diff.ts",
-      "use": "@vercel/node"
-    },
-    {
       "src": "api/sitemap.ts",
       "use": "@vercel/node"
     },
     {
-      "src": "api/leaderboard.ts",
-      "use": "@vercel/node"
-    },
-    {
       "src": "api/suggest.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/webhook-register.ts",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "api/state.ts",
       "use": "@vercel/node"
     },
     {
@@ -56,6 +40,10 @@
     },
     {
       "src": "public/robots.txt",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "public/llms.txt",
       "use": "@vercel/static"
     },
     {
@@ -102,15 +90,15 @@
     },
     {
       "src": "/api/stats",
-      "dest": "/api/stats.ts"
+      "dest": "/api/data.ts?op=stats"
     },
     {
       "src": "/api/diff",
-      "dest": "/api/diff.ts"
+      "dest": "/api/data.ts?op=diff"
     },
     {
       "src": "/api/leaderboard",
-      "dest": "/api/leaderboard.ts"
+      "dest": "/api/data.ts?op=leaderboard"
     },
     {
       "src": "/api/suggest",
@@ -118,11 +106,15 @@
     },
     {
       "src": "/api/webhook-register",
-      "dest": "/api/webhook-register.ts"
+      "dest": "/api/data.ts?op=webhooks"
     },
     {
       "src": "/api/state",
-      "dest": "/api/state.ts"
+      "dest": "/api/data.ts?op=state"
+    },
+    {
+      "src": "/api/unsubscribe",
+      "dest": "/api/data.ts?op=unsubscribe"
     },
     {
       "src": "/state",
@@ -160,8 +152,16 @@
       "dest": "/public/robots.txt"
     },
     {
+      "src": "/llms.txt",
+      "dest": "/public/llms.txt",
+      "headers": {
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      }
+    },
+    {
       "src": "/leaderboard",
-      "dest": "/api/leaderboard.ts"
+      "dest": "/api/data.ts?op=leaderboard"
     },
     {
       "src": "/suggest",

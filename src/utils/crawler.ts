@@ -6,7 +6,7 @@ import { safeParseJSON } from "./parseAI"
 import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
 import { fetchProducts, saveProducts } from "./products"
-import { heuristicLAWP } from "./heuristic"
+import { heuristicLAWP, withBookingLinks } from "./heuristic"
 import { extractBusiness } from "./business"
 import crypto from "crypto"
 
@@ -241,6 +241,7 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     return asResult(existing)
   } else {
     site = await convertToLAWP(domain, content, tier)
+    site = withBookingLinks(site, html || content)
     // No LLM quota (or unusable output): build the LAWP from the page itself instead.
     if (!site.actions?.length) {
       const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? (html ? heuristicLAWP(domain, html, true) : null)

@@ -1,0 +1,18 @@
+# Actuent
+
+> Actuent is a search engine for AI agents. It turns any website into LAWP, structured JSON with a site's pages and the actions an agent can take (book, contact, buy), and serves it over an MCP server and a REST API. Made by localilabs.
+
+Connect an agent over MCP at https://agents.actuent.ai/api/mcp (free without a key; Pro with OAuth sign-in or an API key).
+
+## API
+
+- [Search](https://api.actuent.ai/api/search?q=running%20shoes): Ranked LAWP for any query or domain, with products, business details and open-now
+- [OpenAPI description](https://api.actuent.ai/openapi.json): The full REST API
+- [Site pages](https://api.actuent.ai/site): What AI agents see on each indexed site, with its agent-readiness score
+- [Actuent's own LAWP](https://api.actuent.ai/.well-known/lawp.json): Example of a native LAWP file with an executable action
+
+## Docs
+
+- [Docs](https://docs.actuent.ai/): MCP setup, tools, LAWP format, actions and the API
+- [LAWP specification](https://github.com/localilabs/lawp/blob/main/LAWP.md): The open format, including executable actions and structured inputs
+- [Changelog](https://docs.actuent.ai/changelog): What's new

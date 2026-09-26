@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { readiness } from "../src/utils/score"
+import { readiness, ScoreBreakdown } from "../src/utils/score"
 import { openNow } from "../src/utils/business"
 
 // Public page for every indexed site: https://api.actuent.ai/site/<domain>
@@ -50,6 +50,11 @@ h2{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:var(--accent
 .cta{border-color:var(--accent)}
 .list a{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);text-decoration:none;color:var(--soft)}
 code{background:var(--bg);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-size:12px}
+pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12px;margin-top:8px;max-height:360px}
+pre code{border:none;padding:0}
+details summary{cursor:pointer;color:var(--accent);font-size:14px;margin-top:10px}
+.fix{font-size:14px;color:var(--soft);padding:6px 0;border-bottom:1px solid var(--border)}.fix:last-child{border-bottom:none}.fix b{color:var(--text)}
+.stars{color:var(--accent)}
 @media(max-width:600px){h1{font-size:28px}.score .num{font-size:44px}}`
 
 function layout(opts: { title: string, description: string, canonical: string, image: string, noindex?: boolean, jsonLd?: object, body: string }) {
@@ -65,6 +70,38 @@ ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd
 ${opts.body}
 <p class="muted" style="margin-top:40px">Actuent is a search engine for AI agents, made by <a href="https://localilabs.com">localilabs</a>. Data is generated automatically from public web content and may be incomplete.</p>
 </main></body></html>`
+}
+
+function starterLawp(site: any, domain: string) {
+  const actions = ((site.actions || []) as any[]).map(({ endpoint, ...a }) => a)
+  if (!actions.some(a => a.id === "contact")) actions.push({
+    id: "contact", name: "Contact", description: `Send a message to ${site.name || domain}`, intent: ["contact", "message", "email", "get in touch"],
+    input: { type: "object", required: true, fields: [
+      { name: "name", type: "string", required: true }, { name: "email", type: "email", required: true }, { name: "message", type: "string", required: true }] }
+  })
+  return { lawp_version: "0.3", domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions }
+}
+
+function starterSchema(site: any, domain: string) {
+  return {
+    "@context": "https://schema.org", "@type": "LocalBusiness", name: site.name || domain, url: `https://${domain}`,
+    telephone: "+00 0000 0000", priceRange: "€€",
+    address: { "@type": "PostalAddress", streetAddress: "Street 1", postalCode: "0000", addressLocality: "City", addressCountry: "DK" },
+    openingHoursSpecification: [{ "@type": "OpeningHoursSpecification", dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"], opens: "09:00", closes: "17:00" }]
+  }
+}
+
+function improveSection(site: any, domain: string, checks: ScoreBreakdown["checks"]) {
+  const missing = checks.filter(c => !c.ok)
+  if (!missing.length) return ""
+  const gain = missing.reduce((n, c) => n + c.points, 0)
+  const json = (v: unknown) => esc(JSON.stringify(v, null, 2))
+  return `<h2>How to improve this score</h2><div class="card">
+<div class="muted" style="margin-bottom:6px">Up to +${gain} points:</div>
+${missing.map(c => `<div class="fix"><b>+${c.points} · ${esc(c.label)}</b><br>${c.fix}</div>`).join("")}
+${!site.native ? `<details><summary>Starter lawp.json for ${esc(domain)}</summary><div class="muted" style="margin-top:8px">Made from what Actuent already knows. Edit it, then publish it at <code>https://${esc(domain)}/.well-known/lawp.json</code>. Check it with the <a href="https://docs.actuent.ai/#checker">LAWP Checker</a>.</div><pre><code>${json(starterLawp(site, domain))}</code></pre></details>` : ""}
+${!site.business ? `<details><summary>Starter schema.org snippet</summary><div class="muted" style="margin-top:8px">Replace the example values, then paste into your homepage's &lt;head&gt;.</div><pre><code>${esc('<script type="application/ld+json">\n')}${json(starterSchema(site, domain))}${esc("\n</script>")}</code></pre></details>` : ""}
+</div>`
 }
 
 function ogImage(title: string, subtitle: string, tag: string) {
@@ -121,9 +158,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <div class="card score"><div class="num" style="color:${scoreColor}">${score}</div><div><strong>${esc(label)}</strong><div class="muted">Agent-readiness score out of 100</div>
 <ul class="checks" style="margin-top:8px">${checks.map(c => `<li class="${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "○"} ${esc(c.label)}</li>`).join("")}</ul></div></div>
 
+${improveSection(site, domain, checks)}
+
 ${actions.length ? `<h2>What AI agents can do here</h2>${actions.map(a => `<div class="card"><strong>${esc(a.name || a.id)}</strong>${a.endpoint && site.native ? ' <span class="tag hot">Executable</span>' : ""}<div class="muted">${esc(a.description || "")}</div>${(a.intent || []).slice(0, 6).map((t: string) => `<span class="tag">${esc(t)}</span>`).join("")}</div>`).join("")}` : ""}
 
-${b ? `<h2>Business details</h2><div class="card">${b.address ? `<div>${esc([b.address.street, b.address.postcode, b.address.city, b.address.country].filter(Boolean).join(", "))}</div>` : ""}${b.telephone ? `<div>☎ ${esc(b.telephone)}</div>` : ""}${b.price_range ? `<div class="muted">Price range: ${esc(b.price_range)}</div>` : ""}${open !== null ? `<div class="${open ? "ok" : "no"}">${open ? "Open now" : "Closed now"}</div>` : ""}${(b.opening_hours || []).map((h: any) => `<div class="muted">${esc(h.days.join(", "))}: ${esc(h.opens)}–${esc(h.closes)}</div>`).join("")}</div>` : ""}
+${b ? `<h2>Business details</h2><div class="card">${b.rating ? `<div><span class="stars">★ ${esc(b.rating.value)}</span>${b.rating.best ? ` / ${esc(b.rating.best)}` : " / 5"}${b.rating.count ? ` <span class="muted">(${esc(b.rating.count)} reviews)</span>` : ""}</div>` : ""}${b.address ? `<div>${esc([b.address.street, b.address.postcode, b.address.city, b.address.country].filter(Boolean).join(", "))}</div>` : ""}${b.telephone ? `<div>☎ ${esc(b.telephone)}</div>` : ""}${b.price_range ? `<div class="muted">Price range: ${esc(b.price_range)}</div>` : ""}${open !== null ? `<div class="${open ? "ok" : "no"}">${open ? "Open now" : "Closed now"}</div>` : ""}${(b.opening_hours || []).map((h: any) => `<div class="muted">${esc(h.days.join(", "))}: ${esc(h.opens)}–${esc(h.closes)}</div>`).join("")}</div>` : ""}
+
+${b?.offers?.length ? `<h2>Services &amp; prices</h2><div class="card">${(b.offers as any[]).slice(0, 30).map(o => `<div class="fix" style="display:flex;justify-content:space-between;gap:12px"><span>${esc(o.name)}${o.category ? ` <span class="muted">${esc(o.category)}</span>` : ""}</span><span class="price">${o.price != null ? `${esc(o.price)} ${esc(o.currency || "")}` : ""}</span></div>`).join("")}</div>` : ""}
 
 ${pages.length > 1 ? `<h2>Pages</h2>${pages.slice(0, 12).map(([path, p]) => `<div class="card"><strong>${esc(p.title || path)}</strong> <span class="muted">${esc(path)}</span><div class="muted">${esc(String(p.content || "").slice(0, 280))}</div></div>`).join("")}` : ""}
 
