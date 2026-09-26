@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Actuent API",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Actuent is a search engine for AI agents. Search any topic or domain and get websites back as LAWP: structured JSON with each site's pages and the actions a visitor can take. Free without a key (20 requests/min); Pro API keys from actuent.ai give full results and 60 requests/min.",
     "contact": {
       "name": "localilabs",
@@ -30,7 +30,7 @@
       "get": {
         "operationId": "searchWeb",
         "summary": "Search websites and products as structured LAWP",
-        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English.",
+        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link.",
         "parameters": [
           {
             "name": "q",
@@ -231,6 +231,132 @@
         "responses": {
           "200": {
             "description": "LAWP document"
+          }
+        }
+      }
+    },
+    "/badge.json": {
+      "get": {
+        "summary": "Get agent readiness score",
+        "description": "A site's agent-readiness score (0–100), label, category and each check.",
+        "operationId": "get_agent_readiness_score",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "e.g. nike.com"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Score as JSON"
+          }
+        }
+      }
+    },
+    "/badge.svg": {
+      "get": {
+        "summary": "Get badge image",
+        "description": "Live score badge. style=card for a larger card with the checks.",
+        "operationId": "get_badge_image",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "e.g. nike.com"
+          },
+          {
+            "name": "style",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "compact (default) or card"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SVG image"
+          }
+        }
+      }
+    },
+    "/leaderboard": {
+      "get": {
+        "summary": "Get leaderboard",
+        "description": "The 100 sites agents found most often in the last 7 days.",
+        "operationId": "get_leaderboard",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Ranked sites"
+          }
+        }
+      }
+    },
+    "/site/{domain}": {
+      "get": {
+        "summary": "Site page",
+        "description": "Human-readable page: what AI agents see on a site, its score, how to improve it and similar sites.",
+        "operationId": "site_page",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page"
+          }
+        }
+      }
+    },
+    "/site/in/{city}/whats-on.ics": {
+      "get": {
+        "summary": "City events calendar",
+        "description": "Upcoming events in a city as an iCalendar feed.",
+        "operationId": "city_events_ics",
+        "parameters": [
+          {
+            "name": "city",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "City slug, e.g. copenhagen"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/calendar"
+          }
+        }
+      }
+    },
+    "/llms.txt": {
+      "get": {
+        "summary": "Get llms.txt",
+        "description": "Actuent's llms.txt.",
+        "operationId": "get_llms.txt",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Markdown"
           }
         }
       }
