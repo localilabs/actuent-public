@@ -121,6 +121,10 @@
       "dest": "/api/data.ts?op=unsubscribe"
     },
     {
+      "src": "/go",
+      "dest": "/api/data.ts?op=go"
+    },
+    {
       "src": "/state",
       "dest": "/public/state.html"
     },
@@ -142,6 +146,14 @@
     {
       "src": "/sitemap-sites-([0-9]+)\\.xml",
       "dest": "/api/sitemap.ts?part=$1"
+    },
+    {
+      "src": "/site/in/([^/?]+)/whats-on\\.ics",
+      "dest": "/api/site.ts?city=$1&events=ics"
+    },
+    {
+      "src": "/site/in/([^/?]+)/whats-on/?",
+      "dest": "/api/site.ts?city=$1&events=page"
     },
     {
       "src": "/site/in/([^/?]+)/([^/?]+)/?",

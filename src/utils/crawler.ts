@@ -7,6 +7,7 @@ import { diffLAWP, saveDiff } from "./diff"
 import { fetchNativeSite } from "./native"
 import { fetchProducts, saveProducts } from "./products"
 import { heuristicLAWP, withBookingLinks } from "./heuristic"
+import { rescueLive } from "./rescue"
 import { extractBusiness } from "./business"
 import crypto from "crypto"
 
@@ -235,7 +236,8 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     site = native
   } else if (!content) {
     if (!await domainExists(domain)) return null
-    site = minimalLAWP(domain)
+    // Blocked or down on https://domain: other addresses and llms.txt before saving it minimal.
+    site = (html ? heuristicLAWP(domain, html, true) : null) ?? await rescueLive(domain, html) ?? minimalLAWP(domain)
   } else if (existing && existing.contentHash === hash && existing.actions?.length) {
     // The site hasn't changed since its last conversion: reuse it and spend no LLM tokens.
     return asResult(existing)
@@ -244,7 +246,7 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
     site = withBookingLinks(site, html || content)
     // No LLM quota (or unusable output): build the LAWP from the page itself instead.
     if (!site.actions?.length) {
-      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? (html ? heuristicLAWP(domain, html, true) : null)
+      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? (html ? heuristicLAWP(domain, html, true) : null) ?? await rescueLive(domain, html)
       if (rules) site = rules
     }
   }

@@ -4,6 +4,7 @@ import { openNow } from "../src/utils/business"
 import { CATEGORIES, HIDDEN_CATEGORIES } from "../src/utils/category"
 import { compare } from "../src/utils/competitors"
 import { slug } from "../src/utils/slug"
+import { AI_BOTS, USER_FACING } from "../src/utils/ai_bots"
 
 // Public page for every indexed site: https://api.actuent.ai/site/<domain>
 // Server-rendered for search engines. Thin (minimal) entries are marked noindex.
@@ -42,6 +43,45 @@ export async function cityList(): Promise<{ city: string, category: string, site
   return list
 }
 
+// /site/in/<city>/whats-on (and .ics): upcoming events in a city that websites publish.
+const icsText = (v: unknown) => String(v ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n")
+const icsDate = (iso: string) => new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")
+const fold = (line: string) => line.length <= 74 ? line : line.match(/.{1,74}/g)!.join("\r\n ")
+
+async function eventsPage(res: VercelResponse, citySlug: string, format: "page" | "ics") {
+  const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
+  const city = known || cityName(citySlug)
+  const pattern = encodeURIComponent(city.replace(/[*,()]/g, "").replace(/ /g, "*"))
+  const events = await rows(`lawp_events?select=name,url,domain,start_date,end_date,description,venue,price,currency,online&city=ilike.${pattern}&start_date=gte.${encodeURIComponent(new Date(Date.now() - 3 * 3600_000).toISOString())}&order=start_date.asc&limit=300`)
+  if (format === "ics") {
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//localilabs//Actuent//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${icsText(`What's on in ${city} (Actuent)`)}`, "X-PUBLISHED-TTL:PT12H"]
+    for (const e of events) {
+      lines.push("BEGIN:VEVENT", `UID:${icsText(`${e.url}#${e.start_date}`)}@actuent.ai`, `DTSTAMP:${icsDate(new Date().toISOString())}`, `DTSTART:${icsDate(e.start_date)}`,
+        ...(e.end_date ? [`DTEND:${icsDate(e.end_date)}`] : []), `SUMMARY:${icsText(e.name)}`, ...(e.venue ? [`LOCATION:${icsText(e.venue)}`] : []),
+        `URL:${e.url}`, `DESCRIPTION:${icsText([e.description, e.price != null ? `Price: ${e.price} ${e.currency || ""}` : "", `From ${e.domain}`].filter(Boolean).join("\n"))}`, "END:VEVENT")
+    }
+    lines.push("END:VCALENDAR")
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+    return res.status(200).send(lines.map(fold).join("\r\n") + "\r\n")
+  }
+  const byDay = new Map<string, any[]>()
+  for (const e of events) {
+    const day = new Date(e.start_date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })
+    if (!byDay.has(day)) byDay.set(day, []); byDay.get(day)!.push(e)
+  }
+  const ics = `${BASE}/site/in/${citySlug}/whats-on.ics`
+  const body = `<div class="eyebrow"><a href="${BASE}/site" style="color:inherit;text-decoration:none">Directory</a> · <a href="${BASE}/site/in/${esc(citySlug)}" style="color:inherit;text-decoration:none">${esc(city)}</a></div>
+<h1>What's on in ${esc(city)}</h1>
+<p class="lead">${events.length ? `${events.length} upcoming events` : "No upcoming events yet"} that venues and organisers publish on their own websites. Subscribe in your calendar: <a href="${ics.replace(/^https/, "webcal")}">add to calendar</a> · <code>${esc(ics)}</code></p>
+${[...byDay.entries()].map(([day, list]) => `<h2>${esc(day)}</h2><div class="card list">${list.map(e => `<a href="${esc(e.url)}" rel="nofollow noopener" target="_blank"><span>${esc(e.name)} <span class="muted">${esc([new Date(e.start_date).toISOString().slice(11, 16) + " UTC", e.venue].filter(Boolean).join(" · "))}</span></span><span>${e.price != null ? `<span class="tag">${esc(e.price)} ${esc(e.currency || "")}</span>` : ""}${e.online ? '<span class="tag">Online</span>' : ""}</span></a>`).join("")}</div>`).join("")}`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  return res.status(events.length ? 200 : 404).send(layout({
+    title: `What's on in ${city} — Actuent`, description: `Upcoming events in ${city}, from venues' own websites.`, canonical: `${BASE}/site/in/${citySlug}/whats-on`,
+    image: ogImage(`What's on in ${city}`, "Events from venues' own websites", `api.actuent.ai/site/in/${citySlug}`), noindex: events.length < 3, body
+  }))
+}
+
 // /site/in/<city>[/<category>]: businesses in a city from their own websites' schema.org address.
 async function cityPage(res: VercelResponse, citySlug: string, category: string | null) {
   const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
@@ -64,7 +104,7 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
     .map(([c, list]) => `${category ? "" : `<h2><a href="${BASE}/site/in/${esc(citySlug)}/${esc(c)}" style="color:inherit;text-decoration:none">${esc(CATEGORIES[c] || "Other")} (${list.length})</a></h2>`}<div class="card list">${list.slice(0, category ? 300 : 12).map(card).join("")}</div>`).join("")
   const body = `<div class="eyebrow"><a href="${BASE}/site" style="color:inherit;text-decoration:none">Directory</a> · ${category ? `<a href="${BASE}/site/in/${esc(citySlug)}" style="color:inherit;text-decoration:none">${esc(city)}</a>` : esc(city)}</div>
 <h1>${esc(label)} in ${esc(city)}</h1>
-<p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see.</p>
+<p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see. <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on in ${esc(city)} →</a></p>
 ${sections}`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
   return res.status(200).send(layout({
@@ -154,6 +194,20 @@ ${!site.business ? `<details><summary>Starter schema.org snippet</summary><div c
 </div>`
 }
 
+// Which AI crawlers and assistants the site's robots.txt blocks, with a fix.
+function aiAccessCard(access: any): string {
+  if (!access || access.robots_txt === null) return ""
+  const blocked: string[] = access.blocked || []
+  if (!blocked.length) return `<h2>AI bot access</h2><div class="card"><span class="ok">✓</span> ${access.robots_txt ? "robots.txt lets AI crawlers and assistants in." : "No robots.txt, so AI crawlers and assistants can visit."}</div>`
+  const userFacing = blocked.filter(b => USER_FACING.has(b))
+  const fix = (userFacing.length ? userFacing : blocked).map(b => `User-agent: ${b}\nAllow: /`).join("\n\n")
+  return `<h2>AI bot access</h2><div class="card">
+<div>robots.txt blocks <strong>${blocked.length}</strong> AI bot${blocked.length > 1 ? "s" : ""} from the whole site${access.blocks_everyone ? " (it blocks all bots)" : ""}:</div>
+<ul class="checks" style="margin-top:6px">${blocked.map(b => `<li class="no">✕ ${esc(b)} <span class="muted">${esc(AI_BOTS[b] || "")}</span></li>`).join("")}</ul>
+${userFacing.length ? `<div class="muted" style="margin-top:8px">${userFacing.length} of these fetch pages when someone asks an AI assistant about you. Blocking them means assistants can't read your site for customers.</div>` : ""}
+<details><summary>Let them in (add to robots.txt)</summary><div class="muted" style="margin-top:8px">${userFacing.length ? "These lines allow the search and assistant bots while leaving training bots blocked." : "Add these lines to allow them."} Put them above any <code>User-agent: *</code> group.</div><pre><code>${esc(fix)}</code></pre></details></div>`
+}
+
 function ogImage(title: string, subtitle: string, tag: string) {
   return `${BASE}/og?${new URLSearchParams({ title, subtitle, tag })}`
 }
@@ -190,6 +244,10 @@ function notFound(res: VercelResponse, domain: string) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
+  if (req.query.city && req.query.events) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8")
+    return eventsPage(res, slug(String(req.query.city)), req.query.events === "ics" ? "ics" : "page")
+  }
   if (req.query.city) {
     const category = String(req.query.category || "")
     return cityPage(res, slug(String(req.query.city)), category && CATEGORIES[category] ? category : null)
@@ -241,6 +299,8 @@ ${b?.offers?.length ? `<h2>Services &amp; prices</h2><div class="card">${(b.offe
 ${pages.length > 1 ? `<h2>Pages</h2>${pages.slice(0, 12).map(([path, p]) => `<div class="card"><strong>${esc(p.title || path)}</strong> <span class="muted">${esc(path)}</span><div class="muted">${esc(String(p.content || "").slice(0, 280))}</div></div>`).join("")}` : ""}
 
 ${products.length ? `<h2>Products</h2><div class="grid">${products.map(p => `<a class="card product" href="${esc(p.url)}" rel="nofollow noopener" target="_blank" style="text-decoration:none;color:inherit">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ""}<div><div>${esc(p.name)}</div><div class="price">${p.price != null ? `${esc(p.price)} ${esc(p.currency || "")}` : ""}</div></div></a>`).join("")}</div>` : ""}
+
+${aiAccessCard(site.ai_access)}
 
 ${vs ? `<h2>Compared with similar sites</h2><div class="card"><div>#${vs.rank} of ${vs.total} ${esc((CATEGORIES[vs.category] || vs.category).toLowerCase())}${vs.city ? ` in ${esc(vs.city)}` : " on Actuent"}</div>
 <div class="list" style="margin-top:8px">${vs.competitors.map(c => `<a href="${BASE}/site/${esc(c.domain)}"><span>${esc(c.name)} <span class="muted">${esc(c.domain)}</span></span><span class="tag${c.score >= 80 ? " hot" : ""}">${c.score}/100</span></a>`).join("")}</div>

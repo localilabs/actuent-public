@@ -3,6 +3,7 @@ import { searchSites } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
+import { trackedLink } from "../src/utils/links"
 import { openNow } from "../src/utils/business"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -114,9 +115,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
       ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
-      age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null
+      age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
+      // Give this link to the user: it lets the site's owner see visits that came from AI agents.
+      visit_url: trackedLink(`https://${r.domain}`)
     })),
-    ...(products.length ? { products } : {})
+    ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {})
   }
   if (results.length > 0 || products.length > 0) cacheSet(cacheKey, body)
   return res.status(200).json(body)

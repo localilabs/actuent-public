@@ -5,10 +5,11 @@ import state from "../src/handlers/state"
 import leaderboard from "../src/handlers/leaderboard"
 import webhooks from "../src/handlers/webhook-register"
 import unsubscribe from "../src/handlers/unsubscribe"
+import go from "../src/handlers/go"
 
 // Small read-only endpoints (and webhook registration) share one function, because the Vercel
 // Hobby plan allows 12 per project. Routes in vercel.json map each public path to ?op=.
-const OPS: Record<string, (req: VercelRequest, res: VercelResponse) => unknown> = { stats, diff, state, leaderboard, webhooks, unsubscribe }
+const OPS: Record<string, (req: VercelRequest, res: VercelResponse) => unknown> = { stats, diff, state, leaderboard, webhooks, unsubscribe, go }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const op = OPS[String(req.query.op || "")]
