@@ -99,7 +99,7 @@ function improveSection(site: any, domain: string, checks: ScoreBreakdown["check
   return `<h2>How to improve this score</h2><div class="card">
 <div class="muted" style="margin-bottom:6px">Up to +${gain} points:</div>
 ${missing.map(c => `<div class="fix"><b>+${c.points} · ${esc(c.label)}</b><br>${c.fix}</div>`).join("")}
-${!site.native ? `<details><summary>Starter lawp.json for ${esc(domain)}</summary><div class="muted" style="margin-top:8px">Made from what Actuent already knows. Edit it, then publish it at <code>https://${esc(domain)}/.well-known/lawp.json</code>. Check it with the <a href="https://docs.actuent.ai/#checker">LAWP Checker</a>.</div><pre><code>${json(starterLawp(site, domain))}</code></pre></details>` : ""}
+${!site.native ? `<details><summary>Starter lawp.json for ${esc(domain)}</summary><div class="muted" style="margin-top:8px">Made from what Actuent already knows. Edit it, then publish it at <code>https://${esc(domain)}/.well-known/lawp.json</code>. Check it with the <a href="https://docs.actuent.ai/#checker">LAWP Checker</a>, or edit it in the <a href="https://docs.actuent.ai/generator?domain=${esc(domain)}">LAWP Generator</a>.</div><pre><code>${json(starterLawp(site, domain))}</code></pre></details>` : ""}
 ${!site.business ? `<details><summary>Starter schema.org snippet</summary><div class="muted" style="margin-top:8px">Replace the example values, then paste into your homepage's &lt;head&gt;.</div><pre><code>${esc('<script type="application/ld+json">\n')}${json(starterSchema(site, domain))}${esc("\n</script>")}</code></pre></details>` : ""}
 </div>`
 }

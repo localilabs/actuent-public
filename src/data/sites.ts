@@ -19,6 +19,8 @@ export type Action = {
     // LAWP 0.3: the named fields of an "object" input, e.g. date, time, email
     fields?: InputField[]
   }
+  // Where a person can do this themselves, e.g. a booking page (LAWP 0.3)
+  url?: string
   endpoint?: { url: string, method?: "POST" | "GET" }
 }
 
