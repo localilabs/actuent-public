@@ -94,10 +94,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Products with prices run alongside site search for keyword queries ("running shoes under €100").
   const isDomainQuery = /^\S+\.[a-z]{2,}(\/\S*)?$/i.test(query.trim())
+  // Server-Timing shows where the time goes (sites vs products), for the ops page and debugging.
+  const t0 = Date.now()
+  let sitesMs = 0, productsMs = 0
   const [results, products] = await Promise.all([
-    searchSites(query.trim(), tier),
-    isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)
+    searchSites(query.trim(), tier).then(r => { sitesMs = Date.now() - t0; return r }),
+    (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
   ])
+  res.setHeader("Server-Timing", `sites;dur=${sitesMs}, products;dur=${productsMs}`)
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
