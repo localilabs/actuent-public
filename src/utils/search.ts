@@ -40,8 +40,20 @@ export function withoutHidden<T extends { category?: string }>(results: T[], que
   return WANTS_HIDDEN.test(query) ? results : results.filter(r => !r.category || !HIDDEN.has(r.category))
 }
 
+// Light stemming so "payments" matches "payment" and "restaurants" matches "restaurant"
+// (substring matching then covers the rest: "book" matches "booking").
+export function stem(word: string): string {
+  const w = word.toLowerCase()
+  if (w.length > 4 && w.endsWith("ies")) return w.slice(0, -3) + "y"
+  if (w.length > 4 && w.endsWith("es") && /(ch|sh|x|ss)es$/.test(w)) return w.slice(0, -2)
+  if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1)
+  return w
+}
+// Words that say little about what a site is ("online payments": "payments" is what matters).
+const WEAK_WORDS = new Set(["online", "software", "app", "apps", "platform", "tool", "tools", "service", "services", "best", "top", "free", "cheap", "website", "site", "near", "me", "the", "and", "for", "with"])
+
 function scoreMatch(site: Site, query: string): number {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const words = [...new Set(query.toLowerCase().split(/\s+/).filter(Boolean).map(stem))]
   let keywordScore = 0
 
   for (const word of words) {
@@ -94,7 +106,7 @@ export function explainMatch(site: Site, query: string, related = "", original =
     if (addr && JSON.stringify(addr).toLowerCase().includes(word)) places.push("address")
     return places
   }
-  const significant = (q: string) => [...new Set(q.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !EXPLAIN_SKIP.has(w)))]
+  const significant = (q: string) => [...new Set(q.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !EXPLAIN_SKIP.has(w)).map(stem))]
   const parts: string[] = []
   for (const word of significant(query)) { const w = where(word); if (w.length) parts.push(`"${word}" in ${w.join(", ")}`) }
   if (!parts.length) for (const word of significant(related).slice(0, 6)) { const w = where(word); if (w.length) { parts.push(`related term "${word}" in ${w.join(", ")}`); if (parts.length >= 2) break } }
@@ -139,7 +151,7 @@ async function searchSupabase(query: string): Promise<Site[]> {
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   return rows.map((row: any) => ({
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
-    updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined, popularity_rank: row.popularity_rank || undefined
+    updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined, popularity_rank: row.popularity_rank || undefined, rank: row.rank || undefined
   }))
 }
 
@@ -332,16 +344,21 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const rank = (found: { sites: Site[], pages: Site[] }, primaryQuery: string, expanded: string) => {
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
       // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.
-      const words = [...new Set(primaryQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2))]
+      // Generic words ("online", "software") count half: many good sites never say them.
+      const words = [...new Set(primaryQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
+      const weight = (w: string) => WEAK_WORDS.has(w) ? 0.5 : 1
+      const total = words.reduce((n, w) => n + weight(w), 0)
       const coverage = (site: Site) => {
-        if (words.length < 2) return 1
+        if (words.length < 2 || !total) return 1
         const text = `${site.name} ${site.domain} ${JSON.stringify(site.pages || {})} ${JSON.stringify(site.actions || [])} ${JSON.stringify((site as any).business?.address || {})}`.toLowerCase()
-        return words.filter(w => text.includes(w)).length / words.length
+        return words.filter(w => text.includes(w)).reduce((n, w) => n + weight(w), 0) / total
       }
       const score = (site: Site) => {
         const primary = scoreMatch(site, primaryQuery)
         const related = expanded ? scoreMatch(site, expanded) : 0
-        const base = primary > 0 ? primary + related * 0.3 : related * 0.5
+        // The database's rank (text match, every-word bonus, popularity: list_nine.sql) counts too.
+        const dbRank = Number((site as any).rank) || 0
+        const base = (primary > 0 ? primary + related * 0.3 : related * 0.5) + (primary > 0 || related > 0 ? dbRank * 6 : 0)
         const c = coverage(site)
         return base * (0.15 + 0.85 * c * c)
       }

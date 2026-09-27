@@ -120,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = {
     query,
     count: results.length,
-    results: results.map(({ contentHash, ownerKey, productsCrawledAt, ...r }: any) => ({
+    results: results.map(({ contentHash, ownerKey, productsCrawledAt, rank, ...r }: any) => ({
       ...r,
       native: !!r.native,
       executable: isExecutable(r),
