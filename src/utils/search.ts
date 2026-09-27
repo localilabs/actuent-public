@@ -23,9 +23,20 @@ const DOMAIN_AUTHORITY: Record<string, number> = {
   "wise.com": 62, "revolut.com": 61, "monzo.com": 60
 }
 
-function getDomainAuthority(domain: string): number {
+// Popularity: the site's Tranco rank (top 1M sites, set weekly by the popularity job) on a log
+// scale — top 100 ≈ 100, top 1K ≈ 80, top 10K ≈ 60, top 100K ≈ 40, top 1M ≈ 20; unranked 10.
+// The hand-picked table above is the fallback before ranks are loaded.
+function getDomainAuthority(domain: string, rank?: number | null): number {
+  if (rank && rank > 0) return Math.max(20, Math.min(100, Math.round(140 - 20 * Math.log10(rank))))
   const root = domain.replace(/^www\./, "").split("/")[0]
-  return DOMAIN_AUTHORITY[root] || 20
+  return DOMAIN_AUTHORITY[root] || 10
+}
+
+// Adult and gambling sites stay out of results unless the search is clearly for them.
+const HIDDEN = new Set(["adult", "gambling"])
+const WANTS_HIDDEN = /\b(porn|xxx|sex|nsfw|adult|escort|casino|betting|gambling|poker|slots?)\b/i
+export function withoutHidden<T extends { category?: string }>(results: T[], query: string): T[] {
+  return WANTS_HIDDEN.test(query) ? results : results.filter(r => !r.category || !HIDDEN.has(r.category))
 }
 
 function scoreMatch(site: Site, query: string): number {
@@ -59,7 +70,7 @@ function scoreMatch(site: Site, query: string): number {
   if (actionCount >= 3) lawpBoost += 2
   if (avgIntent >= 5) lawpBoost += 1
 
-  const authorityBoost = (getDomainAuthority(site.domain) / 100) * 5
+  const authorityBoost = (getDomainAuthority(site.domain, (site as any).popularity_rank) / 100) * 8
   // Sites publishing their own LAWP rank higher, which gives sites a reason to adopt it.
   const nativeBoost = site.native ? 3 : 0
 
@@ -100,7 +111,7 @@ async function searchSupabase(query: string): Promise<Site[]> {
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   return rows.map((row: any) => ({
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
-    updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined
+    updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined, popularity_rank: row.popularity_rank || undefined
   }))
 }
 
@@ -125,7 +136,7 @@ async function searchPages(query: string): Promise<Site[]> {
         }
       }
       if (score === 0) return null
-      const authorityBoost = (getDomainAuthority(row.domain) / 100) * 5
+      const authorityBoost = (getDomainAuthority(row.domain, row.popularity_rank) / 100) * 8
       return { row, score: score + authorityBoost }
     })
     .filter(Boolean)

@@ -44,6 +44,7 @@ export type Site = {
   // Address, phone, opening hours etc. from the site's schema.org data
   business?: any
   category?: string
+  popularity_rank?: number
 }
 
 export const sites: Record<string, Site> = {}
