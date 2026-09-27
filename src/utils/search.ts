@@ -1,3 +1,4 @@
+import { translateKeywords } from "./multilingual"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, Tier } from "./llm"
@@ -327,16 +328,22 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
     const expandedSearch = expanding.then(async ({ english, terms }) => {
       if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null
+      // The original words stay in, so sites in the query's own language still match.
       const fullQuery = [english !== query ? `${query} ${english}` : query, terms.join(" ")].filter(Boolean).join(" ")
       return { english, expanded: terms.join(" "), found: await both(fullQuery) }
     })
-    const plainAscii = /^[\x20-\x7e]+$/.test(query)
-    const plain = plainAscii ? await both(query) : { sites: [], pages: [] }
-    const enough = plainAscii && plain.sites.length + plain.pages.length >= 3
+    // Other languages: common words are translated instantly from a built-in dictionary
+    // ("zahnarzt berlin" → "dentist berlin"), so the plain search already runs in English. A query
+    // that looks foreign but the dictionary couldn't translate waits for the LLM translation.
+    const ml = translateKeywords(query)
+    const plainQuery = ml.query
+    const searchable = ml.english.length > 0 || /^[\x20-\x7e]+$/.test(query)
+    const plain = searchable ? await both(plainQuery) : { sites: [], pages: [] }
+    const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
     const done = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : 9000))])
     mark("wait", tw)
-    if (done === "late" || done === null) return rank(plain, query, "")
+    if (done === "late" || done === null) return rank(plain, plainQuery, "")
     return rank({ sites: [...plain.sites, ...done.found.sites], pages: [...plain.pages, ...done.found.pages] }, done.english, done.expanded)
   }
 
