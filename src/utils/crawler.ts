@@ -11,6 +11,7 @@ import { rescueLive } from "./rescue"
 import { extractBusiness } from "./business"
 import crypto from "crypto"
 import { fetchPublic } from "./safe-fetch"
+import { cleanPageText, cleanPages } from "./boilerplate"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -33,7 +34,7 @@ function minimalLAWP(domain: string, content: string = ""): Site {
   return {
     domain,
     name: name.charAt(0).toUpperCase() + name.slice(1),
-    pages: { "/": { title: domain, content: cleanScraped(content).slice(0, 200) || `Website at ${domain}` } },
+    pages: { "/": { title: domain, content: cleanPageText(cleanScraped(content)).slice(0, 200) || `Website at ${domain}` } },
     actions: []
   }
 }
@@ -176,7 +177,7 @@ export async function crawlPage(domain: string, path: string, tier: Tier = "free
   if (!content) return null
 
   let title = path.replace("/", "") || domain
-  let summary = content.slice(0, 200)
+  let summary = cleanPageText(cleanScraped(content)).slice(0, 200)
   let actions: any[] = []
 
   try {
@@ -255,6 +256,8 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
   }
 
   if (html && !site.business) { const business = extractBusiness(html); if (business) site = { ...site, business } }
+  // Crawled text loses cookie banners, menus and copyright lines; a site's own LAWP is left as written.
+  if (!native) site = { ...site, pages: cleanPages(site.pages) || site.pages }
 
   if (existing) {
     const changes = diffLAWP(existing, site)
