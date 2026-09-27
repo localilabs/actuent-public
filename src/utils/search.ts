@@ -59,7 +59,8 @@ function scoreMatch(site: Site, query: string): number {
 
   for (const word of words) {
     if (site.name.toLowerCase().includes(word)) keywordScore += 3
-    if (site.domain.toLowerCase().includes(word)) keywordScore += 2
+    // Keyword-named domains ("projectmanager.com") shouldn't outrank the products people mean.
+    if (site.domain.toLowerCase().includes(word)) keywordScore += 1
     for (const page of Object.values(site.pages)) {
       if (page.title.toLowerCase().includes(word)) keywordScore += 2
       if (page.content.toLowerCase().includes(word)) keywordScore += 1
@@ -84,7 +85,7 @@ function scoreMatch(site: Site, query: string): number {
   if (actionCount >= 3) lawpBoost += 2
   if (avgIntent >= 5) lawpBoost += 1
 
-  const authorityBoost = (getDomainAuthority(site.domain, (site as any).popularity_rank) / 100) * 8
+  const authorityBoost = (getDomainAuthority(site.domain, (site as any).popularity_rank) / 100) * 12
   // Sites publishing their own LAWP rank higher, which gives sites a reason to adopt it.
   const nativeBoost = site.native ? 3 : 0
 
