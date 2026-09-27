@@ -5,6 +5,23 @@
 -- never looked at: "accounting software" missed QuickBooks, Xero and FreshBooks although their
 -- descriptions say exactly that. Candidates are now the best-known matching sites (Tranco rank),
 -- and popularity adds a small bonus to the text rank.
+-- Local search: the business's city and type ("hairdresser", "restaurant") and the site's category
+-- become searchable, so "barber amsterdam" finds barbers whose address is in Amsterdam even when
+-- their homepage never says it. Rebuilds the column once (about a minute); skipped on re-runs.
+do $$ begin
+  if not exists (select 1 from information_schema.columns where table_name = 'lawp_sites' and column_name = 'search_text' and generation_expression like '%business%') then
+    alter table lawp_sites drop column if exists search_text;
+    alter table lawp_sites add column search_text tsvector generated always as (
+      setweight(to_tsvector('english', coalesce(name,'') || ' ' || coalesce(domain,'')), 'A') ||
+      setweight(to_tsvector('english', coalesce(jsonb_path_query_array(pages::jsonb, '$.*.title')::text,'')), 'B') ||
+      setweight(to_tsvector('english', coalesce(jsonb_path_query_array(actions::jsonb, '$[*].intent')::text,'')), 'B') ||
+      setweight(to_tsvector('english', replace(coalesce(category,''), '_', ' ') || ' ' || coalesce(business->>'type','') || ' ' || coalesce(business->'address'->>'city','')), 'B') ||
+      setweight(to_tsvector('english', coalesce(jsonb_path_query_array(pages::jsonb, '$.*.content')::text,'')), 'C')
+    ) stored;
+  end if;
+end $$;
+create index if not exists lawp_sites_search_idx on lawp_sites using gin (search_text);
+
 create index if not exists lawp_sites_popularity_idx on lawp_sites (popularity_rank) where status is null;
 
 drop function if exists search_lawp_sites(text, int);
