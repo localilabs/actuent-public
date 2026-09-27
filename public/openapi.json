@@ -30,7 +30,7 @@
       "get": {
         "operationId": "searchWeb",
         "summary": "Search websites and products as structured LAWP",
-        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link.",
+        "description": "Search by topic (\"barber amsterdam\", \"running shoes under \u20ac100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link.",
         "parameters": [
           {
             "name": "q",
@@ -55,6 +55,43 @@
           },
           "429": {
             "description": "Rate limit exceeded. See Retry-After and X-RateLimit-* headers."
+          },
+          "503": {
+            "description": "Actuent is very busy and couldn't finish the request. Wait Retry-After seconds and try again.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "retry_after_seconds": {
+                      "type": "integer"
+                    },
+                    "notices": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Notice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing query, or longer than 500 characters"
           }
         }
       },
@@ -92,6 +129,43 @@
           },
           "429": {
             "description": "Rate limit exceeded"
+          },
+          "503": {
+            "description": "Actuent is very busy and couldn't finish the request. Wait Retry-After seconds and try again.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "retry_after_seconds": {
+                      "type": "integer"
+                    },
+                    "notices": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Notice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing query, or longer than 500 characters"
           }
         }
       }
@@ -238,7 +312,7 @@
     "/badge.json": {
       "get": {
         "summary": "Get agent readiness score",
-        "description": "A site's agent-readiness score (0–100), label, category and each check.",
+        "description": "A site's agent-readiness score (0\u2013100), label, category and each check.",
         "operationId": "get_agent_readiness_score",
         "parameters": [
           {
@@ -549,8 +623,49 @@
               "$ref": "#/components/schemas/Product"
             },
             "description": "Products with prices, for shopping queries"
+          },
+          "message": {
+            "type": "string",
+            "description": "The first notice's message, when there is one. Show it to the user."
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            }
           }
         }
+      },
+      "Notice": {
+        "type": "object",
+        "description": "Why results are limited or empty, in plain English. See https://docs.actuent.ai/#errors",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "busy_limited_results",
+              "busy_saved_copy",
+              "busy_no_results",
+              "busy",
+              "temporarily_unavailable",
+              "site_unreachable",
+              "robots_blocked",
+              "no_results"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Written for people: pass it on to the user."
+          },
+          "retry_after_seconds": {
+            "type": "integer",
+            "description": "Trying again after this long should give a better answer."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
       }
     }
   }

@@ -14,5 +14,6 @@ Connect an agent over MCP at https://agents.actuent.ai/api/mcp (free without a k
 ## Docs
 
 - [Docs](https://docs.actuent.ai/): MCP setup, tools, LAWP format, actions and the API
+- [Errors & busy times](https://docs.actuent.ai/#errors): Responses explain limited or empty results in a `message`; pass it on to the user, and wait `retry_after_seconds` before retrying
 - [LAWP specification](https://github.com/localilabs/lawp/blob/main/LAWP.md): The open format, including executable actions and structured inputs
 - [Changelog](https://docs.actuent.ai/changelog): What's new
