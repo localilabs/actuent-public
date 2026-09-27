@@ -331,10 +331,18 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q), searchPages(q)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
     const rank = (found: { sites: Site[], pages: Site[] }, primaryQuery: string, expanded: string) => {
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
+      // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.
+      const words = [...new Set(primaryQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2))]
+      const coverage = (site: Site) => {
+        if (words.length < 2) return 1
+        const text = `${site.name} ${site.domain} ${JSON.stringify(site.pages || {})} ${JSON.stringify(site.actions || [])} ${JSON.stringify((site as any).business?.address || {})}`.toLowerCase()
+        return words.filter(w => text.includes(w)).length / words.length
+      }
       const score = (site: Site) => {
         const primary = scoreMatch(site, primaryQuery)
         const related = expanded ? scoreMatch(site, expanded) : 0
-        return primary > 0 ? primary + related * 0.3 : related * 0.5
+        const base = primary > 0 ? primary + related * 0.3 : related * 0.5
+        return base * (0.4 + 0.6 * coverage(site))
       }
       const ranked = [...Object.values(sites), ...found.sites]
         .map(site => ({ site, score: score(site) }))
