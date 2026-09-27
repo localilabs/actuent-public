@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { searchSites } from "../src/utils/search"
-import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash } from "../src/utils/limits"
+import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
@@ -55,10 +55,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The MCP server rate limits its own users, so its calls skip this limit.
   if (!isInternalCall(req.headers["x-actuent-internal"])) {
     const ip = (req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim()
+    if (await isBlocked(ip, tier === "pro" ? apiKey : undefined)) { res.setHeader("Cache-Control", "no-store"); return res.status(403).json(BLOCKED_MESSAGE) }
     const limitKey = tier === "pro" ? `search:key:${keyHash(apiKey)}` : `search:ip:${ip}`
     const limit = await rateLimit(limitKey, maxPerMinute)
     rateLimitHeaders(res, limit)
     if (limit.limited) {
+      await strike(ip, "search")
       res.setHeader("Cache-Control", "no-store")
       return res.status(429).json({
         error: "Rate limit exceeded",

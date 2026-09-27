@@ -8,3 +8,14 @@ create table if not exists query_expansions (
   updated_at timestamptz not null default now()
 );
 alter table query_expansions enable row level security;
+
+-- 15. Abuse protection: blocked IPs (salted hashes) and API keys (hashes), until a given time.
+create table if not exists blocked (
+  value text primary key,           -- ipHash(ip) or keyHash(key)
+  kind text not null,               -- 'ip' | 'key'
+  reason text,
+  until timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists blocked_until_idx on blocked (until);
+alter table blocked enable row level security;

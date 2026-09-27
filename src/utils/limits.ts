@@ -94,3 +94,41 @@ export function rateLimitHeaders(res: { setHeader(name: string, value: string): 
   res.setHeader("X-RateLimit-Reset", String(info.reset))
   if (info.limited) res.setHeader("Retry-After", String(info.reset))
 }
+
+// ----- Abuse protection -----
+// IPs are only ever stored as salted hashes. A client that keeps hitting its rate limit (30+
+// refused requests in a minute) is blocked for an hour; blocks can also be added by hand in the
+// blocked table. Checked on search, MCP, the LAWP checker and /go.
+
+export function ipHash(ip: string): string {
+  return crypto.createHash("sha256").update(`actuent-ip:${ip}`).digest("hex").slice(0, 32)
+}
+
+const blockCache = new Map<string, { blocked: boolean, expires: number }>()
+
+export async function isBlocked(ip: string, key?: string): Promise<boolean> {
+  const values = [ipHash(ip), ...(key ? [keyHash(key)] : [])]
+  const fresh = values.map(v => blockCache.get(v)).filter(c => c && c.expires > Date.now())
+  if (fresh.length === values.length) return fresh.some(c => c!.blocked)
+  try {
+    const list = encodeURIComponent(values.map(v => `"${v}"`).join(","))
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/blocked?select=value&value=in.(${list})&until=gt.${encodeURIComponent(new Date().toISOString())}`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(2000) })
+    const hits = new Set<string>(r.ok ? (await r.json()).map((x: any) => x.value) : [])
+    for (const v of values) blockCache.set(v, { blocked: hits.has(v), expires: Date.now() + 60000 })
+    return hits.size > 0
+  } catch { return false }
+}
+
+// Call when a request was refused for its rate limit.
+export async function strike(ip: string, where: string): Promise<void> {
+  try {
+    if (!await isRateLimited(`strikes:${ipHash(ip)}`, 30)) return
+    await fetch(`${SUPABASE_URL}/rest/v1/blocked?on_conflict=value`, {
+      method: "POST", headers: { ...SUPABASE_HEADERS, "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ kind: "ip", value: ipHash(ip), reason: `Kept exceeding the rate limit on ${where}`, until: new Date(Date.now() + 3600_000).toISOString(), created_at: new Date().toISOString() })
+    })
+    blockCache.set(ipHash(ip), { blocked: true, expires: Date.now() + 60000 })
+  } catch {}
+}
+
+export const BLOCKED_MESSAGE = { error: "Blocked for too many requests. Try again in an hour, or email support@localilabs.com if this is a mistake." }
