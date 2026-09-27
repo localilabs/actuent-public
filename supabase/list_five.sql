@@ -1,4 +1,5 @@
 -- List five (2026-09-26). Run once in Supabase → SQL Editor, after list_four.sql.
+-- Safe to run again.
 -- Service/menu search, AI bot access checks and visits sent by Actuent. The code works before this
 -- runs; features switch on after. Nothing here changes updated_at.
 

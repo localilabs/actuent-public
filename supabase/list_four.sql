@@ -1,7 +1,16 @@
--- List four (2026-09-26). Run once in Supabase → SQL Editor, AFTER next_list.sql.
+-- List four (2026-09-26, fixed 2026-09-27). Run in Supabase → SQL Editor, AFTER next_list.sql.
+-- Safe to run again: everything is "if not exists" / "create or replace".
 -- Categories, city directories, parked/duplicate flags, back-in-stock alerts and endpoint
 -- reliability. The code works before this runs; features switch on after.
 -- Nothing here changes updated_at, so the reconvert job's order is unaffected.
+
+-- Columns first: the functions below use them (Postgres checks function bodies when they're created).
+-- 14. Parked domains and duplicates (brand.co.uk → brand.com) are flagged, not deleted, and left
+-- out of search. status: 'parked' | 'duplicate'.
+alter table lawp_sites add column if not exists status text;
+alter table lawp_sites add column if not exists duplicate_of text;
+alter table lawp_sites add column if not exists checked_at timestamptz;
+create index if not exists lawp_sites_checked_idx on lawp_sites (checked_at nulls first);
 
 -- 11. Categories (restaurant, hair_beauty, shop_fashion, software…), set by the categorize job.
 alter table lawp_sites add column if not exists category text;
@@ -20,12 +29,6 @@ language sql stable as $$
   limit 5000
 $$;
 
--- 14. Parked domains and duplicates (brand.co.uk → brand.com) are flagged, not deleted, and left
--- out of search. status: 'parked' | 'duplicate'.
-alter table lawp_sites add column if not exists status text;
-alter table lawp_sites add column if not exists duplicate_of text;
-alter table lawp_sites add column if not exists checked_at timestamptz;
-create index if not exists lawp_sites_checked_idx on lawp_sites (checked_at nulls first);
 
 drop function if exists search_lawp_sites(text, int);
 create or replace function search_lawp_sites(q text, max_results int default 50)
