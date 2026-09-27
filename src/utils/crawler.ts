@@ -10,6 +10,7 @@ import { heuristicLAWP, withBookingLinks } from "./heuristic"
 import { rescueLive } from "./rescue"
 import { extractBusiness } from "./business"
 import crypto from "crypto"
+import { fetchPublic } from "./safe-fetch"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -121,11 +122,11 @@ async function scrapeWithJina(url: string): Promise<string | null> {
 
 async function scrapeBasic(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchPublic(url, {
       headers: { "User-Agent": USER_AGENT },
       signal: AbortSignal.timeout(8000)
     })
-    if (!res.ok) return null
+    if (!res?.ok) return null
     const html = await res.text()
     return html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -206,8 +207,8 @@ async function domainExists(domain: string): Promise<boolean> {
 // domains never end up in the index. Real sites that block us still get minimal LAWP.
 async function fetchHtml(domain: string): Promise<string | null> {
   try {
-    const r = await fetch(`https://${domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(6000) })
-    if (!r.ok || !(r.headers.get("content-type") || "").includes("html")) return null
+    const r = await fetchPublic(`https://${domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(6000) })
+    if (!r?.ok || !(r.headers.get("content-type") || "").includes("html")) return null
     return (await r.text()).slice(0, 400_000)
   } catch { return null }
 }

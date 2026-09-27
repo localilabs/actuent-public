@@ -1,3 +1,4 @@
+import { fetchPublic } from "./safe-fetch"
 // robots.txt support (RFC 9309). Actuent obeys rules for the "Actuent" user agent, or "*" if a
 // site has none, and identifies itself with a link to https://docs.actuent.ai/bot.
 
@@ -44,8 +45,10 @@ async function rulesFor(host: string): Promise<Rule[] | "disallow-all"> {
   if (cached && cached.expires > Date.now()) return cached.rules
   let rules: Rule[] | "disallow-all" = []
   try {
-    const res = await fetch(`https://${host}/robots.txt`, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(4000) })
-    if (res.ok) rules = parse((await res.text()).slice(0, 500_000))
+    const res = await fetchPublic(`https://${host}/robots.txt`, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(4000) })
+    // A host that doesn't resolve to a public address is never crawled.
+    if (!res) rules = "disallow-all"
+    else if (res.ok) rules = parse((await res.text()).slice(0, 500_000))
     else if (res.status >= 500) rules = "disallow-all" // RFC 9309: unreachable robots.txt means don't crawl
   } catch {
     rules = [] // network failure: the page fetch will fail too if the site is down

@@ -1,4 +1,5 @@
 import { heuristicLAWP } from "./heuristic"
+import { fetchPublic } from "./safe-fetch"
 
 // Live-search version of actuent-crawler/rescue.ts: before a site is saved as minimal ("Website
 // at …"), try the other addresses of its homepage (www., http://) and its llms.txt, then build the
@@ -8,8 +9,8 @@ const UA = "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)"
 
 async function get(url: string, ms: number): Promise<{ text: string, type: string } | null> {
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(ms) })
-    return r.ok ? { text: (await r.text()).slice(0, 300_000), type: r.headers.get("content-type") || "" } : null
+    const r = await fetchPublic(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(ms) })
+    return r?.ok ? { text: (await r.text()).slice(0, 300_000), type: r.headers.get("content-type") || "" } : null
   } catch { return null }
 }
 

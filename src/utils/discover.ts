@@ -4,6 +4,7 @@
 // Then normalised: the English translation is used when the document is in another language, and
 // extra page files (more_pages) are merged in.
 // Copied from actuent-crawler/discover.ts — keep in sync.
+import { fetchPublic } from "./safe-fetch"
 
 export type Discovery = "well-known" | "link-header" | "html-link" | "robots"
 
@@ -14,8 +15,8 @@ async function getJson(url: string): Promise<any | null> {
   try {
     const u = new URL(url)
     if (u.protocol !== "https:") return null
-    const res = await fetch(u, { headers: { "Accept": "application/json", "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(5000) })
-    if (!res.ok) return null
+    const res = await fetchPublic(u.toString(), { headers: { "Accept": "application/json", "User-Agent": UA }, signal: AbortSignal.timeout(5000) }, 0)
+    if (!res?.ok) return null
     const text = await res.text()
     return text.length > 1_000_000 ? null : JSON.parse(text)
   } catch { return null }
@@ -29,7 +30,8 @@ function valid(doc: any, domain: string): boolean {
 
 async function linked(domain: string): Promise<{ url: string, via: Discovery } | null> {
   try {
-    const res = await fetch(`https://${domain}/`, { headers: { "Accept": "text/html", "User-Agent": UA }, redirect: "follow", signal: AbortSignal.timeout(6000) })
+    const res = await fetchPublic(`https://${domain}/`, { headers: { "Accept": "text/html", "User-Agent": UA }, signal: AbortSignal.timeout(6000) })
+    if (!res) throw new Error("not public")
     if (bare(new URL(res.url).hostname) === bare(domain)) {
       const header = (res.headers.get("link") || "").split(/,(?=\s*<)/).map(p => p.match(/<([^>]+)>\s*;(.*)$/)).find(m => m && /rel\s*=\s*"?lawp"?/i.test(m[2]))
       if (header) return { url: new URL(header[1], res.url).toString(), via: "link-header" }
@@ -42,8 +44,8 @@ async function linked(domain: string): Promise<{ url: string, via: Discovery } |
     }
   } catch {}
   try {
-    const res = await fetch(`https://${domain}/robots.txt`, { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(4000) })
-    const line = res.ok ? (await res.text()).slice(0, 200_000).match(/^\s*LAWP\s*:\s*(\S+)/mi) : null
+    const res = await fetchPublic(`https://${domain}/robots.txt`, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(4000) }, 0)
+    const line = res?.ok ? (await res.text()).slice(0, 200_000).match(/^\s*LAWP\s*:\s*(\S+)/mi) : null
     if (line) return { url: line[1], via: "robots" }
   } catch {}
   return null

@@ -1,6 +1,7 @@
 import { Site } from "../data/sites"
 import { USER_AGENT } from "./robots"
 import { discoverLawp, normalizeLawp } from "./discover"
+import { fetchPublic } from "./safe-fetch"
 
 // A site's own LAWP (LAWP 0.4 discovery: /.well-known/lawp.json, or a file its homepage or robots.txt
 // links to). Sites that publish one are "native": their LAWP is used as-is instead of crawling, and
@@ -27,12 +28,11 @@ export async function fetchNativeSite(domain: string, html?: string | null): Pro
 async function wellKnownOnly(domain: string): Promise<any | null> {
   for (const host of domain.startsWith("www.") ? [domain] : [domain, `www.${domain}`]) {
     try {
-      const res = await fetch(`https://${host}/.well-known/lawp.json`, {
+      const res = await fetchPublic(`https://${host}/.well-known/lawp.json`, {
         headers: { "Accept": "application/json", "User-Agent": USER_AGENT },
-        redirect: "manual",
         signal: AbortSignal.timeout(5000)
-      })
-      if (!res.ok) continue
+      }, 0)
+      if (!res?.ok) continue
       const text = await res.text()
       if (text.length > 1_000_000) continue
       const doc = JSON.parse(text)

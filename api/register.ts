@@ -5,6 +5,7 @@ import { promises as dns } from "dns"
 import { discoverLawp } from "../src/utils/discover"
 import { keyHash, verifyApiKey } from "../src/utils/limits"
 import { sendEmail, welcomeEmail } from "../src/utils/email"
+import { fetchPublic } from "../src/utils/safe-fetch"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -27,7 +28,8 @@ async function ownsDomain(apiKey: string, domain: string): Promise<Proof | null>
     if (records.some(parts => parts.join("") === `actuent-site-verification=${token}`)) return "dns"
   } catch {}
   try {
-    const res = await fetch(`https://${domain}/`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html" }, redirect: "follow", signal: AbortSignal.timeout(6000) })
+    const res = await fetchPublic(`https://${domain}/`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html" }, signal: AbortSignal.timeout(6000) })
+    if (!res) throw new Error("not public")
     // Redirects are fine (e.g. to www.), as long as they stay on the same site.
     const finalHost = new URL(res.url).hostname.replace(/^www\./, "")
     if (res.ok && finalHost === domain.replace(/^www\./, "")) {

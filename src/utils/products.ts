@@ -1,6 +1,7 @@
 import { complete, Tier } from "./llm"
 import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
+import { fetchPublic } from "./safe-fetch"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
 //   • Shopify stores publish /products.json and /meta.json (currency) publicly.
@@ -22,8 +23,8 @@ export type Item = {
 
 async function getJson(url: string, timeoutMs = 6000): Promise<any | null> {
   try {
-    const r = await fetch(url, { headers: { "User-Agent": USER_AGENT, "Accept": "application/json" }, signal: AbortSignal.timeout(timeoutMs) })
-    if (!r.ok || !(r.headers.get("content-type") || "").includes("json")) return null
+    const r = await fetchPublic(url, { headers: { "User-Agent": USER_AGENT, "Accept": "application/json" }, signal: AbortSignal.timeout(timeoutMs) })
+    if (!r?.ok || !(r.headers.get("content-type") || "").includes("json")) return null
     return await r.json()
   } catch { return null }
 }
