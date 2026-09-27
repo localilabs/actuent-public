@@ -34,7 +34,8 @@ function stripReaderMarkup(text: string): string {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/https?:\/\/\S+/g, " ")
-    .replace(/(^|\s)[#*_>`|=-]{1,6}(?=\s|$)/g, " ")
+    .replace(/^\s*[-*+]\s+/gm, " ")
+    .replace(/(^|\s)(#{1,6}|\*{1,3}|>|`{1,3}|={2,}|-{3,}|_{2,})(?=\s|$)/g, " ")
     .replace(/(\*\*|__)(.+?)\1/g, "$2")
 }
 
