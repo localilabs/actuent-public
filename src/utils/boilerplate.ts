@@ -21,6 +21,9 @@ const SENTENCE_NOISE = [
   /\byour browser (is|does not)\b.*\b(support|outdated)/i
 ]
 
+// Accessibility and navigation chrome that scraping glues into the first sentence.
+const INLINE_NOISE = /\b(skip to (the )?(main )?content|skip to navigation|skip to footer|enable accessibility for (low vision|the visually impaired|visually impaired|blind users|keyboard navigation|screen readers?|[a-z]+)|open the accessibility menu|accessibility (menu|statement|tools)|toggle (navigation|menu)|open menu|close menu|main menu|back to top)\b[.:]?/gi
+
 // Consent-banner buttons, which scraping glues onto the next real sentence.
 const BUTTONS = /\b(no,? thanks|yes,? that[’']?s fine|(accept|reject|allow|decline) all( cookies)?|accept cookies|ok(ay)?,? got it|manage (cookie )?preferences|cookie settings)\b[.!]?/gi
 
@@ -43,7 +46,7 @@ export function cleanPageText(text: string): string {
   if (!text) return text
   const original = stripReaderMarkup(text).replace(/\s+/g, " ").trim()
   // Banner buttons only go when the text also has a consent banner, so ordinary uses stay.
-  let t = /cookie|consent/i.test(original) ? original.replace(BUTTONS, " ") : original
+  let t = (/cookie|consent/i.test(original) ? original.replace(BUTTONS, " ") : original).replace(INLINE_NOISE, " ")
   // Drop runs of menu words: many short Capitalised tokens without verbs ("Home Shop About Contact Login…").
   t = t.replace(/\b((?:[A-Z][a-z]{1,12} ){6,})(?=[A-Z])/g, m => (m.split(" ").length > 10 ? "" : m)).replace(/\s+/g, " ").trim()
   const sentences = t.split(/(?<=[.!?])\s+(?=[A-Z0-9"“(©])/)
