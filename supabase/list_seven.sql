@@ -98,3 +98,21 @@ language sql stable as $$
   order by 14 desc, i.price_eur asc nulls last
   limit max_results
 $$;
+
+-- 8. Several API keys per account (made in Analytics → Account), labelled and revocable. Extra keys
+-- point to the account's main key and stop working when it does (e.g. the subscription ends).
+alter table api_keys add column if not exists label text;
+alter table api_keys add column if not exists key_hint text;
+alter table api_keys add column if not exists parent_key_hash text;
+alter table api_keys add column if not exists created_at timestamptz default now();
+create table if not exists key_events (
+  id bigserial primary key,
+  email text not null,
+  event text not null,              -- 'created' | 'revoked'
+  key_hint text,
+  label text,
+  ip_hash text,
+  created_at timestamptz not null default now()
+);
+create index if not exists key_events_email_idx on key_events (email, created_at desc);
+alter table key_events enable row level security;

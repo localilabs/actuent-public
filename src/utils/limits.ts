@@ -26,6 +26,18 @@ export async function verifyApiKey(key: string): Promise<boolean> {
   const cached = keyCache.get(key)
   if (cached && cached.expires > Date.now()) return cached.valid
   try {
+    // Extra keys made in Analytics (list_seven.sql) are only valid while their account's main key is.
+    const withParent = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id,parent_key_hash&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
+    if (withParent.ok) {
+      const [row] = await withParent.json()
+      let valid = !!row
+      if (row?.parent_key_hash) {
+        const p = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${row.parent_key_hash}&active=eq.true`, { headers: SUPABASE_HEADERS })
+        valid = p.ok && (await p.json()).length > 0
+      }
+      keyCache.set(key, { valid, expires: Date.now() + 60000 })
+      return valid
+    }
     let r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
     // Before big_list.sql has run there's no key_hash column: fall back to the plain key.
     if (!r.ok) r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key=eq.${encodeURIComponent(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
