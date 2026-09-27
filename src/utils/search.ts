@@ -39,8 +39,12 @@ function getDomainAuthority(domain: string, rank?: number | null): number {
 // Adult and gambling sites stay out of results unless the search is clearly for them.
 const HIDDEN = new Set(["adult", "gambling"])
 const WANTS_HIDDEN = /\b(porn|xxx|sex|nsfw|adult|escort|casino|betting|gambling|poker|slots?)\b/i
-export function withoutHidden<T extends { category?: string }>(results: T[], query: string): T[] {
-  return WANTS_HIDDEN.test(query) ? results : results.filter(r => !r.category || !HIDDEN.has(r.category))
+// Actuent's own sites (docs, dashboards) only when the search is about Actuent: the docs use
+// example searches like "barber amsterdam", which made them match.
+const OWN = /(^|\.)(actuent\.ai|localilabs\.com)(\/|$)/i
+export function withoutHidden<T extends { category?: string, domain?: string }>(results: T[], query: string): T[] {
+  const own = /actuent|lawp|localilabs/i.test(query)
+  return results.filter(r => (WANTS_HIDDEN.test(query) || !r.category || !HIDDEN.has(r.category)) && (own || !OWN.test(String(r.domain || ""))))
 }
 
 // Light stemming so "payments" matches "payment" and "restaurants" matches "restaurant"
