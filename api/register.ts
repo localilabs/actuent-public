@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { sites } from "../src/data/sites"
 import crypto from "crypto"
 import { promises as dns } from "dns"
-import { fetchNativeSite } from "../src/utils/native"
+import { discoverLawp } from "../src/utils/discover"
 import { keyHash, verifyApiKey } from "../src/utils/limits"
 import { sendEmail, welcomeEmail } from "../src/utils/email"
 
@@ -10,19 +10,46 @@ const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
 
-// Proof that the caller controls the domain: a DNS TXT record with this token, or the site serving
-// its own /.well-known/lawp.json. Stops anyone registering LAWP for a site they don't own.
+// Proof that the caller controls the domain, with a token only they know (it's derived from their
+// API key): a DNS TXT record, a <meta name="actuent-site-verification"> tag on the homepage, or an
+// "actuent_site_verification" field in the site's own LAWP (at /.well-known/lawp.json or linked,
+// LAWP 0.4). Publishing a LAWP alone is not proof: anyone could then claim that site.
 function verificationToken(apiKey: string, domain: string): string {
   return crypto.createHash("sha256").update(`${apiKey}:${domain}`).digest("hex").slice(0, 32)
 }
 
-async function ownsDomain(apiKey: string, domain: string): Promise<boolean> {
-  const expected = `actuent-site-verification=${verificationToken(apiKey, domain)}`
+type Proof = "dns" | "meta" | "lawp"
+
+async function ownsDomain(apiKey: string, domain: string): Promise<Proof | null> {
+  const token = verificationToken(apiKey, domain)
   try {
     const records = await dns.resolveTxt(domain)
-    if (records.some(parts => parts.join("") === expected)) return true
+    if (records.some(parts => parts.join("") === `actuent-site-verification=${token}`)) return "dns"
   } catch {}
-  return !!await fetchNativeSite(domain)
+  try {
+    const res = await fetch(`https://${domain}/`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html" }, redirect: "follow", signal: AbortSignal.timeout(6000) })
+    // Redirects are fine (e.g. to www.), as long as they stay on the same site.
+    const finalHost = new URL(res.url).hostname.replace(/^www\./, "")
+    if (res.ok && finalHost === domain.replace(/^www\./, "")) {
+      const head = (await res.text()).slice(0, 300_000).split(/<\/head>/i)[0]
+      for (const tag of head.match(/<meta\b[^>]*>/gi) || []) {
+        if (/name\s*=\s*["']actuent-site-verification["']/i.test(tag) && tag.includes(token)) return "meta"
+      }
+    }
+  } catch {}
+  const found = await discoverLawp(domain)
+  return found?.doc?.actuent_site_verification === token ? "lawp" : null
+}
+
+function verifyOptions(apiKey: string, domain: string) {
+  const token = verificationToken(apiKey, domain)
+  return {
+    token,
+    dns_txt: { host: domain, type: "TXT", value: `actuent-site-verification=${token}` },
+    meta_tag: `<meta name="actuent-site-verification" content="${token}">`,
+    lawp_field: { actuent_site_verification: token },
+    docs: "https://docs.actuent.ai/guides#claim"
+  }
 }
 
 async function saveSite(site: any, ownerKey: string): Promise<void> {
@@ -63,7 +90,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const d = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0].trim()
     if (!d.includes(".")) return res.status(400).json({ error: "Enter a domain like yoursite.com" })
-    const verified = await ownsDomain(apiKey, d)
+    const proof = await ownsDomain(apiKey, d)
+    const verified = !!proof
     const current = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,owner_key&domain=eq.${encodeURIComponent(d)}`, {
       headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
     }).then(r => r.ok ? r.json() : []).catch(() => [])
@@ -72,7 +100,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       domain: d,
       verified,
       claimed_by_you: !!row?.owner_key && row.owner_key === keyHash(apiKey),
-      verify: { dns_txt: { host: d, type: "TXT", value: `actuent-site-verification=${verificationToken(apiKey, d)}` }, or_well_known: `https://${d}/.well-known/lawp.json` },
+      ...(proof ? { verified_with: proof } : {}),
+      verify: verifyOptions(apiKey, d),
       lawp: row ? { domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [] } : { domain: d, name: "", pages: { "/": { title: "", content: "" } }, actions: [] }
     })
   }
@@ -91,14 +120,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const cleanDomain = domain.toLowerCase().replace(/^https?:\/\//, "").split("/")[0]
   if (!await ownsDomain(apiKey, cleanDomain)) {
-    const token = verificationToken(apiKey, cleanDomain)
     return res.status(403).json({
-      error: `Verify you own ${cleanDomain} before registering it`,
-      verify: {
-        dns_txt: { host: cleanDomain, type: "TXT", value: `actuent-site-verification=${token}` },
-        or_well_known: `Serve your LAWP at https://${cleanDomain}/.well-known/lawp.json`,
-        docs: "https://docs.actuent.ai/#sdk"
-      }
+      error: `Verify you own ${cleanDomain} before registering it: add one of these, then try again`,
+      verify: verifyOptions(apiKey, cleanDomain)
     })
   }
 
