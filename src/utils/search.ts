@@ -342,7 +342,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const primary = scoreMatch(site, primaryQuery)
         const related = expanded ? scoreMatch(site, expanded) : 0
         const base = primary > 0 ? primary + related * 0.3 : related * 0.5
-        return base * (0.4 + 0.6 * coverage(site))
+        const c = coverage(site)
+        return base * (0.15 + 0.85 * c * c)
       }
       const ranked = [...Object.values(sites), ...found.sites]
         .map(site => ({ site, score: score(site) }))
