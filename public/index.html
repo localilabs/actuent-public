@@ -115,44 +115,49 @@ function doSearch() {
   status.innerHTML = '<span class="spinner"></span>Fetching LAWP — free tier crawls live, may take a few seconds...'
   results.innerHTML = ""
 
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c] }) }
   fetch("https://api.actuent.ai/api/search", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({query: query})
   })
   .then(function(r) {
-    if (!r.ok) throw new Error("HTTP " + r.status)
-    return r.json()
+    // Busy or rate-limited answers carry a plain-English message: show it.
+    return r.json().catch(function() { return {} }).then(function(data) {
+      if (!r.ok) throw new Error(data.message || "Sorry — too many people are using Actuent right now. Please try again in a minute or two.")
+      return data
+    })
   })
   .then(function(data) {
     btn.disabled = false
     btn.textContent = "Search"
 
     if (!data.results || data.results.length === 0) {
-      results.innerHTML = '<div class="empty">No LAWP found for "' + query + '"</div>'
+      results.innerHTML = '<div class="empty">' + esc(data.message || ('No LAWP found for "' + query + '"')) + '</div>'
       status.textContent = ""
       return
     }
 
     status.textContent = data.count + " result" + (data.count !== 1 ? "s" : "") + " found"
+    var note = data.message ? '<div class="empty" style="margin-bottom:12px">' + esc(data.message) + '</div>' : ""
 
-    results.innerHTML = data.results.map(function(site, i) {
+    results.innerHTML = note + data.results.map(function(site, i) {
       var s = scoreLAWP(site)
       var col = s.score >= 80 ? "#4ade80" : s.score >= 50 ? "#ff8a3d" : "#a8a8b6"
 
       var pages = Object.entries(site.pages || {}).map(function(e) {
-        return '<div class="page"><div class="page-path">'+e[0]+'</div><div class="page-title">'+(e[1].title||"")+'</div><div class="page-content">'+(e[1].content||"")+'</div></div>'
+        return '<div class="page"><div class="page-path">'+esc(e[0])+'</div><div class="page-title">'+esc(e[1].title||"")+'</div><div class="page-content">'+esc(e[1].content||"")+'</div></div>'
       }).join("")
 
       var actions = (site.actions || []).map(function(a) {
-        var intents = (a.intent||[]).map(function(t){return '<span class="intent">'+t+'</span>'}).join("")
+        var intents = (a.intent||[]).map(function(t){return '<span class="intent">'+esc(t)+'</span>'}).join("")
         var run = site.native && a.endpoint && a.endpoint.url ? '<span class="run">EXECUTABLE</span>' : ''
-        return '<div class="action"><div class="dot"></div><div><div class="action-name">'+(a.name||"")+run+'</div><div class="action-desc">'+(a.description||"")+'</div><div class="intents">'+intents+'</div></div></div>'
+        return '<div class="action"><div class="dot"></div><div><div class="action-name">'+esc(a.name||"")+run+'</div><div class="action-desc">'+esc(a.description||"")+'</div><div class="intents">'+intents+'</div></div></div>'
       }).join("")
 
       return '<div class="card">' +
-        '<div class="site-domain">'+site.domain+'</div>' +
-        '<div class="site-name">'+(site.name||"")+'</div>' +
+        '<div class="site-domain">'+esc(site.domain)+'</div>' +
+        '<div class="site-name">'+esc(site.name||"")+'</div>' +
         ((site.native || site.executable) ? '<div class="tags">' +
           (site.executable ? '<span class="tag exec" title="AI agents can perform this site\'s actions via LAWP">⚡ Executable actions</span>' : '') +
           (site.native ? '<span class="tag" title="Published by the site at /.well-known/lawp.json">Native LAWP</span>' : '') +
@@ -161,15 +166,15 @@ function doSearch() {
         '<div class="section">Actions</div>' + (actions || '<div class="action"><div class="dot" style="background:#222"></div><div><div class="action-desc" style="color:#8e8e9c">No actions defined</div></div></div>') +
         '<div class="score-box"><div><div class="score-num" style="color:'+col+'">'+s.score+'</div><div class="score-label">LAWP / 100</div></div><div class="score-lines">'+s.lines.join("<br>")+'</div></div>' +
         '<button class="raw-btn" onclick="toggleRaw('+i+')">view raw LAWP</button>' +
-        '<pre class="raw" id="raw'+i+'">'+JSON.stringify(site,null,2)+'</pre>' +
+        '<pre class="raw" id="raw'+i+'">'+esc(JSON.stringify(site,null,2))+'</pre>' +
         '</div>'
     }).join("")
   })
   .catch(function(err) {
     btn.disabled = false
     btn.textContent = "Search"
-    status.textContent = "Error: " + err.message
-    results.innerHTML = '<div class="empty">Could not reach api.actuent.ai</div>'
+    status.textContent = ""
+    results.innerHTML = '<div class="empty">' + esc(err.message && !/fetch|network/i.test(err.message) ? err.message : "Couldn't reach Actuent. Check your connection and try again.") + '</div>'
   })
 }
 </script>
