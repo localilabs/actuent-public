@@ -224,3 +224,34 @@ export function translateKeywords(query: string): { query: string, english: stri
   const english = [...new Set(found)].filter(e => !norm(query).split(" ").includes(e))
   return { query: foreign && english.length ? rewritten : query, english, foreign }
 }
+
+// The query's language from its small words, when clear ("wo kann ich …" → de). Used to rank sites
+// in the searcher's own language a little higher. null for English or when unsure.
+const LANG_WORDS: Record<string, string[]> = {
+  de: ["der", "die", "das", "und", "für", "mit", "ich", "wo", "kann", "nähe", "günstig", "kaufen", "beste", "nicht", "ein", "eine", "im", "zum", "zur"],
+  fr: ["le", "la", "les", "des", "du", "et", "pour", "avec", "près", "chez", "pas", "cher", "meilleur", "acheter", "où", "une", "un", "au", "aux"],
+  es: ["el", "los", "las", "del", "y", "para", "con", "cerca", "barato", "comprar", "mejor", "dónde", "donde", "una", "unos"],
+  it: ["il", "lo", "gli", "di", "per", "con", "vicino", "economico", "comprare", "migliore", "dove", "una", "della", "delle"],
+  nl: ["het", "een", "van", "voor", "met", "bij", "goedkoop", "kopen", "beste", "waar", "naar"],
+  pt: ["os", "as", "do", "da", "dos", "das", "para", "com", "perto", "barato", "comprar", "melhor", "onde", "uma"],
+  da: ["og", "til", "med", "ved", "af", "på", "billig", "billige", "købe", "bedste", "hvor", "nær", "en", "et"],
+  sv: ["och", "för", "med", "vid", "av", "på", "billig", "billiga", "köpa", "bästa", "var", "nära", "ett"],
+  no: ["og", "til", "med", "ved", "av", "på", "billig", "kjøpe", "beste", "hvor", "nær", "et"],
+  pl: ["w", "z", "na", "do", "dla", "tani", "kupić", "najlepszy", "gdzie", "blisko"]
+}
+export function queryLanguage(query: string): string | null {
+  const words = query.toLowerCase().split(/\s+/)
+  const hasLetters = (re: RegExp) => re.test(query.toLowerCase())
+  let best: string | null = null, top = 0
+  for (const [lang, list] of Object.entries(LANG_WORDS)) {
+    let n = words.filter(w => list.includes(w)).length
+    if (lang === "de" && hasLetters(/[äöüß]/)) n += 1
+    if (lang === "da" && hasLetters(/[æø]/)) n += 1
+    if ((lang === "sv") && hasLetters(/[åä]/) && !hasLetters(/[æø]/)) n += 0.5
+    if (lang === "fr" && hasLetters(/[éèêàç]/)) n += 0.5
+    if (lang === "es" && hasLetters(/[ñ¿¡]/)) n += 1
+    if (lang === "pl" && hasLetters(/[ąćęłńśźż]/)) n += 1
+    if (n > top) { top = n; best = lang }
+  }
+  return top >= 1 ? best : null
+}

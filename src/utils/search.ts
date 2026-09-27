@@ -1,7 +1,7 @@
-import { translateKeywords } from "./multilingual"
+import { translateKeywords, queryLanguage } from "./multilingual"
 import { notice, Notice } from "./notices"
 import { splitCity, localBusinesses, osmPlaces } from "./local"
-import { queryCategories, mergeRegional } from "./rank_extras"
+import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
@@ -325,6 +325,22 @@ function freshCopy(saved: any): Site | null {
   return site as Site
 }
 
+// Results opened for this exact search (query_clicks, list_eleven.sql), cached for 10 minutes.
+const clickCache = new Map<string, { map: Map<string, number>, expires: number }>()
+async function queryClicks(query: string): Promise<Map<string, number>> {
+  const key = query.toLowerCase().trim().slice(0, 100)
+  const hit = clickCache.get(key)
+  if (hit && hit.expires > Date.now()) return hit.map
+  const map = new Map<string, number>()
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/query_clicks?select=domain,clicks&query=eq.${encodeURIComponent(key)}&order=clicks.desc&limit=30`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(1500) })
+    for (const row of r.ok ? await r.json() : []) map.set(row.domain, row.clicks)
+  } catch {}
+  clickCache.set(key, { map, expires: Date.now() + 600_000 })
+  if (clickCache.size > 2000) clickCache.delete(clickCache.keys().next().value!)
+  return map
+}
+
 function queueCrawl(domain: string) {
   later(fetch(`${SUPABASE_URL}/rest/v1/rpc/queue_crawl`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ d: domain }), signal: AbortSignal.timeout(3000) }))
 }
@@ -382,6 +398,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     if (fresh) return [fresh]
   }
 
+  // Clicks for this search (which results people opened), fetched alongside the search itself.
+  let clicks = new Map<string, number>()
+  const clicksReady = parsed ? Promise.resolve() : queryClicks(query).then(m => { clicks = m })
+  const lang = queryLanguage(query)
+
   async function searchIndex(): Promise<Site[]> {
     // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search,
     // the expansion (an LLM call unless cached) and then the expanded search all overlap, and the
@@ -409,7 +430,13 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const c = coverage(site)
         // The kind of site the search means ("accounting software" → software/finance) ranks higher.
         const categoryBoost = cats.size && (site as any).category && cats.has((site as any).category) ? 1.3 : 1
-        return base * (0.15 + 0.85 * c * c) * categoryBoost
+        // Results people opened for this search before (query_clicks), up to +40%.
+        const clickCount = clicks.get(site.domain) || 0
+        const clickBoost = clickCount ? 1 + Math.min(0.4, Math.log2(1 + clickCount) / 12) : 1
+        // Sites in the searcher's own language (a German search, a German site) rank a little higher.
+        const languageBoost = lang && (site as any).language === lang ? 1.15 : 1
+        return base * (0.15 + 0.85 * c * c) * categoryBoost * clickBoost * languageBoost
+          * intentBoost(query, site) * freshnessBoost(query, (site as any).updated_at) * qualityFactor(site)
       }
       const ranked = [...Object.values(sites), ...found.sites]
         .map(site => ({ site, score: score(site) }))
@@ -421,8 +448,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       for (const site of [...(found.local || []), ...ranked, ...found.pages]) {
         if (!seen.has(site.domain)) { seen.add(site.domain); results.push({ ...site, matched: explainMatch(site, primaryQuery, expanded, query) } as Site) }
       }
-      // One result per brand: nike.com with nike.com.br folded underneath (regional_sites).
-      return mergeRegional(results) as Site[]
+      // One result per brand (nike.com with nike.com.br folded underneath), the page that answers
+      // "basecamp pricing" first, and no near-identical results in a row.
+      return diversify(pageAnswerFirst(mergeRegional(results) as Site[], query))
     }
     if (parsed) return rank(await both(query), query, "")
 
@@ -464,6 +492,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       if (expansionUnavailable && results.length) notices.push(busyNotice("busy_limited_results", { retryAfter: retryAfter() }))
       return results
     }
+    await clicksReady
     if (finished === "late" || finished === null) return partial(rank(plain, plainQuery, ""))
     return partial(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages], local: plain.local }, finished.english, finished.expanded))
   }

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import crypto from "crypto"
-import { linkSignature } from "../utils/links"
+import { linkSignature, querySignature } from "../utils/links"
 import { isRateLimited, isBlocked } from "../utils/limits"
 
 // /go?u=<url>&s=<signature>: counts a visit Actuent sent to a site, then redirects there.
@@ -28,6 +28,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({ p_domain: target!.hostname.toLowerCase().replace(/^www\./, "") })
     }).catch(() => {})
+    // Which result was opened for which search, when the link carries signed search words.
+    const q = String(req.query.q || ""), qs = String(req.query.qs || "")
+    const qExpected = q ? querySignature(url, q) : ""
+    if (q && qs.length === qExpected.length && crypto.timingSafeEqual(Buffer.from(qs), Buffer.from(qExpected))) {
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/add_query_click`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ q, d: site })
+      }).catch(() => {})
+    }
   }
   res.setHeader("Cache-Control", "no-store")
   res.setHeader("Referrer-Policy", "no-referrer-when-downgrade")

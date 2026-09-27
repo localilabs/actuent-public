@@ -44,6 +44,17 @@ function cacheSet(key: string, body: unknown) {
   if (resultCache.size > 1000) resultCache.delete(resultCache.keys().next().value!)
 }
 
+async function suggestSpelling(q: string): Promise<string | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/did_you_mean`, {
+      method: "POST", headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ q }), signal: AbortSignal.timeout(1500)
+    })
+    const s = r.ok ? await r.json() : null
+    return typeof s === "string" && s && s !== q.toLowerCase() ? s : null
+  } catch { return null }
+}
+
 // Never an empty 500: anything unexpected (overloaded database, timeouts) becomes a 503 with a
 // plain-English message and Retry-After, so people and agents know to try again shortly.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -137,6 +148,17 @@ async function search(req: VercelRequest, res: VercelResponse) {
     searchSites(query.trim(), tier, timing, notices, { lite, places }).then(r => { sitesMs = Date.now() - t0; return r }),
     (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
   ])
+  // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
+  // when nothing matched at all, search for the suggestion instead and say so.
+  let didYouMean: string | null = null
+  let searchedFor: string | null = null
+  if (!isDomainQuery && results.length < 3) {
+    didYouMean = await suggestSpelling(query.trim())
+    if (didYouMean && !results.length && !products.length) {
+      const again = await searchSites(didYouMean, tier, timing, [], { lite })
+      if (again.length) { results.push(...again); searchedFor = didYouMean }
+    }
+  }
   res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
   // Adult and gambling sites are left out unless the query asks for them.
   const shown = withoutHidden(results as any[], query)
@@ -147,6 +169,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
   await later(trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart))
 
+  if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
   if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
@@ -170,11 +193,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
       ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
-      visit_url: trackedLink(`https://${r.domain}`)
+      visit_url: trackedLink(`https://${r.domain}`, query.trim())
     })),
     ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
+    ...(didYouMean ? { did_you_mean: didYouMean } : {}),
+    ...(searchedFor ? { searched_for: searchedFor } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }

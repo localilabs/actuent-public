@@ -1,4 +1,5 @@
 import { isRateLimited } from "./limits"
+import { openNow } from "./business"
 
 // Local searches ("barber amsterdam", "italian restaurant in london"): the city is taken out of the
 // query, businesses whose address is in that city come first (search_lawp_businesses), and when
@@ -47,7 +48,16 @@ export async function localBusinesses(what: string, city: string, max = 10): Pro
     const list = encodeURIComponent(rows.map((x: any) => `"${x.domain}"`).join(","))
     const full = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank&status=is.null&domain=in.(${list})`, { headers: HEADERS, signal: AbortSignal.timeout(4000) })
     const byDomain = new Map<string, any>(((full.ok ? await full.json() : []) as any[]).map(x => [x.domain, x]))
-    return rows.map((x: any) => byDomain.get(x.domain)).filter(Boolean)
+    const found = rows.map((x: any) => byDomain.get(x.domain)).filter(Boolean)
+    // Open right now first, then better rated (schema.org or OpenStreetMap data), then relevance.
+    const score = (x: any, i: number) => {
+      const b = x.business || {}
+      const open = openNow(b.opening_hours, b.address?.country)
+      const rating = Number(b.rating?.value) || 0
+      const reviews = Number(b.rating?.count) || 0
+      return (open === true ? 3 : open === false ? -1 : 0) + (reviews >= 5 ? rating / 2.5 : 0) - i * 0.15
+    }
+    return found.map((x: any, i: number) => ({ x, s: score(x, i) })).sort((a: any, b: any) => b.s - a.s).map((r: any) => r.x)
   } catch { return [] }
 }
 

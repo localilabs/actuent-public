@@ -80,3 +80,82 @@ export function mergeRegional<T extends { domain: string }>(results: T[]): (T & 
   }
   return out
 }
+
+// ----- Intent: what the searcher wants to do -----
+// "buy running shoes" → sites where you can buy; "book a table" → sites with booking; "near me" →
+// places with directions or store finders; "how to" → help and guide pages.
+const INTENTS: [RegExp, RegExp][] = [
+  [/\b(buy|order|shop|purchase|price|prices|cheap|deal|deals|sale|under [€$£]?\d+)\b/i, /\b(cart|shop|buy|order|checkout|store|products?|view_cart|add_to_cart)\b/i],
+  [/\b(book|booking|reserve|reservation|appointment|table for|tickets?)\b/i, /\b(book|booking|reserve|reservation|appointment|schedule|tickets?)\b/i],
+  [/\b(near me|nearby|near|closest|open now|directions)\b/i, /\b(directions|find_store|store_locator|locations?|map|visit|call)\b/i],
+  [/\b(how to|how do i|guide|tutorial|help with|docs|documentation)\b/i, /\b(help|docs|guide|support|learn|tutorial|faq)\b/i]
+]
+export function intentBoost(query: string, site: { actions?: any[], pages?: Record<string, any> }): number {
+  for (const [q, has] of INTENTS) {
+    if (!q.test(query)) continue
+    const text = [...(site.actions || []).map(a => `${a.id} ${a.name} ${(a.intent || []).join(" ")}`), ...Object.keys(site.pages || {})].join(" ")
+    return has.test(text) ? 1.2 : 1
+  }
+  return 1
+}
+
+// ----- Freshness for time-sensitive searches -----
+const TIMELY = /\b(news|today|tonight|this week(end)?|latest|live|events?|concerts?|deals?|sale|prices?|open now|schedule|fixtures|scores?)\b/i
+export function freshnessBoost(query: string, updatedAt?: string | null): number {
+  if (!TIMELY.test(query) || !updatedAt) return 1
+  const days = (Date.now() - Date.parse(updatedAt)) / 86400000
+  return days <= 7 ? 1.15 : days <= 30 ? 1.05 : days > 180 ? 0.9 : 1
+}
+
+// ----- Quality: thin and keyword-stuffed sites rank lower -----
+export function qualityFactor(site: { domain: string, pages?: Record<string, any>, actions?: any[] }): number {
+  const home = String(site.pages?.["/"]?.content || Object.values(site.pages || {})[0]?.content || "")
+  let f = 1
+  if (home.length < 60 || /^Website at /.test(home)) f *= 0.7
+  const words = home.toLowerCase().match(/[a-z]{3,}/g) || []
+  if (words.length >= 30) {
+    const counts = new Map<string, number>()
+    for (const w of words) counts.set(w, (counts.get(w) || 0) + 1)
+    const top = Math.max(...counts.values())
+    if (top / words.length > 0.12) f *= 0.6 // one word repeated over and over
+  }
+  if ((site.domain.split("/")[0].match(/-/g) || []).length >= 3) f *= 0.8 // keyword-stuffed domains
+  if (!(site.actions || []).length) f *= 0.85
+  return f
+}
+
+// ----- Page answers: "basecamp pricing" → basecamp.com/pricing first -----
+export function pageAnswerFirst<T extends { domain: string, name?: string }>(results: T[], query: string): T[] {
+  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  if (words.length < 2) return results
+  const i = results.findIndex(r => {
+    if (!r.domain.includes("/")) return false
+    const [host, ...rest] = r.domain.toLowerCase().split("/")
+    const brand = host.replace(/^www\./, "").split(".")[0]
+    const path = rest.join("/") + " " + String(r.name || "").toLowerCase()
+    return words.includes(brand) && words.some(w => w !== brand && path.includes(w))
+  })
+  if (i <= 0) return results
+  return [results[i], ...results.slice(0, i), ...results.slice(i + 1)]
+}
+
+// ----- Diversity: no near-identical results in a row -----
+// At most one extra page per site, and results with the same name (different domains) move down.
+export function diversify<T extends { domain: string, name?: string }>(results: T[]): T[] {
+  const pagesPerHost = new Map<string, number>()
+  const names = new Set<string>()
+  const top: T[] = [], later: T[] = []
+  for (const r of results) {
+    const host = r.domain.split("/")[0]
+    if (r.domain.includes("/")) {
+      const n = pagesPerHost.get(host) || 0
+      pagesPerHost.set(host, n + 1)
+      if (n >= 1) { later.push(r); continue }
+    }
+    const name = String(r.name || "").toLowerCase().trim()
+    if (name && name.length > 3 && names.has(name) && !r.domain.includes("/")) { later.push(r); continue }
+    if (name) names.add(name)
+    top.push(r)
+  }
+  return [...top, ...later]
+}

@@ -27,13 +27,18 @@ function retryAfterMs(message: string): number {
   return ((Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0)) * 1000 || 5 * 60000
 }
 
-// Backup providers for Pro only, both free with no credit card: Google Gemini (AI Studio key) and
-// Cerebras. Each is used when its key is set on Vercel; Pro tries them after its reserved Groq model
-// and before the Groq models it shares with free traffic, so Pro keeps working when Groq is busy.
+// Extra free providers (no credit card) for the live crawler's site conversions only — never for
+// search queries, since the conversions only send public website text:
+//   • Mistral (La Plateforme "Experiment" plan): MISTRAL_API_KEY
+//   • GitHub Models (a GitHub token with models:read): GITHUB_MODELS_TOKEN
+//   • Cloudflare Workers AI: CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN
+// Each is used when its key is set on Vercel; site conversions try them before Groq, which keeps
+// Groq's quota for searches on busy days.
 type Backup = { id: string, baseURL: string, apiKey: string, model: string }
 const BACKUPS: Backup[] = [
-  ...(process.env.GEMINI_API_KEY ? [{ id: "gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" }] : []),
-  ...(process.env.CEREBRAS_API_KEY ? [{ id: "cerebras", baseURL: "https://api.cerebras.ai/v1", apiKey: process.env.CEREBRAS_API_KEY, model: process.env.CEREBRAS_MODEL || "llama-3.3-70b" }] : [])
+  ...(process.env.MISTRAL_API_KEY ? [{ id: "mistral", baseURL: "https://api.mistral.ai/v1", apiKey: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || "mistral-small-latest" }] : []),
+  ...(process.env.GITHUB_MODELS_TOKEN ? [{ id: "github-models", baseURL: "https://models.github.ai/inference", apiKey: process.env.GITHUB_MODELS_TOKEN, model: process.env.GITHUB_MODELS_MODEL || "openai/gpt-4.1-mini" }] : []),
+  ...(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN ? [{ id: "cloudflare", baseURL: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`, apiKey: process.env.CLOUDFLARE_AI_TOKEN, model: process.env.CLOUDFLARE_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct" }] : [])
 ]
 
 async function callBackup(b: Backup, prompt: string, timeoutMs: number): Promise<string | null> {
@@ -48,9 +53,11 @@ async function callBackup(b: Backup, prompt: string, timeoutMs: number): Promise
   return data.choices?.[0]?.message?.content || null
 }
 
-// Returns the first model's answer, or null if every model failed.
-export async function complete(prompt: string, timeoutMs: number = 15000, tier: Tier = "free"): Promise<string | null> {
-  const order = tier === "pro" ? [...PRO_ONLY, ...BACKUPS.map(b => b.id), ...FREE_MODELS] : FREE_MODELS
+// Returns the first model's answer, or null if every model failed. purpose "crawl" (the live
+// crawler converting a website) tries the extra free providers first.
+export async function complete(prompt: string, timeoutMs: number = 15000, tier: Tier = "free", purpose: "search" | "crawl" = "search"): Promise<string | null> {
+  const groqModels = tier === "pro" ? PRO_MODELS : FREE_MODELS
+  const order = purpose === "crawl" ? [...BACKUPS.map(b => b.id), ...groqModels] : groqModels
   for (const model of order) {
     if ((blockedUntil.get(model) || 0) > Date.now()) continue
     const backup = BACKUPS.find(b => b.id === model)
@@ -86,7 +93,7 @@ export async function complete(prompt: string, timeoutMs: number = 15000, tier: 
 // Whether any model this tier can use is available right now, and if not, when the first one frees
 // up (seconds). Used to tell people "our AI helper is at capacity, try again in N minutes".
 export function llmStatus(tier: Tier = "free"): { available: boolean, retryAfterSeconds: number } {
-  const models = tier === "pro" ? [...PRO_MODELS, ...BACKUPS.map(b => b.id)] : FREE_MODELS
+  const models = tier === "pro" ? PRO_MODELS : FREE_MODELS
   const now = Date.now()
   const waits = models.map(m => Math.max(0, (blockedUntil.get(m) || 0) - now))
   const soonest = Math.min(...waits)
