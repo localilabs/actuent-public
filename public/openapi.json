@@ -633,6 +633,50 @@
             "items": {
               "$ref": "#/components/schemas/Notice"
             }
+          },
+          "places": {
+            "type": "object",
+            "description": "Local searches with no indexed websites yet: places from OpenStreetMap (map entries, not indexed sites).",
+            "properties": {
+              "source": {
+                "type": "string"
+              },
+              "attribution": {
+                "type": "string"
+              },
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "website": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "phone": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "opening_hours": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "map": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -645,8 +689,10 @@
             "enum": [
               "busy_limited_results",
               "busy_saved_copy",
+              "busy_queued",
               "busy_no_results",
               "busy",
+              "heavy_use",
               "temporarily_unavailable",
               "site_unreachable",
               "robots_blocked",
