@@ -64,3 +64,17 @@ create table if not exists search_benchmarks (
   details jsonb
 );
 alter table search_benchmarks enable row level security;
+
+-- 14. Ops dashboard: search durations, category counts and conversion progress in one call.
+alter table searches add column if not exists duration_ms int;
+create or replace function ops_overview()
+returns jsonb language sql stable as $$
+  select jsonb_build_object(
+    'categories', (select coalesce(jsonb_object_agg(coalesce(nullif(category, ''), 'uncategorised'), n), '{}') from (select category, count(*) n from lawp_sites group by category) c),
+    'conversion', (select coalesce(jsonb_object_agg(coalesce(conversion, 'unknown'), n), '{}') from (select conversion, count(*) n from lawp_sites group by conversion) v),
+    'flagged', (select coalesce(jsonb_object_agg(status, n), '{}') from (select status, count(*) n from lawp_sites where status is not null group by status) f),
+    'search_ms_24h', (select jsonb_build_object('count', count(*), 'p50', percentile_disc(0.5) within group (order by duration_ms), 'p95', percentile_disc(0.95) within group (order by duration_ms))
+                      from searches where created_at > now() - interval '24 hours' and duration_ms is not null),
+    'blocked_now', (select count(*) from blocked where until > now())
+  )
+$$;

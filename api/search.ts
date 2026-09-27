@@ -9,17 +9,17 @@ import { openNow } from "../src/utils/business"
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null): Promise<void> {
+async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number): Promise<void> {
+  const send = (row: object) => fetch(`${SUPABASE_URL}/rest/v1/searches`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify(row)
+  })
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/searches`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null })
-    })
+    const row = { query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null }
+    // duration_ms (list_seven.sql) feeds the search speed numbers on the ops page.
+    const r = await send(durationMs != null ? { ...row, duration_ms: durationMs } : row)
+    if (!r.ok && durationMs != null) await send(row)
   } catch {}
 }
 
@@ -41,6 +41,7 @@ function cacheSet(key: string, body: unknown) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const requestStart = Date.now()
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -88,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cacheKey = `${tier}:${query.trim().toLowerCase()}`
   const cached = cacheGet(cacheKey)
   if (cached) {
-    await trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null)
+    await trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart)
     return res.status(200).json({ ...(cached as any), query })
   }
 
@@ -110,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
-  await trackSearch(query.trim(), domains, tier, trackKey)
+  await trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart)
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
   const now = Date.now()
