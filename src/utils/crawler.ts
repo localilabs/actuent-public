@@ -8,10 +8,11 @@ import { fetchNativeSite } from "./native"
 import { fetchProducts, saveProducts } from "./products"
 import { heuristicLAWP, withBookingLinks } from "./heuristic"
 import { rescueLive } from "./rescue"
-import { extractBusiness } from "./business"
+import { extractBusiness, extractEvents } from "./business"
 import crypto from "crypto"
 import { fetchPublic } from "./safe-fetch"
 import { cleanPageText, cleanPages } from "./boilerplate"
+import { fetchLlmsTxt, withLlmsTxt, withLlmsTxtInput } from "./llmstxt"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -214,6 +215,48 @@ async function fetchHtml(domain: string): Promise<string | null> {
   } catch { return null }
 }
 
+// Hybrid conversion, the same as the mass crawler (actuent-crawler/convert.ts): the rule-based
+// converter finds the site's real actions (with real URLs); the LLM only writes the name, an English
+// summary naming the category, and search keywords per action — about a third of the tokens of a
+// full conversion, which matters on busy days. Null when no LLM answered (rules are kept).
+async function enrichLive(domain: string, rules: any, content: string, tier: Tier): Promise<any | null> {
+  const actions: any[] = Array.isArray(rules?.actions) ? rules.actions : []
+  if (!actions.length) return null
+  const raw = await complete(`Website: ${domain}\nActions found on it: ${actions.map(a => `${a.id} (${a.name})`).join(", ")}\nContent: ${content.slice(0, 1400)}\n\nReply with JSON only, all text in English (translate if needed):\n{"name":"the brand or business name","language":"ISO 639-1 code of the site's own language","summary":"what the site offers and for whom, naming its category (e.g. 'accounting software', 'Italian restaurant in Lyon'), under 50 words","keywords":{"<action id>":["3-5 search words people would use for this action on this site"]}}`, 12000, tier)
+  const parsed = safeParseJSON(raw || "")
+  if (!parsed || typeof parsed.summary !== "string" || parsed.summary.length < 20) return null
+  const language = typeof parsed.language === "string" && /^[a-z]{2}$/i.test(parsed.language) ? parsed.language.toLowerCase() : rules.language
+  const name = typeof parsed.name === "string" && parsed.name.trim() && parsed.name.length <= 80 ? parsed.name.trim() : rules.name
+  const home = rules.pages?.["/"] || {}
+  const keywords = parsed.keywords && typeof parsed.keywords === "object" ? parsed.keywords : {}
+  return {
+    ...rules, name, language,
+    pages: { ...rules.pages, "/": { ...home, title: language && language !== "en" ? name : (home.title || name), content: parsed.summary.trim().slice(0, 500) } },
+    actions: actions.map(a => {
+      const extra = Array.isArray(keywords[a.id]) ? keywords[a.id].filter((k: unknown) => typeof k === "string" && k.length <= 40).map((k: string) => k.toLowerCase()) : []
+      return { ...a, intent: [...new Set([...(a.intent || []), ...extra])].slice(0, 10) }
+    })
+  }
+}
+
+// Readable text of raw HTML, without scripts, menus and cookie banners.
+function htmlText(html: string): string {
+  return cleanPageText(html.replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())
+}
+
+// Upcoming events from the homepage's schema.org data (lawp_events), like the crawlers.
+async function saveEvents(domain: string, html: string): Promise<void> {
+  const events = extractEvents(html, `https://${domain}/`)
+  if (!events.length) return
+  const now = new Date().toISOString()
+  await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?on_conflict=url,start_date`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify(events.map(e => ({ lat: null, lon: null, end_date: null, description: null, venue: null, city: null, country: null, price: null, currency: null, ...e, domain, updated_at: now })))
+  }).catch(() => {})
+}
+
 export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Site | null> {
   // A site's own LAWP always wins over crawling.
   let native = await fetchNativeSite(domain)
@@ -227,10 +270,13 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
   // Claimed sites are edited by their owner; crawling must never overwrite them.
   if (!native && existing?.ownerKey) return asResult(existing)
 
-  // Raw HTML is fetched alongside: schema.org business details and the rule-based fallback need it.
-  const [content, html] = native ? [null, null] : await Promise.all([fetchContent(`https://${domain}`), fetchHtml(domain)])
+  // Raw HTML first (fast, and the rule-based converter reads its links and forms); Jina Reader only
+  // for JavaScript-only or blocking sites — the same order as the mass crawler.
+  const html = native ? null : await fetchHtml(domain)
   // LAWP 0.4: the homepage links its own LAWP (<link rel="lawp">), e.g. on Shopify or Squarespace.
   if (!native && html) native = await fetchNativeSite(domain, html)
+  const fromHtml = html ? htmlText(html) : ""
+  const content = native ? null : fromHtml.length >= 300 ? fromHtml.slice(0, 3000) : await fetchContent(`https://${domain}`)
 
   let site: Site
 
@@ -238,22 +284,27 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
 
   if (native) {
     site = native
-  } else if (!content) {
+  } else if (!content && !html) {
     if (!await domainExists(domain)) return null
     // Blocked or down on https://domain: other addresses and llms.txt before saving it minimal.
-    site = (html ? heuristicLAWP(domain, html, true) : null) ?? await rescueLive(domain, html) ?? minimalLAWP(domain)
+    site = await rescueLive(domain, null) ?? minimalLAWP(domain)
   } else if (existing && existing.contentHash === hash && existing.actions?.length) {
     // The site hasn't changed since its last conversion: reuse it and spend no LLM tokens.
     return asResult(existing)
   } else {
-    site = await convertToLAWP(domain, content, tier)
-    site = withBookingLinks(site, html || content)
-    // No LLM quota (or unusable output): build the LAWP from the page itself instead.
-    if (!site.actions?.length) {
-      const rules = heuristicLAWP(domain, content, !/^Title:/m.test(content)) ?? (html ? heuristicLAWP(domain, html, true) : null) ?? await rescueLive(domain, html)
-      if (rules) site = rules
+    const llms = await fetchLlmsTxt(domain)
+    const input = withLlmsTxtInput(cleanPageText(cleanScraped(content || fromHtml)), llms)
+    // Rules first; then the LLM adds the summary and keywords (hybrid), or converts from scratch
+    // when rules found nothing; rescue (other addresses, llms.txt) before settling for minimal.
+    const rules = (html ? heuristicLAWP(domain, html, true) : null) ?? (content ? heuristicLAWP(domain, content, !/^Title:/m.test(content)) : null) ?? await rescueLive(domain, html)
+    if (rules?.actions?.length) {
+      site = await enrichLive(domain, rules, input, tier) ?? rules
+    } else {
+      site = await convertToLAWP(domain, input, tier)
     }
+    site = withLlmsTxt(withBookingLinks(site, html || content || ""), domain, llms)
   }
+  if (html) await saveEvents(domain, html)
 
   if (html && !site.business) { const business = extractBusiness(html); if (business) site = { ...site, business } }
   // Crawled text loses cookie banners, menus and copyright lines; a site's own LAWP is left as written.
