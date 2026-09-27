@@ -78,6 +78,33 @@ function scoreMatch(site: Site, query: string): number {
   return keywordScore + lawpBoost * 0.3 + authorityBoost + nativeBoost
 }
 
+// "Why this result": a short note of which words matched where, so an agent can tell the user
+// why a site came up ("dentist" in name, actions (book); "berlin" in address; publishes its own LAWP).
+const EXPLAIN_SKIP = new Set(["the", "and", "for", "with", "near", "best", "cheap", "online", "top", "buy"])
+export function explainMatch(site: Site, query: string, related = "", original = ""): string | undefined {
+  const where = (word: string): string[] => {
+    const places: string[] = []
+    if (site.name?.toLowerCase().includes(word)) places.push("name")
+    if (site.domain?.toLowerCase().includes(word)) places.push("domain")
+    const actions = (site.actions || []).filter(a => a.intent?.some(i => i.toLowerCase().includes(word)) || a.name?.toLowerCase().includes(word) || a.description?.toLowerCase().includes(word))
+    if (actions.length) places.push(`actions (${actions.slice(0, 3).map(a => a.id).join(", ")})`)
+    const pages = Object.entries(site.pages || {}).filter(([, p]) => p?.title?.toLowerCase().includes(word) || p?.content?.toLowerCase().includes(word))
+    if (pages.length) places.push(pages.length === 1 && pages[0][0] !== "/" ? `page ${pages[0][0]}` : "page text")
+    const addr = (site as any).business?.address
+    if (addr && JSON.stringify(addr).toLowerCase().includes(word)) places.push("address")
+    return places
+  }
+  const significant = (q: string) => [...new Set(q.toLowerCase().split(/\s+/).filter(w => w.length > 2 && !EXPLAIN_SKIP.has(w)))]
+  const parts: string[] = []
+  for (const word of significant(query)) { const w = where(word); if (w.length) parts.push(`"${word}" in ${w.join(", ")}`) }
+  if (!parts.length) for (const word of significant(related).slice(0, 6)) { const w = where(word); if (w.length) { parts.push(`related term "${word}" in ${w.join(", ")}`); if (parts.length >= 2) break } }
+  if (original && original.toLowerCase() !== query.toLowerCase()) parts.push(`query read as "${query}"`)
+  if (site.native) parts.push("publishes its own LAWP")
+  const rank = (site as any).popularity_rank
+  if (rank && rank <= 10000) parts.push("widely used site")
+  return parts.length ? parts.join("; ") : undefined
+}
+
 const SUPABASE_HEADERS = {
   "apikey": SUPABASE_SERVICE_KEY,
   "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
@@ -317,7 +344,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const seen = new Set<string>()
       const results: Site[] = []
       for (const site of [...ranked, ...found.pages]) {
-        if (!seen.has(site.domain)) { seen.add(site.domain); results.push(site) }
+        if (!seen.has(site.domain)) { seen.add(site.domain); results.push({ ...site, matched: explainMatch(site, primaryQuery, expanded, query) } as Site) }
       }
       return results
     }

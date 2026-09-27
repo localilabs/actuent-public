@@ -122,6 +122,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...r,
       native: !!r.native,
       executable: isExecutable(r),
+      // Why this result: which words matched where (search.ts explainMatch).
+      matched: r.matched || (isDomainQuery ? "exact domain" : undefined),
       // Freshness: when this LAWP was last updated, so agents know how current it is.
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
