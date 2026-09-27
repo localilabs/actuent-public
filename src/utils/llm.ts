@@ -10,8 +10,9 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 // after free traffic has used up the shared models' daily quota.
 const FREE_MODELS = (process.env.GROQ_FREE_MODELS || "openai/gpt-oss-20b,llama-3.3-70b-versatile")
   .split(",").map(m => m.trim()).filter(Boolean)
-const PRO_MODELS = (process.env.GROQ_PRO_MODELS || "openai/gpt-oss-120b")
-  .split(",").map(m => m.trim()).filter(Boolean).concat(FREE_MODELS)
+const PRO_ONLY = (process.env.GROQ_PRO_MODELS || "openai/gpt-oss-120b")
+  .split(",").map(m => m.trim()).filter(Boolean)
+const PRO_MODELS = PRO_ONLY.concat(FREE_MODELS)
 
 export type Tier = "free" | "pro"
 
@@ -26,10 +27,43 @@ function retryAfterMs(message: string): number {
   return ((Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0)) * 1000 || 5 * 60000
 }
 
+// Backup providers for Pro only, both free with no credit card: Google Gemini (AI Studio key) and
+// Cerebras. Each is used when its key is set on Vercel; Pro tries them after its reserved Groq model
+// and before the Groq models it shares with free traffic, so Pro keeps working when Groq is busy.
+type Backup = { id: string, baseURL: string, apiKey: string, model: string }
+const BACKUPS: Backup[] = [
+  ...(process.env.GEMINI_API_KEY ? [{ id: "gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || "gemini-2.5-flash-lite" }] : []),
+  ...(process.env.CEREBRAS_API_KEY ? [{ id: "cerebras", baseURL: "https://api.cerebras.ai/v1", apiKey: process.env.CEREBRAS_API_KEY, model: process.env.CEREBRAS_MODEL || "llama-3.3-70b" }] : [])
+]
+
+async function callBackup(b: Backup, prompt: string, timeoutMs: number): Promise<string | null> {
+  const res = await fetch(`${b.baseURL}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${b.apiKey}` },
+    body: JSON.stringify({ model: b.model, messages: [{ role: "user", content: prompt }], temperature: 0.1, max_tokens: 700 }),
+    signal: AbortSignal.timeout(timeoutMs)
+  })
+  if (!res.ok) { const e: any = new Error((await res.text()).slice(0, 200)); e.status = res.status; throw e }
+  const data = await res.json()
+  return data.choices?.[0]?.message?.content || null
+}
+
 // Returns the first model's answer, or null if every model failed.
 export async function complete(prompt: string, timeoutMs: number = 15000, tier: Tier = "free"): Promise<string | null> {
-  for (const model of tier === "pro" ? PRO_MODELS : FREE_MODELS) {
+  const order = tier === "pro" ? [...PRO_ONLY, ...BACKUPS.map(b => b.id), ...FREE_MODELS] : FREE_MODELS
+  for (const model of order) {
     if ((blockedUntil.get(model) || 0) > Date.now()) continue
+    const backup = BACKUPS.find(b => b.id === model)
+    if (backup) {
+      try {
+        const text = await callBackup(backup, prompt, timeoutMs)
+        if (text) return text.replace(/<think>[\s\S]*?<\/think>/g, "").trim()
+      } catch (e: any) {
+        blockedUntil.set(model, Date.now() + (e?.status === 429 ? 60_000 : 10 * 60_000))
+        console.error(`llm: ${model} failed (${e?.status ?? "no status"}): ${String(e?.message || e).slice(0, 200)}`)
+      }
+      continue
+    }
     try {
       const completion = await groq.chat.completions.create({
         model,
@@ -52,7 +86,7 @@ export async function complete(prompt: string, timeoutMs: number = 15000, tier: 
 // Whether any model this tier can use is available right now, and if not, when the first one frees
 // up (seconds). Used to tell people "our AI helper is at capacity, try again in N minutes".
 export function llmStatus(tier: Tier = "free"): { available: boolean, retryAfterSeconds: number } {
-  const models = tier === "pro" ? PRO_MODELS : FREE_MODELS
+  const models = tier === "pro" ? [...PRO_MODELS, ...BACKUPS.map(b => b.id)] : FREE_MODELS
   const now = Date.now()
   const waits = models.map(m => Math.max(0, (blockedUntil.get(m) || 0) - now))
   const soonest = Math.min(...waits)
