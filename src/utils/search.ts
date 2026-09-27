@@ -249,17 +249,6 @@ function indexedCopy(site: any): Site {
   return { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, native: site.native }
 }
 
-// Ranking for the fast path (no expansion): the same scoring, on the plain results.
-function rankOnly(found: Site[], query: string): Site[] {
-  const seen = new Set<string>()
-  return [...Object.values(sites), ...found]
-    .map(site => ({ site, score: scoreMatch(site, query) }))
-    .filter(r => r.score > 0 || found.includes(r.site))
-    .sort((a, b) => b.score - a.score)
-    .map(r => r.site)
-    .filter(site => !seen.has(site.domain) && (seen.add(site.domain), true))
-}
-
 // A saved copy good enough to serve without crawling: real content, updated within FRESH_DAYS.
 const FRESH_DAYS = parseInt(process.env.FRESH_DAYS || "14")
 function freshCopy(saved: any): Site | null {
@@ -297,50 +286,47 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
   }
 
   async function searchIndex(): Promise<Site[]> {
-    // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search runs
-    // while the expansion (an LLM call, unless cached) is prepared, and the expansion is only waited
-    // for briefly when the plain search already found enough English results.
-    let expansion: { english: string, terms: string[] } = { english: query, terms: [] }
-    if (!parsed) {
-      const te = Date.now()
-      const expanding = expandQuery(query, tier).then(x => { mark("expand", te); return x })
-      const plainAscii = /^[\x20-\x7e]+$/.test(query)
-      const tp = Date.now()
-      const plain = plainAscii ? await Promise.all([searchSupabase(query), searchPages(query)]).then(([a, b]) => [...a, ...b]) : []
-      mark("plain", tp)
-      const enough = plainAscii && plain.length >= 3
-      const tw = Date.now()
-      const quick = await Promise.race([expanding, new Promise<null>(r => setTimeout(() => r(null), enough ? 1200 : 8000))])
-      mark("wait", tw)
-      if (quick) expansion = quick
-      else if (enough) return rankOnly(plain, query)
+    // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search,
+    // the expansion (an LLM call unless cached) and then the expanded search all overlap, and the
+    // expansion is only waited for briefly when the plain search already found enough results.
+    const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q), searchPages(q)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
+    const rank = (found: { sites: Site[], pages: Site[] }, primaryQuery: string, expanded: string) => {
+      // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
+      const score = (site: Site) => {
+        const primary = scoreMatch(site, primaryQuery)
+        const related = expanded ? scoreMatch(site, expanded) : 0
+        return primary > 0 ? primary + related * 0.3 : related * 0.5
+      }
+      const ranked = [...Object.values(sites), ...found.sites]
+        .map(site => ({ site, score: score(site) }))
+        .filter(r => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(r => r.site)
+      const seen = new Set<string>()
+      const results: Site[] = []
+      for (const site of [...ranked, ...found.pages]) {
+        if (!seen.has(site.domain)) { seen.add(site.domain); results.push(site) }
+      }
+      return results
     }
-    const { english, terms } = expansion
-    const expanded = terms.join(" ")
-    const primaryQuery = english
-    const fullQuery = [english !== query ? `${query} ${english}` : query, expanded].filter(Boolean).join(" ")
+    if (parsed) return rank(await both(query), query, "")
 
-    // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
-    const score = (site: Site) => {
-      const primary = scoreMatch(site, primaryQuery)
-      const related = expanded ? scoreMatch(site, expanded) : 0
-      return primary > 0 ? primary + related * 0.3 : related * 0.5
-    }
-
-    const tx = Date.now()
-    const [dbSites, pageResults] = await Promise.all([searchSupabase(fullQuery), searchPages(fullQuery)])
-    mark("expanded", tx)
-    const ranked = [...Object.values(sites), ...dbSites]
-      .map(site => ({ site, score: score(site) }))
-      .filter(r => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map(r => r.site)
-    const seen = new Set<string>()
-    const results: Site[] = []
-    for (const site of [...ranked, ...pageResults]) {
-      if (!seen.has(site.domain)) { seen.add(site.domain); results.push(site) }
-    }
-    return results
+    const te = Date.now()
+    const expanding = expandQuery(query, tier).then(x => { mark("expand", te); return x })
+    // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
+    const expandedSearch = expanding.then(async ({ english, terms }) => {
+      if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null
+      const fullQuery = [english !== query ? `${query} ${english}` : query, terms.join(" ")].filter(Boolean).join(" ")
+      return { english, expanded: terms.join(" "), found: await both(fullQuery) }
+    })
+    const plainAscii = /^[\x20-\x7e]+$/.test(query)
+    const plain = plainAscii ? await both(query) : { sites: [], pages: [] }
+    const enough = plainAscii && plain.sites.length + plain.pages.length >= 3
+    const tw = Date.now()
+    const done = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : 9000))])
+    mark("wait", tw)
+    if (done === "late" || done === null) return rank(plain, query, "")
+    return rank({ sites: [...plain.sites, ...done.found.sites], pages: [...plain.pages, ...done.found.pages] }, done.english, done.expanded)
   }
 
   if (isPro) {
