@@ -109,7 +109,8 @@ async function submit() {
       // The body is re-serialised exactly as the agent sent it (compact JSON).
       const signed = await verifyAgentRequest(req.headers as any, "POST", "https://api.actuent.ai/api/suggest", JSON.stringify(body))
       if (!signed) return res.status(401).json({ error: { code: "invalid_signature", message: "Sign the request (HTTP Message Signatures or Actuent's headers)" } })
-      if (body.test === true) return res.status(200).json({ success: true, test: true, verified_with: signed, message: "Test request received and verified — nothing was saved" })
+      // Quotes never change anything, so they're answered normally even in test mode.
+      if (body.test === true && body.mode !== "quote") return res.status(200).json({ success: true, test: true, verified_with: signed, message: "Test request received and verified — nothing was saved" })
     }
     const lawpInput = isAction ? body.input : undefined
     const domain = typeof lawpInput === "string" ? lawpInput : lawpInput?.domain ?? body.domain
