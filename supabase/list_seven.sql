@@ -116,3 +116,15 @@ create table if not exists key_events (
 );
 create index if not exists key_events_email_idx on key_events (email, created_at desc);
 alter table key_events enable row level security;
+
+-- 5. Actuent for Shopify: installed stores (token sealed), their primary domain and optional
+-- Actuent verification code. Removed on uninstall and on Shopify's shop/redact webhook.
+create table if not exists shopify_shops (
+  shop text primary key,            -- <store>.myshopify.com
+  token text not null,              -- sealed offline access token (read-only scopes)
+  domain text,
+  verification text,
+  installed_at timestamptz not null default now(),
+  uninstalled_at timestamptz
+);
+alter table shopify_shops enable row level security;
