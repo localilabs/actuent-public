@@ -97,11 +97,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Server-Timing shows where the time goes (sites vs products), for the ops page and debugging.
   const t0 = Date.now()
   let sitesMs = 0, productsMs = 0
+  const timing: Record<string, number> = {}
   const [results, products] = await Promise.all([
-    searchSites(query.trim(), tier).then(r => { sitesMs = Date.now() - t0; return r }),
+    searchSites(query.trim(), tier, timing).then(r => { sitesMs = Date.now() - t0; return r }),
     (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
   ])
-  res.setHeader("Server-Timing", `sites;dur=${sitesMs}, products;dur=${productsMs}`)
+  res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.

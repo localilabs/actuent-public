@@ -270,7 +270,8 @@ function freshCopy(saved: any): Site | null {
   return site as Site
 }
 
-export async function searchSites(query: string, tier: Tier = "free"): Promise<Site[]> {
+export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}): Promise<Site[]> {
+  const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
   const isPro = tier === "pro"
   const parsed = parseFullUrl(query)
 
@@ -301,11 +302,16 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
     // for briefly when the plain search already found enough English results.
     let expansion: { english: string, terms: string[] } = { english: query, terms: [] }
     if (!parsed) {
-      const expanding = expandQuery(query, tier)
+      const te = Date.now()
+      const expanding = expandQuery(query, tier).then(x => { mark("expand", te); return x })
       const plainAscii = /^[\x20-\x7e]+$/.test(query)
+      const tp = Date.now()
       const plain = plainAscii ? await Promise.all([searchSupabase(query), searchPages(query)]).then(([a, b]) => [...a, ...b]) : []
+      mark("plain", tp)
       const enough = plainAscii && plain.length >= 3
+      const tw = Date.now()
       const quick = await Promise.race([expanding, new Promise<null>(r => setTimeout(() => r(null), enough ? 1200 : 8000))])
+      mark("wait", tw)
       if (quick) expansion = quick
       else if (enough) return rankOnly(plain, query)
     }
@@ -321,7 +327,9 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
       return primary > 0 ? primary + related * 0.3 : related * 0.5
     }
 
+    const tx = Date.now()
     const [dbSites, pageResults] = await Promise.all([searchSupabase(fullQuery), searchPages(fullQuery)])
+    mark("expanded", tx)
     const ranked = [...Object.values(sites), ...dbSites]
       .map(site => ({ site, score: score(site) }))
       .filter(r => r.score > 0)
@@ -343,7 +351,7 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
       if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
       return []
     }
-    return await suggestAndCrawl(query, new Set(), tier)
+    return await (async () => { const tc = Date.now(); const r = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc); return r })()
   }
 
   // Free: a specific domain is crawled live, which keeps the index fresh for Pro. When free live
@@ -361,5 +369,6 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
   // Free keyword queries ("shoes") search the index; only guess and crawl if it has nothing.
   const indexed = await searchIndex()
   if (indexed.length > 0) return indexed
-  return await freeLiveCrawlAllowed() ? await suggestAndCrawl(query, new Set(), tier) : []
+  if (!await freeLiveCrawlAllowed()) return []
+  const tc = Date.now(); const guessed = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc); return guessed
 }
