@@ -133,7 +133,9 @@ async function rpc(fn: string, query: string, max: number, onFail?: () => void):
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: SUPABASE_HEADERS,
-      body: JSON.stringify({ q: query, max_results: max })
+      body: JSON.stringify({ q: query, max_results: max }),
+      // A slow database call must not hold up the whole search: answer with what we have.
+      signal: AbortSignal.timeout(6000)
     })
     if (!r.ok) return failed()
     return await r.json()
@@ -142,7 +144,7 @@ async function rpc(fn: string, query: string, max: number, onFail?: () => void):
 
 async function fetchSample(table: string, select: string): Promise<any[]> {
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&limit=200`, { headers: SUPABASE_HEADERS })
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${select}&limit=200`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(4000) })
     if (!r.ok) return []
     return await r.json()
   } catch { return [] }
@@ -420,7 +422,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const plain = searchable ? await both(plainQuery) : { sites: [], pages: [] }
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
-    const finished = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : 9000))])
+    const finished = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : plain.sites.length + plain.pages.length ? 5000 : 9000))])
     mark("wait", tw)
     // Busy: say the results come from a simpler search (only when there are results to qualify).
     const partial = (results: Site[]) => {
