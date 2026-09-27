@@ -43,7 +43,7 @@ async function build() {
     for (const row of rows) {
       const query = String(row.query || "").toLowerCase().trim()
       // Only show plain-word queries publicly (no URLs, emails or long strings).
-      if (query && query.length <= 40 && !/[@/]|\d{4,}/.test(query)) q[query] = (q[query] || 0) + 1
+      if (query && query.length <= 40 && !/[@/:]|\d{4,}|^\[object /.test(query)) q[query] = (q[query] || 0) + 1
       for (const domain of (row.domains || []).slice(0, 5)) d[domain] = (d[domain] || 0) + 1
     }
     topQueries = Object.entries(q).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([query, searches]) => ({ query, searches }))
