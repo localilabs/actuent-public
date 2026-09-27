@@ -46,6 +46,17 @@
   </style>
 </head>
 <body>
+<div id="busy-banner" role="status" style="display:none;background:#2a1d10;border-bottom:1px solid #ff8a3d;color:#ffd9bf;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:10px 16px;text-align:center"></div>
+<script>
+// "Busy right now" banner (api.actuent.ai/api/status), refreshed every minute.
+(function busy() {
+  fetch("https://api.actuent.ai/api/status").then(function(r) { return r.json() }).then(function(s) {
+    var b = document.getElementById("busy-banner")
+    if (s.busy && s.message) { b.textContent = s.message; b.style.display = "block" } else b.style.display = "none"
+  }).catch(function() {})
+  setTimeout(busy, 60000)
+})()
+</script>
 <main>
   <div class="top"><a href="https://actuent.ai"><img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent"></a><a href="https://docs.actuent.ai">Docs →</a></div>
 

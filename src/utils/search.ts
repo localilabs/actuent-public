@@ -1,5 +1,7 @@
 import { translateKeywords } from "./multilingual"
 import { notice, Notice } from "./notices"
+import { splitCity, localBusinesses, osmPlaces } from "./local"
+import { queryCategories, mergeRegional } from "./rank_extras"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -318,12 +320,20 @@ function freshCopy(saved: any): Site | null {
   return site as Site
 }
 
+function queueCrawl(domain: string) {
+  fetch(`${SUPABASE_URL}/rest/v1/rpc/queue_crawl`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ d: domain }), signal: AbortSignal.timeout(3000) }).catch(() => {})
+}
+
 // Pro goes first when it's crowded: free searches share a per-minute budget for the expensive
 // steps (LLM query expansion and site guessing, live crawls). Past it, free searches still get
 // index results — with a notice saying it's busy — and Pro keeps the full search.
 const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 
-export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = []): Promise<Site[]> {
+// opts.lite: heavy free use from one client (scraper guard, api/search.ts) — index only, no LLM,
+// live crawls or guessing. opts.places receives OpenStreetMap places for local searches.
+export type SearchOptions = { lite?: boolean, places?: any[] }
+
+export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
   const isPro = tier === "pro"
   const parsed = parseFullUrl(query)
@@ -332,8 +342,12 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
   const retryAfter = () => llmStatus(tier).retryAfterSeconds || 60
   // Checked only when a free search is about to use the LLM (one rate-limit hit per such search).
   let llmAllowed: boolean | null = null
+  const lite = !isPro && !!opts.lite
+  // Heavy free use gets its own explanation instead of "it's busy".
+  const busyNotice = (code: Parameters<typeof notice>[0], v: Parameters<typeof notice>[1] = {}) => notice(lite ? "heavy_use" : code, v)
   const mayUseLlm = async () => {
     if (isPro) return true
+    if (lite) return false
     if (llmAllowed === null) llmAllowed = llmStatus("free").available && !await isRateLimited("llm:free", FREE_LLM_PER_MIN)
     return llmAllowed
   }
@@ -368,10 +382,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // the expansion (an LLM call unless cached) and then the expanded search all overlap, and the
     // expansion is only waited for briefly when the plain search already found enough results.
     const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q, onIndexFail), searchPages(q, onIndexFail)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
-    const rank = (found: { sites: Site[], pages: Site[] }, primaryQuery: string, expanded: string) => {
+    const rank = (found: { sites: Site[], pages: Site[], local?: Site[] }, primaryQuery: string, expanded: string) => {
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
       // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.
       // Generic words ("online", "software") count half: many good sites never say them.
+      const cats = queryCategories(primaryQuery)
       const words = [...new Set(primaryQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
       const weight = (w: string) => WEAK_WORDS.has(w) ? 0.5 : 1
       const total = words.reduce((n, w) => n + weight(w), 0)
@@ -387,7 +402,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const dbRank = Number((site as any).rank) || 0
         const base = (primary > 0 ? primary + related * 0.3 : related * 0.5) + (primary > 0 || related > 0 ? dbRank * 6 : 0)
         const c = coverage(site)
-        return base * (0.15 + 0.85 * c * c)
+        // The kind of site the search means ("accounting software" → software/finance) ranks higher.
+        const categoryBoost = cats.size && (site as any).category && cats.has((site as any).category) ? 1.3 : 1
+        return base * (0.15 + 0.85 * c * c) * categoryBoost
       }
       const ranked = [...Object.values(sites), ...found.sites]
         .map(site => ({ site, score: score(site) }))
@@ -396,10 +413,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         .map(r => r.site)
       const seen = new Set<string>()
       const results: Site[] = []
-      for (const site of [...ranked, ...found.pages]) {
+      for (const site of [...(found.local || []), ...ranked, ...found.pages]) {
         if (!seen.has(site.domain)) { seen.add(site.domain); results.push({ ...site, matched: explainMatch(site, primaryQuery, expanded, query) } as Site) }
       }
-      return results
+      // One result per brand: nike.com with nike.com.br folded underneath (regional_sites).
+      return mergeRegional(results) as Site[]
     }
     if (parsed) return rank(await both(query), query, "")
 
@@ -419,29 +437,39 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const ml = translateKeywords(query)
     const plainQuery = ml.query
     const searchable = ml.english.length > 0 || /^[\x20-\x7e]+$/.test(query)
-    const plain = searchable ? await both(plainQuery) : { sites: [], pages: [] }
+    // Local searches ("barber amsterdam"): businesses whose address is in that city come first.
+    const place = splitCity(plainQuery)
+    const localSearch = place ? localBusinesses(place.what, place.city) : Promise.resolve([])
+    const plainFound = searchable ? await both(plainQuery) : { sites: [], pages: [] }
+    const localSites = await localSearch
+    const plain = { ...plainFound, local: localSites.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [] })) as Site[] }
+    // No local websites indexed yet: places from OpenStreetMap, returned separately and labelled.
+    if (place && !localSites.length && opts.places && queryCategories(place.what).size) {
+      const found = await osmPlaces(place.what, place.city)
+      if (found?.length) opts.places.push(...found)
+    }
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
     const finished = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : plain.sites.length + plain.pages.length ? 5000 : 9000))])
     mark("wait", tw)
     // Busy: say the results come from a simpler search (only when there are results to qualify).
     const partial = (results: Site[]) => {
-      if (expansionUnavailable && results.length) notices.push(notice("busy_limited_results", { retryAfter: retryAfter() }))
+      if (expansionUnavailable && results.length) notices.push(busyNotice("busy_limited_results", { retryAfter: retryAfter() }))
       return results
     }
     if (finished === "late" || finished === null) return partial(rank(plain, plainQuery, ""))
-    return partial(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages] }, finished.english, finished.expanded))
+    return partial(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages], local: plain.local }, finished.english, finished.expanded))
   }
 
   // Nothing in the index for a keyword search: guess sites and crawl them (LLM), or explain why not.
   async function guess(): Promise<Site[]> {
-    if (!await mayUseLlm() || !await freeOrPro()) { notices.push(notice("busy_no_results", { query, retryAfter: retryAfter() })); return [] }
+    if (!await mayUseLlm() || !await freeOrPro()) { notices.push(busyNotice("busy_no_results", { query, retryAfter: retryAfter() })); return [] }
     const tc = Date.now(); const guessed = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc)
     if (guessed === null) { notices.push(notice("busy_no_results", { query, retryAfter: retryAfter() })); return [] }
     if (!guessed.length && !indexFailed) notices.push(notice("no_results", { query }))
     return guessed
   }
-  const freeOrPro = async () => isPro || await freeLiveCrawlAllowed()
+  const freeOrPro = async () => isPro || (!lite && await freeLiveCrawlAllowed())
   async function crawlDomain(domain: string): Promise<Site[]> {
     const crawled = await crawlSite(domain, tier)
     if (crawled) { sites[domain] = crawled; return [crawled] }
@@ -459,10 +487,12 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
   // Free: a specific domain is crawled live, which keeps the index fresh for Pro. When free live
   // crawls are at capacity, the indexed copy is served instead.
   if (parsed) {
-    if (await freeLiveCrawlAllowed()) return done(await crawlDomain(parsed.domain))
+    if (!lite && await freeLiveCrawlAllowed()) return done(await crawlDomain(parsed.domain))
+    // Too busy to visit live: the crawler adds or refreshes it within the hour (crawl_queue).
+    queueCrawl(parsed.domain)
     const saved = await getSavedSite(parsed.domain)
-    if (saved) { notices.push(notice("busy_saved_copy", { domain: parsed.domain, updated: (saved as any).updated_at || null })); return [indexedCopy(saved)] }
-    notices.push(notice("busy", { retryAfter: 60 }))
+    if (saved) { notices.push(busyNotice("busy_saved_copy", { domain: parsed.domain, updated: (saved as any).updated_at || null })); return [indexedCopy(saved)] }
+    notices.push(busyNotice("busy_queued", { domain: parsed.domain, retryAfter: 3600 }))
     return done([])
   }
 

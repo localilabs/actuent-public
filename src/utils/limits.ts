@@ -144,3 +144,20 @@ export async function strike(ip: string, where: string): Promise<void> {
 }
 
 export const BLOCKED_MESSAGE = { error: "Blocked for too many requests. Try again in an hour, or email support@localilabs.com if this is a mistake." }
+
+// ----- Longer counters (list_ten.sql) -----
+// Counts in windows of any length: busy notices per 5 minutes (the "busy right now" banner) and
+// free searches per IP per hour (the scraper guard). null when the counter isn't available.
+export async function hitCounter(key: string, windowSeconds: number): Promise<number | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_counter`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key, window_seconds: windowSeconds }), signal: AbortSignal.timeout(2000) })
+    return r.ok ? Number(await r.json()) : null
+  } catch { return null }
+}
+
+export async function peekCounter(key: string, windowSeconds: number): Promise<number | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/peek_counter`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key, window_seconds: windowSeconds }), signal: AbortSignal.timeout(2000) })
+    return r.ok ? Number(await r.json()) : null
+  } catch { return null }
+}

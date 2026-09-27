@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { withoutHidden, searchSites } from "../src/utils/search"
-import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE } from "../src/utils/limits"
+import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
@@ -27,6 +27,8 @@ async function trackSearch(query: string, domains: string[], tier: string, apiKe
 // Launch-day caching: identical searches within 60s reuse the result instead of re-running search,
 // crawls and LLM calls. Separate entries per tier, so Pro never gets a free-tier result.
 const RESULT_TTL_MS = 60_000
+// Past this many free searches from one client in an hour, results are index-only (scraper guard).
+const FREE_SEARCHES_PER_HOUR = parseInt(process.env.FREE_SEARCHES_PER_HOUR || "300")
 const resultCache = new Map<string, { body: unknown, expires: number }>()
 
 function cacheGet(key: string): unknown | null {
@@ -120,8 +122,17 @@ async function search(req: VercelRequest, res: VercelResponse) {
   let sitesMs = 0, productsMs = 0
   const timing: Record<string, number> = {}
   const notices: Notice[] = []
+  const places: any[] = []
+  // Scraper guard: one client running hundreds of free searches an hour (well past what a person
+  // does) gets index-only results with a note, so real users and Pro keep the capacity.
+  let lite = false
+  if (tier === "free" && !isInternalCall(req.headers["x-actuent-internal"])) {
+    const ip = (req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim()
+    const hourly = await hitCounter(`searches:${ipHash(ip)}`, 3600)
+    lite = hourly !== null && hourly > FREE_SEARCHES_PER_HOUR
+  }
   const [results, products] = await Promise.all([
-    searchSites(query.trim(), tier, timing, notices).then(r => { sitesMs = Date.now() - t0; return r }),
+    searchSites(query.trim(), tier, timing, notices, { lite, places }).then(r => { sitesMs = Date.now() - t0; return r }),
     (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
   ])
   res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
@@ -134,9 +145,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
   await trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart)
 
-  if (!results.length && !products.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
+  if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
+  // Busy answers are counted, and the status banner (/api/status) turns on when there are many.
+  if (unique.some(n => n.code.startsWith("busy"))) hitCounter("busy", 300).catch(() => null)
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
   const now = Date.now()
@@ -158,6 +171,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
       visit_url: trackedLink(`https://${r.domain}`)
     })),
     ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
+    // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
+    ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }

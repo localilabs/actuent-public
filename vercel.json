@@ -113,6 +113,10 @@
       "dest": "/api/data.ts?op=webhooks"
     },
     {
+      "src": "/api/status",
+      "dest": "/api/data.ts?op=status"
+    },
+    {
       "src": "/api/state",
       "dest": "/api/data.ts?op=state"
     },
