@@ -102,7 +102,16 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
   const card = (s: any) => { const r = readiness(s); return `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc([s.business?.address?.street, s.domain].filter(Boolean).join(" · "))}</span></span><span>${s.business?.rating ? `<span class="tag">★ ${esc(s.business.rating.value)}</span>` : ""}<span class="tag${r.score >= 80 ? " hot" : ""}">${r.score}/100</span></span></a>` }
   const sections = [...byCategory.entries()].sort((a, b) => b[1].length - a[1].length)
     .map(([c, list]) => `${category ? "" : `<h2><a href="${BASE}/site/in/${esc(citySlug)}/${esc(c)}" style="color:inherit;text-decoration:none">${esc(CATEGORIES[c] || "Other")} (${list.length})</a></h2>`}<div class="card list">${list.slice(0, category ? 300 : 12).map(card).join("")}</div>`).join("")
-  const body = `<div class="eyebrow"><a href="${BASE}/site" style="color:inherit;text-decoration:none">Directory</a> · ${category ? `<a href="${BASE}/site/in/${esc(citySlug)}" style="color:inherit;text-decoration:none">${esc(city)}</a>` : esc(city)}</div>
+  const crumbs: Crumb[] = [{ name: "Directory", url: `${BASE}/site` }, { name: city, url: `${BASE}/site/in/${citySlug}` }]
+  if (category) crumbs.push({ name: label, url: `${BASE}/site/in/${citySlug}/${category}` })
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      breadcrumbLd(crumbs),
+      { "@type": "ItemList", name: `${label} in ${city}`, numberOfItems: listed.length, itemListElement: listed.slice(0, 50).map((s, i) => ({ "@type": "ListItem", position: i + 1, name: s.name || s.domain, url: `${BASE}/site/${s.domain}` })) }
+    ]
+  }
+  const body = `${breadcrumbHtml(crumbs)}
 <h1>${esc(label)} in ${esc(city)}</h1>
 <p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see. <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on in ${esc(city)} →</a></p>
 ${sections}`
@@ -110,7 +119,7 @@ ${sections}`
   return res.status(200).send(layout({
     title: `${label} in ${city} — Actuent`, description: `${listed.length} ${label.toLowerCase()} in ${city} that AI agents can read and act on.`,
     canonical: `${BASE}/site/in/${citySlug}${category ? `/${category}` : ""}`, image: ogImage(`${label} in ${city}`, "Agent-ready businesses, by Actuent", `api.actuent.ai/site/in/${citySlug}`),
-    noindex: listed.length < 3, body
+    noindex: listed.length < 3, jsonLd, body
   }))
 }
 
@@ -146,6 +155,36 @@ details summary{cursor:pointer;color:var(--accent);font-size:14px;margin-top:10p
 .fix{font-size:14px;color:var(--soft);padding:6px 0;border-bottom:1px solid var(--border)}.fix:last-child{border-bottom:none}.fix b{color:var(--text)}
 .stars{color:var(--accent)}
 @media(max-width:600px){h1{font-size:28px}.score .num{font-size:44px}}`
+
+// schema.org type for a business: its own schema.org type when it has one ("Dentist"), otherwise the
+// OpenStreetMap kind ("hairdresser") mapped to the nearest schema.org type.
+const SCHEMA_TYPES: Record<string, string> = {
+  restaurant: "Restaurant", "fast food": "FastFoodRestaurant", cafe: "CafeOrCoffeeShop", bar: "BarOrPub", pub: "BarOrPub", "ice cream": "IceCreamShop",
+  bakery: "Bakery", hairdresser: "HairSalon", beauty: "BeautySalon", dentist: "Dentist", doctors: "Physician", clinic: "MedicalClinic",
+  pharmacy: "Pharmacy", chemist: "Pharmacy", veterinary: "VeterinaryCare", hotel: "Hotel", hostel: "Hostel", "guest house": "BedAndBreakfast",
+  supermarket: "GroceryStore", convenience: "ConvenienceStore", clothes: "ClothingStore", shoes: "ShoeStore", books: "BookStore", florist: "Florist",
+  jewelry: "JewelryStore", optician: "Optician", furniture: "FurnitureStore", electronics: "ElectronicsStore", bicycle: "BikeStore", hardware: "HardwareStore",
+  "mobile phone": "MobilePhoneStore", toys: "ToyStore", pet: "PetStore", "sports": "SportingGoodsStore", "car repair": "AutoRepair", car: "AutoDealer",
+  cinema: "MovieTheater", theatre: "PerformingArtsTheater", museum: "Museum", nightclub: "NightClub", library: "Library", "fitness centre": "ExerciseGym",
+  gym: "ExerciseGym", "sports centre": "SportsActivityLocation", lawyer: "Attorney", accountant: "AccountingService", "estate agent": "RealEstateAgent",
+  travel_agent: "TravelAgency", "travel agency": "TravelAgency", laundry: "DryCleaningOrLaundry", "dry cleaning": "DryCleaningOrLaundry", tattoo: "TattooParlor"
+}
+function schemaType(b: any): string {
+  const t = String(b?.type || "").trim()
+  if (/^[A-Z][A-Za-z]+$/.test(t)) return t
+  return SCHEMA_TYPES[t.toLowerCase()] || (b ? "LocalBusiness" : "Organization")
+}
+const SCHEMA_DAYS: Record<string, string> = { Mo: "Monday", Tu: "Tuesday", We: "Wednesday", Th: "Thursday", Fr: "Friday", Sa: "Saturday", Su: "Sunday" }
+
+type Crumb = { name: string, url: string }
+function breadcrumbHtml(crumbs: Crumb[]): string {
+  return `<nav aria-label="Breadcrumb" class="eyebrow">${crumbs.map((c, i) => i === crumbs.length - 1
+    ? `<span aria-current="page">${esc(c.name)}</span>`
+    : `<a href="${esc(c.url)}" style="color:inherit;text-decoration:none">${esc(c.name)}</a>`).join(" › ")}</nav>`
+}
+function breadcrumbLd(crumbs: Crumb[]) {
+  return { "@type": "BreadcrumbList", itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.url })) }
+}
 
 function layout(opts: { title: string, description: string, canonical: string, image: string, noindex?: boolean, jsonLd?: object, body: string }) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -284,7 +323,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? `${String(home.content).slice(0, 150)}${String(home.content).length > 150 ? "…" : ""}`
     : `What AI agents see on ${domain}: pages, actions and agent-readiness score.`
 
-  const body = `<div class="eyebrow">${esc(domain)}${site.category && !HIDDEN_CATEGORIES.has(site.category) ? ` · ${city ? `<a href="${BASE}/site/in/${esc(slug(city))}/${esc(site.category)}" style="color:inherit">${esc(CATEGORIES[site.category] || site.category)} in ${esc(city)}</a>` : esc(CATEGORIES[site.category] || site.category)}` : ""}</div>
+  // Directory › City › Category › site: visible breadcrumbs plus BreadcrumbList structured data.
+  const shownCategory = site.category && !HIDDEN_CATEGORIES.has(site.category) ? site.category : null
+  const crumbs: Crumb[] = [{ name: "Directory", url: `${BASE}/site` }]
+  if (city) crumbs.push({ name: city, url: `${BASE}/site/in/${slug(city)}` })
+  if (city && shownCategory) crumbs.push({ name: CATEGORIES[shownCategory] || shownCategory, url: `${BASE}/site/in/${slug(city)}/${shownCategory}` })
+  crumbs.push({ name: domain, url: `${BASE}/site/${domain}` })
+  const body = `${breadcrumbHtml(crumbs)}
 ${site.status === "parked" ? `<div class="card" style="border-color:var(--bad)">This domain looks parked or for sale, so it's left out of Actuent search.</div>` : ""}${site.status === "duplicate" && site.duplicate_of ? `<div class="card">This domain redirects to <a href="${BASE}/site/${esc(site.duplicate_of)}">${esc(site.duplicate_of)}</a>, which is shown in search instead.</div>` : ""}
 <h1>${esc(name)}</h1>
 <p class="lead">${esc(home?.content || `Actuent has indexed ${domain}.`)}</p>
@@ -318,9 +363,22 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
 <div style="margin-top:10px"><a href="https://analytics.actuent.ai">Claim this site →</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
 <div class="muted" style="margin-top:10px">Show your score: <code>&lt;script src="${BASE}/badge.js" data-domain="${esc(domain)}" async&gt;&lt;/script&gt;</code> or the image <code>${BASE}/badge.svg?domain=${esc(domain)}&amp;style=card</code></div></div>`
 
+  const hours = (b?.opening_hours || []).filter((h: any) => Array.isArray(h.days) && h.opens && h.closes)
+  const entity = {
+    "@type": schemaType(b), "@id": `https://${domain}/#business`, name, url: `https://${domain}`,
+    ...(home?.content && !/^Website at /.test(home.content) ? { description: String(home.content).slice(0, 300) } : {}),
+    ...(b?.telephone ? { telephone: b.telephone } : {}),
+    ...(b?.address ? { address: { "@type": "PostalAddress", ...(b.address.street ? { streetAddress: b.address.street } : {}), ...(b.address.postcode ? { postalCode: b.address.postcode } : {}), ...(b.address.city ? { addressLocality: b.address.city } : {}), ...(b.address.country ? { addressCountry: b.address.country } : {}) } } : {}),
+    ...(b?.geo ? { geo: { "@type": "GeoCoordinates", latitude: b.geo.lat, longitude: b.geo.lon } } : {}),
+    ...(hours.length ? { openingHoursSpecification: hours.map((h: any) => ({ "@type": "OpeningHoursSpecification", dayOfWeek: h.days.map((d: string) => SCHEMA_DAYS[d] || d), opens: h.opens, closes: h.closes })) } : {}),
+    ...(b?.price_range ? { priceRange: b.price_range } : {})
+  }
   const jsonLd = {
-    "@context": "https://schema.org", "@type": "WebPage", name: `${name} — AI agent profile`, url: `${BASE}/site/${domain}`,
-    about: { "@type": b?.type || "Organization", name, url: `https://${domain}`, ...(b?.telephone ? { telephone: b.telephone } : {}) }
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "WebPage", "@id": `${BASE}/site/${domain}`, name: `${name} — AI agent profile`, url: `${BASE}/site/${domain}`, about: { "@id": entity["@id"] }, breadcrumb: breadcrumbLd(crumbs), ...(site.updated_at ? { dateModified: site.updated_at } : {}) },
+      entity
+    ]
   }
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
   return res.status(200).send(layout({
