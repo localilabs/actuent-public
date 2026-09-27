@@ -125,6 +125,10 @@
       "dest": "/api/data.ts?op=go"
     },
     {
+      "src": "/indexnow\\.txt",
+      "dest": "/api/data.ts?op=indexnow"
+    },
+    {
       "src": "/state",
       "dest": "/public/state.html"
     },
