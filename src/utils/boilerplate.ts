@@ -24,9 +24,23 @@ const SENTENCE_NOISE = [
 // Consent-banner buttons, which scraping glues onto the next real sentence.
 const BUTTONS = /\b(no,? thanks|yes,? that[’']?s fine|(accept|reject|allow|decline) all( cookies)?|accept cookies|ok(ay)?,? got it|manage (cookie )?preferences|cookie settings)\b[.!]?/gi
 
+// Jina Reader output saved as-is: its header lines, markdown links/images, bare URLs and markup.
+function stripReaderMarkup(text: string): string {
+  let t = String(text)
+  // Header block, whether still on separate lines or already collapsed onto one.
+  if (/^\s*Title:/.test(t) && t.includes("Markdown Content:")) t = t.slice(t.indexOf("Markdown Content:") + 17)
+  return t
+    .replace(/^(Title|URL Source|Published Time|Warning|Markdown Content):.*$/gm, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/(^|\s)[#*_>`|=-]{1,6}(?=\s|$)/g, " ")
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+}
+
 export function cleanPageText(text: string): string {
   if (!text) return text
-  const original = String(text).replace(/\s+/g, " ").trim()
+  const original = stripReaderMarkup(text).replace(/\s+/g, " ").trim()
   // Banner buttons only go when the text also has a consent banner, so ordinary uses stay.
   let t = /cookie|consent/i.test(original) ? original.replace(BUTTONS, " ") : original
   // Drop runs of menu words: many short Capitalised tokens without verbs ("Home Shop About Contact Login…").
@@ -34,7 +48,12 @@ export function cleanPageText(text: string): string {
   const sentences = t.split(/(?<=[.!?])\s+(?=[A-Z0-9"“(©])/)
   const kept = sentences.filter(s => !SENTENCE_NOISE.some(re => re.test(s.trim())))
   const out = kept.join(" ").replace(/\s+/g, " ").trim()
-  return out.length >= 20 ? out : original
+  return out.length >= 20 ? out : original.length >= 20 ? original : String(text).replace(/\s+/g, " ").trim()
+}
+
+// True when cleaning changed more than whitespace.
+export function changedText(before: string, after: string): boolean {
+  return String(before).replace(/\s+/g, " ").trim() !== after
 }
 
 // Cleans every page of a LAWP pages object; returns null when nothing changed.
@@ -44,8 +63,8 @@ export function cleanPages(pages: Record<string, { title?: string, content?: str
   const out: Record<string, any> = {}
   for (const [path, page] of Object.entries(pages)) {
     const content = typeof page?.content === "string" ? cleanPageText(page.content) : page?.content
-    if (content !== page?.content) changed = true
-    out[path] = { ...page, content }
+    if (typeof content === "string" && changedText(page!.content!, content)) { changed = true; out[path] = { ...page, content } }
+    else out[path] = page
   }
   return changed ? out : null
 }
