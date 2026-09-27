@@ -5,6 +5,7 @@ import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
 import { openNow } from "../src/utils/business"
+import { notice, Notice, DEGRADED } from "../src/utils/notices"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -40,7 +41,22 @@ function cacheSet(key: string, body: unknown) {
   if (resultCache.size > 1000) resultCache.delete(resultCache.keys().next().value!)
 }
 
+// Never an empty 500: anything unexpected (overloaded database, timeouts) becomes a 503 with a
+// plain-English message and Retry-After, so people and agents know to try again shortly.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    return await search(req, res)
+  } catch (e) {
+    console.error("search failed:", e)
+    if (res.headersSent) return
+    const n = notice("busy", { retryAfter: 60 })
+    res.setHeader("Cache-Control", "no-store")
+    res.setHeader("Retry-After", "60")
+    return res.status(503).json({ error: "busy", message: n.message, retry_after_seconds: 60, count: 0, results: [], notices: [n] })
+  }
+}
+
+async function search(req: VercelRequest, res: VercelResponse) {
   const requestStart = Date.now()
   res.setHeader("Access-Control-Allow-Origin", "*")
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -65,8 +81,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.setHeader("Cache-Control", "no-store")
       return res.status(429).json({
         error: "Rate limit exceeded",
-        message: tier === "pro" ? "Pro: 60 req/min" : "Free: 20 req/min — upgrade at actuent.ai",
-        retry_after_seconds: 60
+        message: tier === "pro"
+          ? `You're sending searches faster than Actuent Pro allows (60 a minute). Please wait ${limit.reset} seconds and try again.`
+          : `You're sending searches faster than the free plan allows (20 a minute). Please wait ${limit.reset} seconds, or get Actuent Pro at actuent.ai for 60 a minute and priority when it's busy.`,
+        retry_after_seconds: limit.reset
       })
     }
   }
@@ -101,8 +119,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const t0 = Date.now()
   let sitesMs = 0, productsMs = 0
   const timing: Record<string, number> = {}
+  const notices: Notice[] = []
   const [results, products] = await Promise.all([
-    searchSites(query.trim(), tier, timing).then(r => { sitesMs = Date.now() - t0; return r }),
+    searchSites(query.trim(), tier, timing, notices).then(r => { sitesMs = Date.now() - t0; return r }),
     (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
   ])
   res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
@@ -114,6 +133,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
   await trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart)
+
+  if (!results.length && !products.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
+  const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
+  const degraded = unique.some(n => DEGRADED.has(n.code))
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
   const now = Date.now()
@@ -134,8 +157,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`)
     })),
-    ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {})
+    ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
+    // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
+    ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }
-  if (results.length > 0 || products.length > 0) cacheSet(cacheKey, body)
+  // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
+  if (degraded) res.setHeader("Cache-Control", "no-store")
+  else if (results.length > 0 || products.length > 0) cacheSet(cacheKey, body)
   return res.status(200).json(body)
 }

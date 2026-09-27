@@ -1,7 +1,8 @@
 import { translateKeywords } from "./multilingual"
+import { notice, Notice } from "./notices"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
-import { complete, Tier } from "./llm"
+import { complete, llmStatus, Tier } from "./llm"
 import { isRateLimited } from "./limits"
 import { safeParseJSON } from "./parseAI"
 
@@ -125,16 +126,17 @@ const SUPABASE_HEADERS = {
 
 // Full-text search runs inside Postgres (search_lawp_sites / search_lawp_pages), so every
 // indexed site is searchable. Falls back to scanning a 200-row sample if the functions are missing.
-async function rpc(fn: string, query: string, max: number): Promise<any[] | null> {
+async function rpc(fn: string, query: string, max: number, onFail?: () => void): Promise<any[] | null> {
+  const failed = () => { onFail?.(); return null }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: SUPABASE_HEADERS,
       body: JSON.stringify({ q: query, max_results: max })
     })
-    if (!r.ok) return null
+    if (!r.ok) return failed()
     return await r.json()
-  } catch { return null }
+  } catch { return failed() }
 }
 
 async function fetchSample(table: string, select: string): Promise<any[]> {
@@ -146,8 +148,8 @@ async function fetchSample(table: string, select: string): Promise<any[]> {
 }
 
 // Candidate sites from Postgres full-text search (scored later in searchIndex).
-async function searchSupabase(query: string): Promise<Site[]> {
-  const rows = await rpc("search_lawp_sites", query, 50)
+async function searchSupabase(query: string, onFail?: () => void): Promise<Site[]> {
+  const rows = await rpc("search_lawp_sites", query, 50, onFail)
     ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   return rows.map((row: any) => ({
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
@@ -155,8 +157,8 @@ async function searchSupabase(query: string): Promise<Site[]> {
   }))
 }
 
-async function searchPages(query: string): Promise<Site[]> {
-  const rows = await rpc("search_lawp_pages", query, 50)
+async function searchPages(query: string, onFail?: () => void): Promise<Site[]> {
+  const rows = await rpc("search_lawp_pages", query, 50, onFail)
     ?? await fetchSample("lawp_pages", "domain,path,title,content,actions")
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   return rows
@@ -201,7 +203,8 @@ function parseFullUrl(query: string): { domain: string, path: string } | null {
 const PLACEHOLDER_DOMAINS = new Set(["example.com", "example.org", "example.net"])
 
 // Last resort when the index has nothing: ask Groq for up to 3 real sites and crawl them in parallel.
-async function suggestAndCrawl(query: string, seen: Set<string>, tier: Tier): Promise<Site[]> {
+// null when the guess couldn't be made (busy), [] when there's genuinely nothing to add.
+async function suggestAndCrawl(query: string, seen: Set<string>, tier: Tier): Promise<Site[] | null> {
   const answer = await complete(
     `A user searched: "${query}". List up to 3 real, existing websites most relevant to this search. If the search is gibberish or no real website fits, reply with NONE. Reply with bare domains only, comma separated, no http, no explanation. Example: nike.com,adidas.com,asos.com`,
     10000,
@@ -209,7 +212,7 @@ async function suggestAndCrawl(query: string, seen: Set<string>, tier: Tier): Pr
   )
   if (!answer) {
     console.error(`suggestAndCrawl: no model could answer for "${query}"`)
-    return []
+    return null
   }
   const found = answer.toLowerCase().match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/g) || []
   const domains = [...new Set(found)]
@@ -257,13 +260,15 @@ async function storedExpansion(key: string): Promise<{ english: string, terms: s
   } catch { return null }
 }
 
-async function expandQuery(query: string, tier: Tier): Promise<{ english: string, terms: string[] }> {
+async function expandQuery(query: string, tier: Tier, mayUseLlm: () => Promise<boolean>): Promise<{ english: string, terms: string[], unavailable?: boolean }> {
   const key = query.toLowerCase().trim()
   if (!key || key.split(/\s+/).length > 8) return { english: query, terms: [] }
   const cached = expansionCache.get(key)
   if (cached && cached.expires > Date.now()) return cached
   const stored = await storedExpansion(key)
   if (stored) { expansionCache.set(key, { ...stored, expires: Date.now() + 6 * 3600_000 }); return stored }
+  // Crowded: free searches skip the LLM step (cached expansions above still work), so Pro goes first.
+  if (!await mayUseLlm()) return { english: query, terms: [], unavailable: true }
   const answer = await complete(
     `A user searched for: "${query}". The search may be in any language. Translate it into English (unchanged if it's already English), then list up to 6 short related English search terms: synonyms, product or service categories, and common alternative words. Reply with JSON only: {"english":"...","terms":["..."]}`,
     4000,
@@ -277,7 +282,7 @@ async function expandQuery(query: string, tier: Tier): Promise<{ english: string
     .map((t: string) => t.toLowerCase().trim())
     .filter((t: string) => t && t.split(/\s+/).length <= 3 && !words.has(t))
     .slice(0, 6)
-  const result = { english, terms, expires: Date.now() + (answer ? 6 * 3600_000 : 10 * 60_000) }
+  const result = { english, terms, expires: Date.now() + (answer ? 6 * 3600_000 : 2 * 60_000), ...(answer ? {} : { unavailable: true }) }
   if (answer) fetch(`${SB_URL}/rest/v1/query_expansions?on_conflict=query`, {
     method: "POST", headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
     body: JSON.stringify({ query: key, english, terms, updated_at: new Date().toISOString() })
@@ -310,10 +315,29 @@ function freshCopy(saved: any): Site | null {
   return site as Site
 }
 
-export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}): Promise<Site[]> {
+// Pro goes first when it's crowded: free searches share a per-minute budget for the expensive
+// steps (LLM query expansion and site guessing, live crawls). Past it, free searches still get
+// index results — with a notice saying it's busy — and Pro keeps the full search.
+const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
+
+export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = []): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
   const isPro = tier === "pro"
   const parsed = parseFullUrl(query)
+  let indexFailed = false
+  const onIndexFail = () => { indexFailed = true }
+  const retryAfter = () => llmStatus(tier).retryAfterSeconds || 60
+  // Checked only when a free search is about to use the LLM (one rate-limit hit per such search).
+  let llmAllowed: boolean | null = null
+  const mayUseLlm = async () => {
+    if (isPro) return true
+    if (llmAllowed === null) llmAllowed = llmStatus("free").available && !await isRateLimited("llm:free", FREE_LLM_PER_MIN)
+    return llmAllowed
+  }
+  const done = (results: Site[]): Site[] => {
+    if (indexFailed && !results.length) notices.push(notice("temporarily_unavailable"))
+    return results
+  }
 
   if (parsed && parsed.path !== "/" && (isPro || await freeLiveCrawlAllowed())) {
     const page = await crawlPage(parsed.domain, parsed.path, tier)
@@ -340,7 +364,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search,
     // the expansion (an LLM call unless cached) and then the expanded search all overlap, and the
     // expansion is only waited for briefly when the plain search already found enough results.
-    const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q), searchPages(q)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
+    const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q, onIndexFail), searchPages(q, onIndexFail)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
     const rank = (found: { sites: Site[], pages: Site[] }, primaryQuery: string, expanded: string) => {
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
       // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.
@@ -377,7 +401,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     if (parsed) return rank(await both(query), query, "")
 
     const te = Date.now()
-    const expanding = expandQuery(query, tier).then(x => { mark("expand", te); return x })
+    let expansionUnavailable = false
+    const expanding = expandQuery(query, tier, mayUseLlm).then(x => { mark("expand", te); if (x.unavailable) expansionUnavailable = true; return x })
     // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
     const expandedSearch = expanding.then(async ({ english, terms }) => {
       if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null
@@ -394,38 +419,52 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const plain = searchable ? await both(plainQuery) : { sites: [], pages: [] }
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
-    const done = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : 9000))])
+    const finished = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : 9000))])
     mark("wait", tw)
-    if (done === "late" || done === null) return rank(plain, plainQuery, "")
-    return rank({ sites: [...plain.sites, ...done.found.sites], pages: [...plain.pages, ...done.found.pages] }, done.english, done.expanded)
+    // Busy: say the results come from a simpler search (only when there are results to qualify).
+    const partial = (results: Site[]) => {
+      if (expansionUnavailable && results.length) notices.push(notice("busy_limited_results", { retryAfter: retryAfter() }))
+      return results
+    }
+    if (finished === "late" || finished === null) return partial(rank(plain, plainQuery, ""))
+    return partial(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages] }, finished.english, finished.expanded))
+  }
+
+  // Nothing in the index for a keyword search: guess sites and crawl them (LLM), or explain why not.
+  async function guess(): Promise<Site[]> {
+    if (!await mayUseLlm() || !await freeOrPro()) { notices.push(notice("busy_no_results", { query, retryAfter: retryAfter() })); return [] }
+    const tc = Date.now(); const guessed = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc)
+    if (guessed === null) { notices.push(notice("busy_no_results", { query, retryAfter: retryAfter() })); return [] }
+    if (!guessed.length && !indexFailed) notices.push(notice("no_results", { query }))
+    return guessed
+  }
+  const freeOrPro = async () => isPro || await freeLiveCrawlAllowed()
+  async function crawlDomain(domain: string): Promise<Site[]> {
+    const crawled = await crawlSite(domain, tier)
+    if (crawled) { sites[domain] = crawled; return [crawled] }
+    notices.push(notice("site_unreachable", { domain }))
+    return []
   }
 
   if (isPro) {
     const indexed = await searchIndex()
-    if (indexed.length > 0) return indexed
-    if (parsed) {
-      const crawled = await crawlSite(parsed.domain, tier)
-      if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
-      return []
-    }
-    return await (async () => { const tc = Date.now(); const r = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc); return r })()
+    if (indexed.length > 0) return done(indexed)
+    if (parsed) return done(await crawlDomain(parsed.domain))
+    return done(await guess())
   }
 
   // Free: a specific domain is crawled live, which keeps the index fresh for Pro. When free live
   // crawls are at capacity, the indexed copy is served instead.
   if (parsed) {
-    if (await freeLiveCrawlAllowed()) {
-      const crawled = await crawlSite(parsed.domain, tier)
-      if (crawled) { sites[parsed.domain] = crawled; return [crawled] }
-      return []
-    }
+    if (await freeLiveCrawlAllowed()) return done(await crawlDomain(parsed.domain))
     const saved = await getSavedSite(parsed.domain)
-    return saved ? [indexedCopy(saved)] : []
+    if (saved) { notices.push(notice("busy_saved_copy", { domain: parsed.domain, updated: (saved as any).updated_at || null })); return [indexedCopy(saved)] }
+    notices.push(notice("busy", { retryAfter: 60 }))
+    return done([])
   }
 
   // Free keyword queries ("shoes") search the index; only guess and crawl if it has nothing.
   const indexed = await searchIndex()
-  if (indexed.length > 0) return indexed
-  if (!await freeLiveCrawlAllowed()) return []
-  const tc = Date.now(); const guessed = await suggestAndCrawl(query, new Set(), tier); mark("crawl", tc); return guessed
+  if (indexed.length > 0) return done(indexed)
+  return done(await guess())
 }

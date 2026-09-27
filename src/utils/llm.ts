@@ -48,3 +48,13 @@ export async function complete(prompt: string, timeoutMs: number = 15000, tier: 
   }
   return null
 }
+
+// Whether any model this tier can use is available right now, and if not, when the first one frees
+// up (seconds). Used to tell people "our AI helper is at capacity, try again in N minutes".
+export function llmStatus(tier: Tier = "free"): { available: boolean, retryAfterSeconds: number } {
+  const models = tier === "pro" ? PRO_MODELS : FREE_MODELS
+  const now = Date.now()
+  const waits = models.map(m => Math.max(0, (blockedUntil.get(m) || 0) - now))
+  const soonest = Math.min(...waits)
+  return { available: soonest === 0, retryAfterSeconds: Math.ceil(soonest / 1000) }
+}
