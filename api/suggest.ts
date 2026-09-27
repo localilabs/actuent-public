@@ -1,8 +1,22 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { verifyActuentRequest } from "../src/utils/verify-actuent"
+import { verifyAgentRequest } from "../src/utils/verify-actuent"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
+
+function cleanDomain(value: string): string | null {
+  const d = value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*/, "").trim()
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) ? d : null
+}
+
+async function indexed(domain: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain&domain=eq.${encodeURIComponent(domain)}&actions=neq.%5B%5D`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }
+    })
+    return r.ok && (await r.json()).length > 0
+  } catch { return false }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", "*")
@@ -10,6 +24,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type")
 
   if (req.method === "OPTIONS") return res.status(200).end()
+
+  // LAWP 0.4 long-running action: the status of a suggestion (signed GET from the agent).
+  if (req.method === "GET" && req.query.status) {
+    const signed = await verifyAgentRequest(req.headers as any, "GET", `https://api.actuent.ai${req.url}`, "")
+    if (!signed) return res.status(401).json({ error: { code: "invalid_signature", message: "Sign the request (HTTP Message Signatures or Actuent's headers)" } })
+    const domain = cleanDomain(String(req.query.status))
+    if (!domain) return res.status(400).json({ error: { code: "invalid_input", message: "Invalid domain", field: "status" } })
+    return res.status(200).json(await indexed(domain)
+      ? { status: "completed", result: { domain, status: "indexed", page: `https://api.actuent.ai/site/${domain}` } }
+      : { status: "pending", retry_after_seconds: 3600 })
+  }
 
   if (req.method === "GET") {
     const html = `<!DOCTYPE html>
@@ -76,20 +101,29 @@ async function submit() {
 
   if (req.method === "POST") {
     // Accepts the suggest form ({ domain }) and LAWP action calls ({ action: "suggest_site", input }).
+    // As a LAWP action this is Actuent's reference implementation of LAWP 0.4: signed requests
+    // (RFC 9421 or Actuent's headers), standard errors, quotes, test mode and a long-running result.
     const body = req.body || {}
-    if (body.action === "suggest_site") {
-      // LAWP action calls must be signed by Actuent. The body is re-serialised exactly as Actuent sent it.
-      const signed = await verifyActuentRequest(req.headers, "POST", "https://api.actuent.ai/api/suggest", JSON.stringify(body))
-      if (!signed) return res.status(401).json({ error: "Invalid Actuent signature" })
-      if (body.test === true) return res.status(200).json({ success: true, test: true, message: "Test request received and verified — nothing was saved" })
+    const isAction = body.action === "suggest_site"
+    if (isAction) {
+      // The body is re-serialised exactly as the agent sent it (compact JSON).
+      const signed = await verifyAgentRequest(req.headers as any, "POST", "https://api.actuent.ai/api/suggest", JSON.stringify(body))
+      if (!signed) return res.status(401).json({ error: { code: "invalid_signature", message: "Sign the request (HTTP Message Signatures or Actuent's headers)" } })
+      if (body.test === true) return res.status(200).json({ success: true, test: true, verified_with: signed, message: "Test request received and verified — nothing was saved" })
     }
-    const lawpInput = body.action === "suggest_site" ? body.input : undefined
+    const lawpInput = isAction ? body.input : undefined
     const domain = typeof lawpInput === "string" ? lawpInput : lawpInput?.domain ?? body.domain
     const submitted_by = body.submitted_by
-    if (typeof domain !== "string" || !domain.includes(".")) {
-      return res.status(400).json({ error: "Invalid domain" })
+    const clean = typeof domain === "string" ? cleanDomain(domain) : null
+    if (!clean) {
+      return res.status(400).json(isAction ? { error: { code: "invalid_input", message: "Give a domain like example.com", field: "domain" } } : { error: "Invalid domain" })
     }
-    const clean = domain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*/, "").trim()
+    const already = await indexed(clean)
+    if (isAction && body.mode === "quote") {
+      // Suggesting is free; the quote says whether it's needed at all.
+      return res.status(200).json({ quote: { available: !already, price: 0, currency: "EUR" }, already_indexed: already, ...(already ? { page: `https://api.actuent.ai/site/${clean}` } : {}) })
+    }
+    if (isAction && already) return res.status(200).json({ domain: clean, status: "indexed", page: `https://api.actuent.ai/site/${clean}` })
 
     await fetch(`${SUPABASE_URL}/rest/v1/site_suggestions`, {
       method: "POST",
@@ -101,6 +135,7 @@ async function submit() {
       body: JSON.stringify({ domain: clean, submitted_by: submitted_by || null })
     })
 
+    if (isAction) return res.status(202).json({ status: "pending", status_url: `https://api.actuent.ai/api/suggest?status=${encodeURIComponent(clean)}`, retry_after_seconds: 3600, domain: clean })
     return res.status(200).json({ success: true, domain: clean })
   }
 

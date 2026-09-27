@@ -214,7 +214,7 @@ async function fetchHtml(domain: string): Promise<string | null> {
 
 export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Site | null> {
   // A site's own LAWP always wins over crawling.
-  const native = await fetchNativeSite(domain)
+  let native = await fetchNativeSite(domain)
   const existing = await getSavedSite(domain)
   const asResult = (saved: SavedSite): Site => ({
     domain: saved.domain, name: saved.name, pages: saved.pages, actions: saved.actions, native: saved.native,
@@ -227,6 +227,8 @@ export async function crawlSite(domain: string, tier: Tier = "free"): Promise<Si
 
   // Raw HTML is fetched alongside: schema.org business details and the rule-based fallback need it.
   const [content, html] = native ? [null, null] : await Promise.all([fetchContent(`https://${domain}`), fetchHtml(domain)])
+  // LAWP 0.4: the homepage links its own LAWP (<link rel="lawp">), e.g. on Shopify or Squarespace.
+  if (!native && html) native = await fetchNativeSite(domain, html)
 
   let site: Site
 
