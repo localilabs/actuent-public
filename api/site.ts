@@ -155,7 +155,7 @@ function layout(opts: { title: string, description: string, canonical: string, i
 <meta property="og:url" content="${esc(opts.canonical)}"><meta property="og:image" content="${esc(opts.image)}"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="${BASE}/assets/actuent-logo.png">
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd).replace(/</g, "\\u003c")}</script>` : ""}
-<style>${STYLE}</style></head><body><main>
+<style>${STYLE}:focus-visible{outline:2px solid #8b8bff;outline-offset:2px}.skip{position:absolute;left:-999px;top:8px;background:#fff;color:#000;padding:8px 12px;border-radius:6px}.skip:focus{left:8px}</style></head><body><a class="skip" href="#main">Skip to content</a><main id="main">
 <div class="top"><a href="https://actuent.ai"><img src="${BASE}/assets/actuent-logo.png" alt="Actuent"></a><nav><a href="${BASE}/site">Directory</a><a href="https://humans.actuent.ai">Search</a><a href="https://docs.actuent.ai">Docs</a></nav></div>
 ${opts.body}
 <p class="muted" style="margin-top:40px">Actuent is a search engine for AI agents, made by <a href="https://localilabs.com">localilabs</a>. Data is generated automatically from public web content and may be incomplete.</p>
@@ -220,10 +220,14 @@ async function topCities(): Promise<string> {
 }
 
 async function directory(res: VercelResponse) {
-  const sites = await rows("lawp_sites?select=domain,name,native,actions&actions=neq.%5B%5D&status=is.null&order=native.desc,updated_at.desc&limit=120")
+  // Both queries at once: a cold page is as slow as the slower one, not the sum.
+  const [sites, cities] = await Promise.all([
+    rows("lawp_sites?select=domain,name,native,actions&actions=neq.%5B%5D&status=is.null&order=native.desc,updated_at.desc&limit=120"),
+    topCities()
+  ])
   const body = `<div class="eyebrow">Directory</div><h1>Agent-ready websites</h1>
 <p class="lead">Websites AI agents can understand and act on through Actuent: their pages, and the actions an agent can take for you.</p>
-${await topCities()}
+${cities}
 <h2>Recently updated</h2>
 <div class="card list">${sites.map(s => `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc(s.domain)}</span></span><span>${s.native ? '<span class="tag hot">Native LAWP</span>' : ""}<span class="tag">${(s.actions || []).length} actions</span></span></a>`).join("")}</div>`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
