@@ -138,6 +138,8 @@ export async function parsePriceLimit(query: string): Promise<{ text: string, ma
 const nameCache = new Map<string, string>()
 
 async function englishNames(names: string[], tier: Tier): Promise<string[]> {
+  // Names in plain ASCII are almost always English already; only the rest go to the LLM.
+  for (const n of names) if (!nameCache.has(n) && /^[\x20-\x7e]+$/.test(n)) nameCache.set(n, n)
   const missing = [...new Set(names.filter(n => !nameCache.has(n)))]
   if (missing.length) {
     const answer = await complete(

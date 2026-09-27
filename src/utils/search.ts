@@ -192,11 +192,27 @@ const expansionCache = new Map<string, { english: string, terms: string[], expir
 
 // Also handles any language: the query is translated to English (the index is English), so a
 // German search finds English LAWP and results always come back in English.
+const SB_URL = process.env.SUPABASE_URL!
+const SB_HEADERS = { "apikey": process.env.SUPABASE_SERVICE_KEY!, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" }
+
+// Expansions are also kept in Supabase (query_expansions, list_seven.sql) for 30 days, so a query
+// only pays for the LLM once across all server instances.
+async function storedExpansion(key: string): Promise<{ english: string, terms: string[] } | null> {
+  try {
+    const since = encodeURIComponent(new Date(Date.now() - 30 * 86400000).toISOString())
+    const r = await fetch(`${SB_URL}/rest/v1/query_expansions?select=english,terms&query=eq.${encodeURIComponent(key)}&updated_at=gte.${since}`, { headers: SB_HEADERS, signal: AbortSignal.timeout(1500) })
+    const [row] = r.ok ? await r.json() : []
+    return row ? { english: row.english, terms: row.terms || [] } : null
+  } catch { return null }
+}
+
 async function expandQuery(query: string, tier: Tier): Promise<{ english: string, terms: string[] }> {
   const key = query.toLowerCase().trim()
   if (!key || key.split(/\s+/).length > 8) return { english: query, terms: [] }
   const cached = expansionCache.get(key)
   if (cached && cached.expires > Date.now()) return cached
+  const stored = await storedExpansion(key)
+  if (stored) { expansionCache.set(key, { ...stored, expires: Date.now() + 6 * 3600_000 }); return stored }
   const answer = await complete(
     `A user searched for: "${query}". The search may be in any language. Translate it into English (unchanged if it's already English), then list up to 6 short related English search terms: synonyms, product or service categories, and common alternative words. Reply with JSON only: {"english":"...","terms":["..."]}`,
     4000,
@@ -211,6 +227,10 @@ async function expandQuery(query: string, tier: Tier): Promise<{ english: string
     .filter((t: string) => t && t.split(/\s+/).length <= 3 && !words.has(t))
     .slice(0, 6)
   const result = { english, terms, expires: Date.now() + (answer ? 6 * 3600_000 : 10 * 60_000) }
+  if (answer) fetch(`${SB_URL}/rest/v1/query_expansions?on_conflict=query`, {
+    method: "POST", headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify({ query: key, english, terms, updated_at: new Date().toISOString() })
+  }).catch(() => {})
   // Failures are cached briefly so a struggling model isn't hit on every search.
   expansionCache.set(key, result)
   if (expansionCache.size > 2000) expansionCache.delete(expansionCache.keys().next().value!)
@@ -227,6 +247,27 @@ async function freeLiveCrawlAllowed(): Promise<boolean> {
 
 function indexedCopy(site: any): Site {
   return { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, native: site.native }
+}
+
+// Ranking for the fast path (no expansion): the same scoring, on the plain results.
+function rankOnly(found: Site[], query: string): Site[] {
+  const seen = new Set<string>()
+  return [...Object.values(sites), ...found]
+    .map(site => ({ site, score: scoreMatch(site, query) }))
+    .filter(r => r.score > 0 || found.includes(r.site))
+    .sort((a, b) => b.score - a.score)
+    .map(r => r.site)
+    .filter(site => !seen.has(site.domain) && (seen.add(site.domain), true))
+}
+
+// A saved copy good enough to serve without crawling: real content, updated within FRESH_DAYS.
+const FRESH_DAYS = parseInt(process.env.FRESH_DAYS || "14")
+function freshCopy(saved: any): Site | null {
+  if (!saved || !saved.actions?.length) return null
+  const age = saved.updated_at ? Date.now() - Date.parse(saved.updated_at) : Infinity
+  if (!saved.ownerKey && !saved.native && age > FRESH_DAYS * 86400000) return null
+  const { contentHash, ownerKey, productsCrawledAt, ...site } = saved
+  return site as Site
 }
 
 export async function searchSites(query: string, tier: Tier = "free"): Promise<Site[]> {
@@ -247,10 +288,28 @@ export async function searchSites(query: string, tier: Tier = "free"): Promise<S
 
   // Seed sites and sites this instance just crawled answer an exact domain lookup directly.
   if (parsed && sites[parsed.domain]) return [sites[parsed.domain]]
+  // Speed: a domain Actuent already has (with real content, recently updated) is served from the
+  // index instead of being crawled live. New, minimal or stale sites are still crawled.
+  if (parsed && parsed.path === "/") {
+    const fresh = freshCopy(await getSavedSite(parsed.domain))
+    if (fresh) return [fresh]
+  }
 
   async function searchIndex(): Promise<Site[]> {
-    // Only keyword queries are expanded; a domain means that exact site.
-    const { english, terms } = parsed ? { english: query, terms: [] } : await expandQuery(query, tier)
+    // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search runs
+    // while the expansion (an LLM call, unless cached) is prepared, and the expansion is only waited
+    // for briefly when the plain search already found enough English results.
+    let expansion: { english: string, terms: string[] } = { english: query, terms: [] }
+    if (!parsed) {
+      const expanding = expandQuery(query, tier)
+      const plainAscii = /^[\x20-\x7e]+$/.test(query)
+      const plain = plainAscii ? await Promise.all([searchSupabase(query), searchPages(query)]).then(([a, b]) => [...a, ...b]) : []
+      const enough = plainAscii && plain.length >= 3
+      const quick = await Promise.race([expanding, new Promise<null>(r => setTimeout(() => r(null), enough ? 1200 : 8000))])
+      if (quick) expansion = quick
+      else if (enough) return rankOnly(plain, query)
+    }
+    const { english, terms } = expansion
     const expanded = terms.join(" ")
     const primaryQuery = english
     const fullQuery = [english !== query ? `${query} ${english}` : query, expanded].filter(Boolean).join(" ")

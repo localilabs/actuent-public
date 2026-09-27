@@ -80,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private.
   res.setHeader("Vary", "Authorization")
   res.setHeader("Cache-Control", req.method === "GET" && !apiKey
-    ? "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+    ? "public, max-age=0, s-maxage=300, stale-while-revalidate=3600"
     : "private, no-store")
 
   const cacheKey = `${tier}:${query.trim().toLowerCase()}`
