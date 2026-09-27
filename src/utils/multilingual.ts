@@ -179,7 +179,7 @@ function norm(s: string): string {
 
 // "laufschuhe" → ["running", "shoes"]; "løbesko" → ["running", "shoes"]. Split points need 3+ letters each side.
 function splitCompound(word: string): string[] | null {
-  if (word.length < 7) return null
+  if (word.length < 7 || word.length > 40) return null
   for (let i = word.length - 3; i >= 3; i--) {
     const tail = LOOKUP.get(word.slice(i))
     if (!tail) continue
@@ -195,7 +195,7 @@ function splitCompound(word: string): string[] | null {
 // `english` lists just the translated keywords; `foreign` says the query looks non-English, so the
 // search waits for the full LLM translation instead of trusting the plain results.
 export function translateKeywords(query: string): { query: string, english: string[], foreign: boolean } {
-  let q = norm(query)
+  let q = norm(query).slice(0, 300)
   const found: string[] = []
   const out: string[] = []
   let foreign = /[à-öø-ÿąćęłńśźżœ]/i.test(q)

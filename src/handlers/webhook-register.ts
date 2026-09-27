@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { keyHash, verifyApiKey } from "../utils/limits"
+import { isPublicHost } from "../utils/safe-fetch"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -23,7 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { domain, url } = req.body
     if (!domain || !url) return res.status(400).json({ error: "Missing domain or url" })
 
-    try { new URL(url) } catch { return res.status(400).json({ error: "Invalid URL" }) }
+    let target: URL
+    try { target = new URL(url) } catch { return res.status(400).json({ error: "Invalid URL" }) }
+    // Security: Actuent POSTs to this URL, so it must be a public https address.
+    if (target.protocol !== "https:" || !await isPublicHost(target.hostname)) {
+      return res.status(400).json({ error: "Webhook URL must be a public https:// address" })
+    }
 
     const saved = await fetch(`${SUPABASE_URL}/rest/v1/webhooks?on_conflict=api_key,domain`, {
       method: "POST",

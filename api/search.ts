@@ -78,6 +78,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!query || typeof query !== "string" || query.trim() === "") {
     return res.status(400).json({ error: "Missing query" })
   }
+  // Searches are a few words; very long input only costs CPU (ranking, translation, full-text search).
+  if (query.length > 500) return res.status(400).json({ error: "Query too long", message: "Keep searches under 500 characters." })
 
   res.setHeader("X-Actuent-Tier", tier)
   // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private.

@@ -1,3 +1,4 @@
+import { fetchPublic } from "./safe-fetch"
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
@@ -73,12 +74,14 @@ async function fireWebhooks(domain: string, changes: any): Promise<void> {
     const webhooks = await res.json()
     for (const wh of (webhooks || [])) {
       try {
-        await fetch(wh.url, {
+        // Security: webhook URLs are user-supplied — public https addresses only, no redirects.
+        if (!String(wh.url).startsWith("https://")) continue
+        await fetchPublic(wh.url, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "User-Agent": "Actuent/1.0 (+https://actuent.ai)" },
           body: JSON.stringify({ event: "lawp.changed", domain, changes, timestamp: new Date().toISOString() }),
           signal: AbortSignal.timeout(5000)
-        })
+        }, 0)
       } catch {}
     }
   } catch {}
