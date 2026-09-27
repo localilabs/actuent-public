@@ -18,3 +18,17 @@ alter table lawp_sites add column if not exists refreshed_at timestamptz;
 
 -- 9. Speed: the directory's "recently updated" list (api/site.ts) reads this order.
 create index if not exists lawp_sites_recent_idx on lawp_sites (native desc, updated_at desc) where status is null;
+
+-- 11. Weekly "State of the AI web" posts (actuent-crawler/weekly_report.ts, Mondays), published at
+-- api.actuent.ai/state/weekly. Aggregates only.
+create table if not exists weekly_reports (
+  week date primary key,
+  title text not null,
+  summary text not null,
+  data jsonb not null,
+  created_at timestamptz not null default now()
+);
+alter table weekly_reports enable row level security;
+-- When each site was first indexed ("new this week"). Existing sites stay null; new ones are stamped.
+alter table lawp_sites add column if not exists first_seen_at timestamptz;
+alter table lawp_sites alter column first_seen_at set default now();

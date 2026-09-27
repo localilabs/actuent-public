@@ -129,6 +129,18 @@
       "dest": "/api/data.ts?op=indexnow"
     },
     {
+      "src": "/state/weekly\\.rss",
+      "dest": "/api/site.ts?weekly=rss"
+    },
+    {
+      "src": "/state/weekly/([0-9]{4}-[0-9]{2}-[0-9]{2})/?",
+      "dest": "/api/site.ts?weekly=$1"
+    },
+    {
+      "src": "/state/weekly/?",
+      "dest": "/api/site.ts?weekly=index"
+    },
+    {
       "src": "/state",
       "dest": "/public/state.html"
     },

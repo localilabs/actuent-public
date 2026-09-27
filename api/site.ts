@@ -285,8 +285,72 @@ function notFound(res: VercelResponse, domain: string) {
   }))
 }
 
+// Weekly "State of the AI web" posts (actuent-crawler/weekly_report.ts): /state/weekly, one page
+// per week, and an RSS feed.
+const n = (v: any) => v == null ? "—" : Number(v).toLocaleString("en-GB")
+const weekTitle = (w: string) => new Date(w + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+async function weeklyPage(res: VercelResponse, which: string) {
+  if (which === "rss") {
+    const posts = await rows("weekly_reports?select=week,title,summary,created_at&order=week.desc&limit=30")
+    const xml = (v: string) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    res.setHeader("Content-Type", "application/rss+xml; charset=utf-8")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>State of the AI web — Actuent</title><link>${BASE}/state/weekly</link><description>Every Monday: how much of the web AI agents can read and act on.</description><language>en</language>
+${posts.map(p => `<item><title>${xml(p.title)}</title><link>${BASE}/state/weekly/${p.week}</link><guid>${BASE}/state/weekly/${p.week}</guid><pubDate>${new Date(p.created_at).toUTCString()}</pubDate><description>${xml(p.summary)}</description></item>`).join("\n")}
+</channel></rss>`)
+  }
+  const crumbs: Crumb[] = [{ name: "State of the AI web", url: `${BASE}/state` }, { name: "Weekly", url: `${BASE}/state/weekly` }]
+  if (which === "index") {
+    const posts = await rows("weekly_reports?select=week,title,summary&order=week.desc&limit=100")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+    return res.status(200).send(layout({
+      title: "State of the AI web, weekly — Actuent", description: "Every Monday: how much of the web AI agents can read and act on, and what changed.",
+      canonical: `${BASE}/state/weekly`, image: ogImage("State of the AI web", "Every Monday, from the Actuent index", "api.actuent.ai/state/weekly"),
+      jsonLd: { "@context": "https://schema.org", "@graph": [breadcrumbLd(crumbs), { "@type": "Blog", name: "State of the AI web", url: `${BASE}/state/weekly`, publisher: { "@type": "Organization", name: "Actuent", url: "https://actuent.ai" } }] },
+      body: `${breadcrumbHtml(crumbs)}<h1>State of the AI web</h1><p class="lead">Every Monday: how much of the web AI agents can read and act on, and what changed. <a href="${BASE}/state/weekly.rss">RSS feed</a> · <a href="${BASE}/state">Live numbers</a></p>
+${posts.length ? `<div class="card list">${posts.map(p => `<a href="${BASE}/state/weekly/${esc(p.week)}"><span>${esc(p.title)}<div class="muted">${esc(String(p.summary).slice(0, 160))}…</div></span></a>`).join("")}</div>` : `<p class="muted">The first post goes out on Monday.</p>`}`
+    }))
+  }
+  const week = /^\d{4}-\d{2}-\d{2}$/.test(which) ? which : ""
+  const [post] = week ? await rows(`weekly_reports?select=*&week=eq.${week}`) : []
+  if (!post) {
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=600")
+    return res.status(404).send(layout({ title: "Not found — Actuent", description: "No post for that week.", canonical: `${BASE}/state/weekly`, image: ogImage("State of the AI web", "", "api.actuent.ai"), noindex: true, body: `<h1>No post for that week</h1><p class="lead"><a href="${BASE}/state/weekly">All weeks →</a></p>` }))
+  }
+  const d = post.data || {}
+  const [prev, next] = await Promise.all([
+    rows(`weekly_reports?select=week&week=lt.${week}&order=week.desc&limit=1`),
+    rows(`weekly_reports?select=week&week=gt.${week}&order=week.asc&limit=1`)
+  ])
+  crumbs.push({ name: weekTitle(week), url: `${BASE}/state/weekly/${week}` })
+  const table = (head: string[], list: any[][]) => `<div class="card"><table style="width:100%;border-collapse:collapse"><thead><tr>${head.map((h, i) => `<th scope="col" style="text-align:${i ? "right" : "left"};padding:4px 0" class="muted">${esc(h)}</th>`).join("")}</tr></thead><tbody>${list.map(r => `<tr>${r.map((c, i) => `<td style="text-align:${i ? "right" : "left"};padding:4px 0">${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+  const body = `${breadcrumbHtml(crumbs)}<h1>${esc(post.title)}</h1>
+<p class="lead">${esc(post.summary)}</p>
+<h2>The numbers</h2>
+${table(["", "This week"], [
+    ["Websites indexed", n(d.sites)], ["Readable by AI agents", `${n(d.readable)} (${d.readable_percent ?? "—"}%)`], ["Publish their own LAWP", n(d.native)],
+    ["Block at least one AI bot", d.ai_access_checked ? `${d.blocking_ai_percent ?? "—"}% of ${n(d.ai_access_checked)} checked` : "—"], ["Products with prices", n(d.products)],
+    ["Pages", n(d.pages)], ["Upcoming events", n(d.upcoming_events)], ["Businesses with an address", n(d.with_business)], ["New sites this week", n(d.new_sites)], ["Agent searches this week", n(d.searches)]
+  ])}
+${d.categories?.length ? `<h2>Biggest categories</h2>${table(["Category", "Agent-ready sites"], d.categories.map((c: any) => [esc(CATEGORIES[c.category] || c.category), n(c.sites)]))}` : ""}
+${d.cities?.length ? `<h2>Cities with the most agent-ready businesses</h2>${table(["City", "Sites"], d.cities.map((c: any) => [`<a href="${BASE}/site/in/${esc(slug(c.city))}">${esc(c.city)}</a>`, n(c.sites)]))}` : ""}
+${d.top_queries?.length ? `<h2>What agents searched for</h2>${table(["Search", "Times"], d.top_queries.map((q: any) => [esc(q.query), n(q.searches)]))}` : ""}
+${d.top_sites?.length ? `<h2>Sites agents found most</h2>${table(["Site", "Appearances"], d.top_sites.map((s: any) => [`<a href="${BASE}/site/${esc(s.domain)}">${esc(s.domain)}</a>`, n(s.appearances)]))}` : ""}
+<p class="muted" style="margin-top:24px">${prev[0] ? `<a href="${BASE}/state/weekly/${esc(prev[0].week)}">← Week of ${esc(weekTitle(prev[0].week))}</a>` : ""}${prev[0] && next[0] ? " · " : ""}${next[0] ? `<a href="${BASE}/state/weekly/${esc(next[0].week)}">Week of ${esc(weekTitle(next[0].week))} →</a>` : ""}</p>
+<p class="muted">Figures come straight from the Actuent index; searches are aggregated and only plain words searched at least 3 times are shown. <a href="${BASE}/state/weekly.rss">RSS</a></p>`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  return res.status(200).send(layout({
+    title: `${post.title} — Actuent`, description: String(post.summary).slice(0, 160), canonical: `${BASE}/state/weekly/${week}`,
+    image: ogImage("State of the AI web", `${d.readable_percent ?? ""}% of ${n(d.sites)} sites are AI-readable`, `Week of ${weekTitle(week)}`),
+    jsonLd: { "@context": "https://schema.org", "@graph": [breadcrumbLd(crumbs), { "@type": "BlogPosting", headline: post.title, description: String(post.summary).slice(0, 300), datePublished: post.created_at, url: `${BASE}/state/weekly/${week}`, author: { "@type": "Organization", name: "Actuent", url: "https://actuent.ai" }, publisher: { "@type": "Organization", name: "Actuent", url: "https://actuent.ai" } }] },
+    body
+  }))
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
+  if (req.query.weekly) return weeklyPage(res, String(req.query.weekly))
   if (req.query.city && req.query.events) {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     return eventsPage(res, slug(String(req.query.city)), req.query.events === "ics" ? "ics" : "page")
