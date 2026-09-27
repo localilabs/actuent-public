@@ -2,6 +2,7 @@ import { translateKeywords } from "./multilingual"
 import { notice, Notice } from "./notices"
 import { splitCity, localBusinesses, osmPlaces } from "./local"
 import { queryCategories, mergeRegional } from "./rank_extras"
+import { later } from "./later"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -325,7 +326,7 @@ function freshCopy(saved: any): Site | null {
 }
 
 function queueCrawl(domain: string) {
-  fetch(`${SUPABASE_URL}/rest/v1/rpc/queue_crawl`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ d: domain }), signal: AbortSignal.timeout(3000) }).catch(() => {})
+  later(fetch(`${SUPABASE_URL}/rest/v1/rpc/queue_crawl`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ d: domain }), signal: AbortSignal.timeout(3000) }))
 }
 
 // Pro goes first when it's crowded: free searches share a per-minute budget for the expensive
@@ -432,8 +433,10 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const expandedSearch = expanding.then(async ({ english, terms }) => {
       if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null
       // The original words stay in, so sites in the query's own language still match.
-      const fullQuery = [english !== query ? `${query} ${english}` : query, terms.join(" ")].filter(Boolean).join(" ")
-      return { english, expanded: terms.join(" "), found: await both(fullQuery) }
+      // At most 4 related terms: each extra word makes the database search heavier.
+      const fewer = terms.slice(0, 4)
+      const fullQuery = [english !== query ? `${query} ${english}` : query, fewer.join(" ")].filter(Boolean).join(" ")
+      return { english, expanded: fewer.join(" "), found: await both(fullQuery) }
     })
     // Other languages: common words are translated instantly from a built-in dictionary
     // ("zahnarzt berlin" → "dentist berlin"), so the plain search already runs in English. A query

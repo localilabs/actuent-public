@@ -6,6 +6,7 @@ import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
 import { openNow } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
+import { later } from "../src/utils/later"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -111,7 +112,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const cacheKey = `${tier}:${query.trim().toLowerCase()}`
   const cached = cacheGet(cacheKey)
   if (cached) {
-    await trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart)
+    await later(trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart))
     return res.status(200).json({ ...(cached as any), query })
   }
 
@@ -128,7 +129,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   let lite = false
   if (tier === "free" && !isInternalCall(req.headers["x-actuent-internal"])) {
     const ip = (req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim()
-    const hourly = await hitCounter(`searches:${ipHash(ip)}`, 3600)
+    // Never slows a search down: if the counter is slow to answer, the search goes ahead normally.
+    const hourly = await Promise.race([hitCounter(`searches:${ipHash(ip)}`, 3600), new Promise<null>(r => setTimeout(() => r(null), 300))])
     lite = hourly !== null && hourly > FREE_SEARCHES_PER_HOUR
   }
   const [results, products] = await Promise.all([
@@ -143,13 +145,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
-  await trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart)
+  await later(trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart))
 
   if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
   // Busy answers are counted, and the status banner (/api/status) turns on when there are many.
-  if (unique.some(n => n.code.startsWith("busy"))) hitCounter("busy", 300).catch(() => null)
+  if (unique.some(n => n.code.startsWith("busy"))) await later(hitCounter("busy", 300))
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
   const now = Date.now()

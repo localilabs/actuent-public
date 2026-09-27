@@ -127,11 +127,8 @@ function doSearch() {
   results.innerHTML = ""
 
   function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c] }) }
-  fetch("https://api.actuent.ai/api/search", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({query: query})
-  })
+  // GET, so identical searches come straight from the CDN cache on busy days.
+  fetch("https://api.actuent.ai/api/search?q=" + encodeURIComponent(query))
   .then(function(r) {
     // Busy or rate-limited answers carry a plain-English message: show it.
     return r.json().catch(function() { return {} }).then(function(data) {
