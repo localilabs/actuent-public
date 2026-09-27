@@ -16,6 +16,8 @@ export type Item = {
   price_eur: number | null, image: string | null, available: boolean | null, source: string
   // Barcode (GTIN/EAN/UPC) when the shop publishes one: matches the same product across shops.
   gtin?: string | null
+  // Shopify variant id: lets agents hand over a ready cart (https://shop/cart/<variant>:<qty>).
+  variant_id?: string | null
 }
 
 async function getJson(url: string, timeoutMs = 6000): Promise<any | null> {
@@ -55,6 +57,7 @@ async function shopifyItems(domain: string): Promise<Item[] | null> {
       image: p.images?.[0]?.src || null,
       available: (p.variants || []).some((v: any) => v.available !== false),
       gtin: /^\d{8,14}$/.test(String(variant.barcode || "").trim()) ? String(variant.barcode).trim() : null,
+      variant_id: variant.id != null ? String(variant.id) : null,
       source: "shopify"
     }
   })
@@ -91,7 +94,10 @@ export async function saveProducts(domain: string, items: Item[]): Promise<void>
   // Before the gtin column exists (next_list.sql), save without it.
   const upsert = async (rows: object[]) => {
     const res = await send(rows)
-    return res.ok ? res : send(rows.map(({ gtin, ...rest }: any) => rest))
+    // Newest columns first (variant_id: list_seven.sql, gtin: next_list.sql).
+    if (res.ok) return res
+    const withoutVariant = await send(rows.map(({ variant_id, ...rest }: any) => rest))
+    return withoutVariant.ok ? withoutVariant : send(rows.map(({ variant_id, gtin, ...rest }: any) => rest))
   }
   try {
     if (items.length) {
@@ -207,6 +213,8 @@ export async function searchProducts(query: string, tier: Tier, max: number): Pr
         name: names[i], original_name: names[i] !== row.name ? row.name : undefined,
         price: row.price, currency: row.currency, price_eur: row.price_eur,
         url: row.url, domain: row.domain, image: row.image, available: row.available,
+        // Shopify: a link that opens the shop's cart with this product in it.
+        ...(row.variant_id ? { cart_url: `https://${row.domain}/cart/${row.variant_id}:1` } : {}),
         // Price history: e.g. -20 means 20% cheaper than before the last change.
         ...(change ? { previous_price_eur: prev, price_change_percent: change, price_changed_at: row.price_changed_at } : {}),
         // The same product in other shops, cheapest first; this result is the cheapest.

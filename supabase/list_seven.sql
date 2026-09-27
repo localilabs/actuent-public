@@ -78,3 +78,23 @@ returns jsonb language sql stable as $$
     'blocked_now', (select count(*) from blocked where until > now())
   )
 $$;
+
+-- 6. Checkout links: Shopify variant ids, so agents can hand over a ready cart.
+alter table lawp_items add column if not exists variant_id text;
+drop function if exists search_lawp_items(text, numeric, int);
+create or replace function search_lawp_items(q text, max_price_eur numeric default null, max_results int default 20)
+returns table (domain text, url text, name text, price numeric, currency text, price_eur numeric, image text, available boolean,
+               previous_price_eur numeric, price_changed_at timestamptz, gtin text, source text, variant_id text, rank real)
+language sql stable as $$
+  select i.domain, i.url, i.name, i.price, i.currency, i.price_eur, i.image, i.available,
+         i.previous_price_eur, i.price_changed_at, i.gtin, i.source, i.variant_id,
+         ts_rank(i.search_text, lawp_or_query(q)) +
+         ts_rank(i.search_text, nullif(replace(plainto_tsquery('simple', q)::text, ' & ', ' | '), '')::tsquery)
+  from lawp_items i
+  where (i.search_text @@ lawp_or_query(q)
+         or i.search_text @@ nullif(replace(plainto_tsquery('simple', q)::text, ' & ', ' | '), '')::tsquery)
+    and (max_price_eur is null or i.price_eur <= max_price_eur)
+    and coalesce(i.available, true)
+  order by 14 desc, i.price_eur asc nulls last
+  limit max_results
+$$;
