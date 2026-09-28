@@ -11,6 +11,7 @@ export const CATEGORIES: Record<string, string> = {
   software: "Software & apps", developer: "Developer tools", ai: "AI tools", news_media: "News & media", education: "Education",
   finance: "Finance", real_estate: "Real estate", legal: "Legal", automotive: "Cars & automotive", home_services: "Home services",
   pets: "Pets", jobs: "Jobs & careers", nonprofit: "Nonprofits", government: "Government", social: "Social & communities",
+  games: "Games", streaming: "Music & video",
   adult: "Adult", gambling: "Gambling"
 }
 
@@ -50,15 +51,22 @@ const WORDS: [string, string[]][] = [
   ["bakery", ["bakery", "bakehouse", "sourdough", "pastries", "bageri"]],
   ["cafe", ["cafe", "café", "coffee shop", "espresso", "brunch", "roastery"]],
   ["bar", ["cocktail bar", "wine bar", "pub", "brewery", "taproom", "craft beer", "bar menu"]],
-  ["restaurant", ["restaurant", "dinner", "lunch menu", "reserve a table", "book a table", "cuisine", "tasting menu", "trattoria", "bistro", "pizzeria", "sushi"]],
+  ["restaurant", ["restaurant", "dinner", "lunch menu", "reserve a table", "book a table", "cuisine", "tasting menu", "trattoria", "bistro", "pizzeria", "pizza", "sushi", "burger", "kebab", "ramen", "grill", "steakhouse", "tapas", "thai food", "indian food",
+    "ristorante", "restaurante", "speisekarte", "carte du jour", "menukort", "bord reservation", "tisch reservieren"]],
   ["food_delivery", ["food delivery", "order food", "takeaway", "meal kit"]],
-  ["hotel", ["hotel", "rooms", "check-in", "suites", "bed and breakfast", "hostel", "vacation rental", "stay with us"]],
+  ["hotel", ["hotel", "rooms", "check-in", "suites", "bed and breakfast", "hostel", "vacation rental", "stay with us", "hôtel", "albergo", "unterkunft", "overnatning"]],
   ["travel", ["flights", "travel", "tours", "holiday", "vacation", "itinerary", "cruise", "car rental"]],
   ["events", ["tickets", "concert", "festival", "cinema", "theatre", "theater", "live music", "comedy show"]],
   ["museum_culture", ["museum", "gallery", "exhibition", "collection"]],
+  ["games", ["video games", "gaming", "game studio", "play now", "multiplayer", "esports", "steam", "playstation", "xbox", "nintendo", "mmorpg", "online games"]],
+  ["streaming", ["music streaming", "streaming service", "watch online", "tv shows", "movies online", "podcasts", "playlists", "listen now", "stream music", "anime"]],
   ["ai", ["ai assistant", "artificial intelligence", "llm", "generative ai", "chatbot", "ai-powered", "machine learning"]],
   ["developer", ["api", "sdk", "developers", "open source", "open-source", "github", "documentation", "cli", "deploy", "hosting", "devops", "automation", "kubernetes", "infrastructure", "server hosting", "terraform"]],
-  ["software", ["saas", "software", "app", "platform", "free trial", "dashboard", "integrations", "workflow", "sign up", "pricing plans"]],
+  ["software", ["saas", "software", "app", "platform", "free trial", "dashboard", "integrations", "workflow", "sign up", "pricing plans",
+    "email marketing", "newsletter tool", "project management", "crm", "invoicing", "accounting software", "video conferencing", "video calls",
+    "password manager", "website builder", "note taking", "collaboration", "productivity", "analytics", "for teams", "customer support software",
+    "helpdesk", "scheduling", "online forms", "e-signature", "vpn", "antivirus", "cybersecurity", "cloud storage", "team chat",
+    "marketing platform", "sms marketing", "campaigns", "automations", "video communication", "meetings", "webinars", "collaboration tools", "tools for businesses", "all-in-one"]],
   ["shop_fashion", ["clothing", "dresses", "sneakers", "shoes", "jackets", "fashion", "apparel", "jewelry", "jewellery", "handbags"]],
   ["shop_beauty", ["skincare", "makeup", "cosmetics", "fragrance", "serum", "moisturizer"]],
   ["shop_electronics", ["electronics", "laptops", "smartphones", "headphones", "cameras", "gadgets", "smart home"]],
@@ -67,10 +75,12 @@ const WORDS: [string, string[]][] = [
   ["shop_kids", ["baby", "kids", "toys", "nursery", "toddler"]],
   ["shop_grocery", ["groceries", "wine shop", "coffee beans", "tea shop", "organic food", "chocolate"]],
   ["pets", ["pet", "dog", "cat food", "grooming", "veterinary"]],
-  ["shop", ["shop", "store", "add to cart", "free shipping", "checkout", "buy now", "products", "collections"]],
-  ["news_media", ["news", "breaking", "journalism", "newsletter", "podcast", "magazine", "editorial"]],
+  ["shop", ["shop", "store", "add to cart", "free shipping", "checkout", "buy now", "products", "collections", "online shop", "webshop",
+    "warenkorb", "panier", "carrito", "carrello", "winkelwagen", "kurv", "varukorg", "handlekurv", "koszyk", "gratis fragt", "livraison gratuite", "versandkostenfrei", "envío gratis"]],
+  ["news_media", ["news", "breaking", "journalism", "newsletter", "podcast", "magazine", "editorial", "nachrichten", "actualités", "noticias", "notizie", "nyheder", "nyheter", "nieuws", "headlines", "latest stories"]],
   ["education", ["courses", "university", "school", "students", "tutoring", "online course", "curriculum", "research", "scientists", "academic"]],
-  ["finance", ["bank", "banking", "loans", "insurance", "invest", "mortgage", "credit card", "accounting", "crypto"]],
+  ["finance", ["bank", "banking", "loans", "insurance", "invest", "mortgage", "credit card", "accounting", "crypto", "payments", "payment processing",
+    "online payments", "trading", "stocks", "exchange rates", "money transfer", "wallet", "fintech", "bookkeeping", "tax", "pension"]],
   ["real_estate", ["real estate", "property", "apartments for rent", "homes for sale", "realtor", "estate agent"]],
   ["legal", ["lawyer", "attorney", "law firm", "legal advice", "solicitor"]],
   ["automotive", ["car dealer", "auto repair", "car service", "used cars", "tyres", "tires", "garage", "automobile", "motorcycle", "vehicles"]],
@@ -94,13 +104,31 @@ export function categorize(site: { domain: string, name?: string, pages?: any, a
   const name = String(site.name || "").toLowerCase()
   const pages = Object.values(site.pages || {}).map((p: any) => `${p?.title || ""} ${p?.content || ""}`).join(" ").toLowerCase()
   const actions = (site.actions || []).map((a: any) => `${a?.name || ""} ${a?.description || ""} ${(a?.intent || []).join(" ")}`).join(" ").toLowerCase()
-  if (!pages.trim() || /^website at /.test(pages.trim())) return null
+  // Strong signals first: what the site lets you do, and what its domain says.
+  const ids = (site.actions || []).map((a: any) => String(a?.id || "")).join(" ")
+  const bare = site.domain.toLowerCase().replace(/^www\./, "")
+  if (/\.(shop|store|boutique)$/.test(bare) || /\b(view_cart|add_to_cart|checkout)\b/.test(ids)) {
+    const fashion = /cloth|fashion|shoe|sneaker|wear|apparel|jewel/.test(name + " " + pages) ? "shop_fashion" : null
+    if (fashion) return fashion
+  }
+  if (/\.(bank|insurance)$/.test(bare)) return "finance"
+  if (/\.(news)$/.test(bare)) return "news_media"
+  if (/\.(museum|art)$/.test(bare)) return "museum_culture"
+  if (/\.(games|game)$/.test(bare)) return "games"
+  if (!pages.trim() || /^website at /.test(pages.trim())) {
+    // Nothing to read: fall back on the domain's own words ("pizza-roma.dk", "cph-barber.com").
+    const words = bare.replace(/\.[a-z.]+$/, "").replace(/[-_.]/g, " ")
+    for (const [cat, list] of WORDS) if (!GENERIC.has(cat) && list.some(w => w.length >= 4 && !w.includes(" ") && words.includes(w))) return cat
+    return null
+  }
 
+  // Short texts (most rule-based summaries) need fewer mentions to count.
+  const short = pages.length < 400
   let best: string | null = null, bestScore = 0
   for (const [cat, words] of WORDS) {
     let score = 0
-    for (const w of words) score += count(pages, w) + count(name, w) * 2 + count(actions, w) * 0.5
-    if (score < (GENERIC.has(cat) ? 3 : 2)) continue
+    for (const w of words) score += count(pages, w) + count(name, w) * 2 + count(actions, w) * 0.5 + (bare.includes(w.replace(/\s+/g, "")) && w.length >= 4 ? 1 : 0)
+    if (score < (GENERIC.has(cat) ? (short ? 2 : 3) : (short ? 1 : 2))) continue
     // Earlier (more specific) categories win ties.
     if (score > bestScore) { best = cat; bestScore = score }
   }
