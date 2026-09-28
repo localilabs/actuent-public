@@ -63,8 +63,8 @@ const LANGUAGE_NAMES: Record<string, string> = {
 
 // Ordered by usefulness to agents; at most 6 are kept.
 const RULES: { id: string, name: string, description: string, intent: string[], path?: RegExp, text?: RegExp, needsInput?: boolean }[] = [
-  { id: "book", name: "Book", description: "Book an appointment, table or reservation", intent: ["book", "booking", "reserve", "appointment", "schedule"], path: /\/(book|booking|bookings|reserve|reservation|reservations|appointment|appointments|schedule)(\/|$|\?|-)/i, text: /^(book|book now|reserve|make a reservation|book online|book an appointment)$/i },
-  { id: "shop", name: "Shop products", description: "Browse and buy products", intent: ["shop", "buy", "products", "store", "catalog"], path: /\/(shop|store|products|collections|catalog|catalogue)(\/|$)/i, text: /^(shop|shop now|shop all|store)$/i },
+  { id: "book", name: "Book", description: "Book an appointment, table or reservation", intent: ["book", "booking", "reserve", "appointment", "schedule"], path: /\/(book(-now|-online|-a-table|-an-appointment)?|booking|bookings|reserve|reservation|reservations|appointment|appointments|online-booking|tidsbestilling|reservieren|reserver)(\/?$|\?)/i, text: /^(book|book now|reserve|make a reservation|book online|book an appointment|book a table)$/i },
+  { id: "shop", name: "Shop products", description: "Browse and buy products", intent: ["shop", "buy", "products", "store", "catalog"], path: /\/(shop|store|webshop|butik|boutique|shop-all|catalog|catalogue)(\/|$)/i, text: /^(shop|shop now|shop all|store|online shop|webshop)$/i },
   { id: "view_pricing", name: "View pricing", description: "See plans and prices", intent: ["pricing", "prices", "plans", "cost", "how much"], path: /\/(pricing|plans|prices)(\/|$)/i, text: /^(pricing|plans|prices)$/i },
   { id: "contact", name: "Contact", description: "Get in touch with the site owner", intent: ["contact", "get in touch", "email", "message", "support"], path: /\/(contact|contact-us|kontakt|contacto)(\/|$)/i, text: /^(contact|contact us|get in touch)$/i },
   { id: "sign_up", name: "Sign up", description: "Create an account", intent: ["sign up", "register", "join", "create account", "get started"], path: /\/(signup|sign-up|register|join|create-account|get-started)(\/|$)/i, text: /^(sign up|register|join|get started|create account)$/i },
@@ -182,7 +182,7 @@ export function heuristicLAWP(domain: string, raw: string, isHtml: boolean): any
 
 // Infrastructure hostnames (DNS, CDN, ad and certificate servers) in the Tranco list have no
 // website for people; skip them instead of indexing empty entries.
-export const INFRASTRUCTURE = /(^|\.)(awsdns-\d+|akamai\w*|akadns\w*|edgekey|edgesuite|cloudfront|fastly\w*|gstatic|googleapis|googleusercontent|doubleclick|googlesyndication|googletagmanager|googleadservices|googlevideo|ggpht|ytimg|fbcdn|amazonaws|azureedge|azurefd|trafficmanager|msedge|windowsupdate|digicert|root-servers|gtld-servers|nstld|ocsp|\w*cdn\d*|dns\d*|ntp\d*|app-measurement|crashlytics|scorecardresearch|adnxs|nr-data|dnsowl)\./i
+export const INFRASTRUCTURE = /(^|\.)(\w*sdk|appsflyer\w*|adsrvr|tiktokv|\w*-analytics-services|analytics-services|doubleverify|moatads|rubiconproject|pubmatic|criteo|taboola|outbrain|onelink|appcenter|firebaseio|awsdns-\d+|akamai\w*|akadns\w*|edgekey|edgesuite|cloudfront|fastly\w*|gstatic|googleapis|googleusercontent|doubleclick|googlesyndication|googletagmanager|googleadservices|googlevideo|ggpht|ytimg|fbcdn|amazonaws|azureedge|azurefd|trafficmanager|msedge|windowsupdate|digicert|root-servers|gtld-servers|nstld|ocsp|\w*cdn\d*|dns\d*|ntp\d*|app-measurement|crashlytics|scorecardresearch|adnxs|nr-data|dnsowl)\./i
 
 // Adds direct booking/ordering links to any LAWP (e.g. one written by the LLM): fills in `url`
 // on an existing book/order action, or adds the action when the LAWP doesn't have one.
