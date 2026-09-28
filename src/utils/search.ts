@@ -134,8 +134,10 @@ const SUPABASE_HEADERS = {
 
 // Full-text search runs inside Postgres (search_lawp_sites / search_lawp_pages), so every
 // indexed site is searchable. Falls back to scanning a 200-row sample if the functions are missing.
+// null only when the search function is missing (old database): then a small sample is used.
+// A slow or failing database gives [] and a notice, never a random sample posing as results.
 async function rpc(fn: string, query: string, max: number, onFail?: () => void): Promise<any[] | null> {
-  const failed = () => { onFail?.(); return null }
+  const failed = () => { onFail?.(); return [] }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
       method: "POST",
@@ -144,6 +146,7 @@ async function rpc(fn: string, query: string, max: number, onFail?: () => void):
       // A slow database call must not hold up the whole search: answer with what we have.
       signal: AbortSignal.timeout(6000)
     })
+    if (r.status === 404) return null
     if (!r.ok) return failed()
     return await r.json()
   } catch { return failed() }

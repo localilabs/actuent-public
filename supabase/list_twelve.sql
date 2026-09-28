@@ -47,3 +47,8 @@ revoke execute on function suggest_sites(text, int) from public, anon, authentic
 
 -- Filters on search (category=…, city=…).
 create index if not exists lawp_sites_category_pop_idx on lawp_sites (category, popularity_rank) where status is null;
+
+-- Speed: list_eleven.sql rebuilt the search column, and Postgres needs fresh statistics to plan
+-- searches well again (searches were taking ~7 seconds). Takes a few seconds.
+analyze lawp_sites;
+analyze lawp_pages;
