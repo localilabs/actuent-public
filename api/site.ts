@@ -331,7 +331,7 @@ ${posts.length ? `<div class="card list">${posts.map(p => `<a href="${BASE}/stat
 ${table(["", "This week"], [
     ["Websites indexed", n(d.sites)], ["Readable by AI agents", `${n(d.readable)} (${d.readable_percent ?? "—"}%)`], ["Publish their own LAWP", n(d.native)],
     ["Block at least one AI bot", d.ai_access_checked ? `${d.blocking_ai_percent ?? "—"}% of ${n(d.ai_access_checked)} checked` : "—"], ["Products with prices", n(d.products)],
-    ["Pages", n(d.pages)], ["Upcoming events", n(d.upcoming_events)], ["Businesses with an address", n(d.with_business)], ["New sites this week", n(d.new_sites)], ["Agent searches this week", n(d.searches)]
+    ["Pages", n(d.pages)], ["Visits sent to websites", d.visits_sent != null ? `${n(d.visits_sent)}${d.click_through_percent != null ? ` (${d.click_through_percent}% of searches)` : ""}` : "—"], ["Upcoming events", n(d.upcoming_events)], ["Businesses with an address", n(d.with_business)], ["New sites this week", n(d.new_sites)], ["Agent searches this week", n(d.searches)]
   ])}
 ${d.categories?.length ? `<h2>Biggest categories</h2>${table(["Category", "Agent-ready sites"], d.categories.map((c: any) => [esc(CATEGORIES[c.category] || c.category), n(c.sites)]))}` : ""}
 ${d.cities?.length ? `<h2>Cities with the most agent-ready businesses</h2>${table(["City", "Sites"], d.cities.map((c: any) => [`<a href="${BASE}/site/in/${esc(slug(c.city))}">${esc(c.city)}</a>`, n(c.sites)]))}` : ""}
