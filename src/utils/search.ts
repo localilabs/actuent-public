@@ -495,7 +495,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // Local searches ("barber amsterdam"): businesses whose address is in that city come first.
     const place = splitCity(plainQuery)
     const localSearch = place ? localBusinesses(place.what, place.city) : Promise.resolve([])
-    const plainFound = searchable ? await both(plainQuery) : { sites: [], pages: [] }
+    // For things you go to (barber, restaurant, dentist) the city helps find the right sites; for
+    // things you buy or use online (running shoes, software) it only gets in the way.
+    const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
+    const goesThere = place ? [...queryCategories(place.what)].some(c => PLACE_KINDS.has(c)) : true
+    const plainFound = searchable ? await both(place && !goesThere ? place.what : plainQuery) : { sites: [], pages: [] }
     const localSites = await localSearch
     const plain = { ...plainFound, local: localSites.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [] })) as Site[] }
     // No local websites indexed yet: places from OpenStreetMap, returned separately and labelled.
