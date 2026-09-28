@@ -27,26 +27,32 @@ export async function verifyApiKey(key: string): Promise<boolean> {
   if (cached && cached.expires > Date.now()) return cached.valid
   try {
     // Extra keys made in Analytics (list_seven.sql) are only valid while their account's main key is.
-    const withParent = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id,parent_key_hash&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
+    const withParent = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id,parent_key_hash&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(3000) })
     if (withParent.ok) {
       const [row] = await withParent.json()
       let valid = !!row
       if (row?.parent_key_hash) {
-        const p = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${row.parent_key_hash}&active=eq.true`, { headers: SUPABASE_HEADERS })
+        const p = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${row.parent_key_hash}&active=eq.true`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(3000) })
         valid = p.ok && (await p.json()).length > 0
       }
       keyCache.set(key, { valid, expires: Date.now() + 60000 })
       return valid
     }
-    let r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
+    let r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key_hash=eq.${keyHash(key)}&active=eq.true`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(3000) })
     // Before big_list.sql has run there's no key_hash column: fall back to the plain key.
-    if (!r.ok) r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key=eq.${encodeURIComponent(key)}&active=eq.true`, { headers: SUPABASE_HEADERS })
-    if (!r.ok) return false
+    if (!r.ok) r = await fetch(`${SUPABASE_URL}/rest/v1/api_keys?select=id&key=eq.${encodeURIComponent(key)}&active=eq.true`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(3000) })
+    if (!r.ok) return stillValid(cached)
     const data = await r.json()
     const valid = Array.isArray(data) && data.length > 0
     keyCache.set(key, { valid, expires: Date.now() + 60000 })
     return valid
-  } catch { return false }
+  } catch { return stillValid(cached) }
+}
+
+// When the database is too busy to answer, a key that was valid in the last hour stays valid, so
+// Pro users keep their priority at exactly the moment it matters.
+function stillValid(cached: { valid: boolean, expires: number } | undefined): boolean {
+  return !!cached?.valid && cached.expires > Date.now() - 3600_000
 }
 
 export function bearerKey(header: string | string[] | undefined): string {
@@ -79,7 +85,7 @@ export async function rateLimit(key: string, maxPerMinute: number): Promise<Rate
     ({ limited, limit: maxPerMinute, remaining: count === null ? null : Math.max(0, maxPerMinute - count), reset })
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_rate_limit_count`, {
-      method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key })
+      method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key }), signal: AbortSignal.timeout(3000)
     })
     if (r.ok) {
       const count = Number(await r.json())
