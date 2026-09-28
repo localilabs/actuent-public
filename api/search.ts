@@ -76,6 +76,12 @@ function present(body: any, p: Params): any {
   return { ...body, results: list, count: list.length, ...(filtered || p.offset || p.limit ? { total } : {}) }
 }
 
+// Event names saved straight from pages can still carry HTML entities ("&#8211;").
+function decodeEntities(v: string): string {
+  return String(v).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+}
+
 // Upcoming events for event-style searches ("concerts copenhagen", "what's on in london").
 const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy)\b/i
 async function upcomingEvents(q: string): Promise<any[]> {
@@ -92,7 +98,7 @@ async function upcomingEvents(q: string): Promise<any[]> {
     })
     const rows: any[] = r.ok ? await r.json() : []
     return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 5)
-      .map(e => ({ ...e, visit_url: trackedLink(e.url) }))
+      .map(e => ({ ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, visit_url: trackedLink(e.url) }))
   } catch { return [] }
 }
 

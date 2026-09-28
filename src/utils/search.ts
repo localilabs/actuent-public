@@ -438,8 +438,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         return base * (0.15 + 0.85 * c * c) * categoryBoost * clickBoost * languageBoost
           * intentBoost(query, site) * freshnessBoost(query, (site as any).updated_at) * qualityFactor(site)
       }
-      const ranked = [...Object.values(sites), ...found.sites]
-        .map(site => ({ site, score: score(site) }))
+      // Businesses in the searched city compete in the same ranking, with a bonus for the city
+      // (so a gold dealer in London never beats a running shop just for "buy … London").
+      const localDomains = new Set((found.local || []).map(x => x.domain))
+      const ranked = [...Object.values(sites), ...found.sites, ...(found.local || []).filter(x => !found.sites.some(y => y.domain === x.domain))]
+        .map(site => ({ site, score: score(site) * (localDomains.has(site.domain) ? 1.6 : 1) }))
         .filter(r => r.score > 0)
         .sort((a, b) => b.score - a.score)
         .map(r => ({ ...r.site, _score: r.score }) as Site)
@@ -452,7 +455,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       if (brandIndex > 0 && brandIndex < 15) ranked.unshift(ranked.splice(brandIndex, 1)[0])
       const seen = new Set<string>()
       const results: Site[] = []
-      for (const site of [...(found.local || []), ...ranked, ...found.pages]) {
+      for (const site of [...ranked, ...found.pages]) {
         if (!seen.has(site.domain)) { seen.add(site.domain); results.push({ ...site, matched: explainMatch(site, primaryQuery, expanded, query) } as Site) }
       }
       // One result per brand (nike.com with nike.com.br folded underneath), the page that answers

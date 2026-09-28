@@ -163,6 +163,12 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
 }
 
 // Upcoming events from schema.org Event data (concerts, classes, workshops, festivals).
+// JSON-LD text sometimes still has HTML entities ("Talk &#8211; Q&amp;A").
+function entities(v: string): string {
+  return String(v).replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ")
+}
+
 export type SiteEvent = {
   name: string, url: string, start_date: string, end_date?: string, description?: string,
   venue?: string, city?: string, country?: string, lat?: number, lon?: number, price?: number, currency?: string, online?: boolean
@@ -193,10 +199,10 @@ export function extractEvents(html: string, pageUrl: string, now = new Date()): 
     const lat = Number(loc?.geo?.latitude), lon = Number(loc?.geo?.longitude)
     const country = typeof addr?.addressCountry === "object" ? addr.addressCountry?.name : addr?.addressCountry
     out.push({
-      name: n.name.trim().slice(0, 200), url, start_date: new Date(start).toISOString(),
+      name: entities(n.name).trim().slice(0, 200), url, start_date: new Date(start).toISOString(),
       ...(Number.isFinite(end) && end >= start ? { end_date: new Date(end).toISOString() } : {}),
-      ...(typeof n.description === "string" ? { description: n.description.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
-      ...(typeof loc?.name === "string" ? { venue: loc.name.slice(0, 120) } : {}),
+      ...(typeof n.description === "string" ? { description: entities(n.description.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim().slice(0, 300) } : {}),
+      ...(typeof loc?.name === "string" ? { venue: entities(loc.name).slice(0, 120) } : {}),
       ...(typeof addr?.addressLocality === "string" ? { city: addr.addressLocality.slice(0, 80) } : {}),
       ...(typeof country === "string" ? { country: country.slice(0, 60) } : {}),
       ...(Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : {}),

@@ -30,7 +30,8 @@ export function splitCity(query: string): { what: string, city: string } | null 
   for (const city of CITIES) {
     const m = q.match(new RegExp(`^(.*?)\\s*(?:\\bin\\b|\\bnear\\b|\\bat\\b)?\\s*\\b${city.replace(/ /g, "\\s+")}\\b\\s*(.*)$`))
     if (!m) continue
-    const what = `${m[1]} ${m[2]}`.replace(/\b(in|near|at|best|top)\b/g, " ").replace(/\s+/g, " ").trim()
+    // Only what the place is ("running shoes"), not how it's asked ("buy", "cheap", "best").
+    const what = `${m[1]} ${m[2]}`.replace(/\b(in|near|at|best|top|buy|cheap|cheapest|good|find|order|shop for|open now|me)\b/g, " ").replace(/\s+/g, " ").trim()
     if (what) return { what, city: city.replace(/\b\w/g, c => c.toUpperCase()) }
   }
   return null
