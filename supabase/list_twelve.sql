@@ -48,6 +48,12 @@ revoke execute on function suggest_sites(text, int) from public, anon, authentic
 -- Filters on search (category=…, city=…).
 create index if not exists lawp_sites_category_pop_idx on lawp_sites (category, popularity_rank) where status is null;
 
+-- The backlog job's "popular sites first" query (reconvert.ts) timed out on the whole table.
+create index if not exists lawp_sites_backlog_idx on lawp_sites (popularity_rank, updated_at)
+  where status is null and owner_key is null and (actions::text = '[]' or conversion = 'heuristic');
+create index if not exists lawp_sites_minimal_idx on lawp_sites (updated_at)
+  where status is null and owner_key is null and actions::text = '[]';
+
 -- Speed: list_eleven.sql rebuilt the search column, and Postgres needs fresh statistics to plan
 -- searches well again (searches were taking ~7 seconds). Takes a few seconds.
 analyze lawp_sites;
