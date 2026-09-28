@@ -352,7 +352,7 @@ const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 
 // opts.lite: heavy free use from one client (scraper guard, api/search.ts) — index only, no LLM,
 // live crawls or guessing. opts.places receives OpenStreetMap places for local searches.
-export type SearchOptions = { lite?: boolean, places?: any[] }
+export type SearchOptions = { lite?: boolean, places?: any[], related?: string[] }
 
 export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
@@ -442,7 +442,14 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         .map(site => ({ site, score: score(site) }))
         .filter(r => r.score > 0)
         .sort((a, b) => b.score - a.score)
-        .map(r => r.site)
+        .map(r => ({ ...r.site, _score: r.score }) as Site)
+      // An exact brand search ("nike", "stripe", "the north face") puts that brand's own site first.
+      const q = primaryQuery.toLowerCase().trim()
+      const brandIndex = ranked.findIndex(site => {
+        const label = site.domain.replace(/^www\./, "").split(".")[0]
+        return String(site.name || "").toLowerCase().trim() === q || label === q.replace(/\s+/g, "") || label === q.replace(/\s+/g, "-")
+      })
+      if (brandIndex > 0 && brandIndex < 15) ranked.unshift(ranked.splice(brandIndex, 1)[0])
       const seen = new Set<string>()
       const results: Site[] = []
       for (const site of [...(found.local || []), ...ranked, ...found.pages]) {
@@ -456,7 +463,13 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
 
     const te = Date.now()
     let expansionUnavailable = false
-    const expanding = expandQuery(query, tier, mayUseLlm).then(x => { mark("expand", te); if (x.unavailable) expansionUnavailable = true; return x })
+    const expanding = expandQuery(query, tier, mayUseLlm).then(x => {
+      mark("expand", te)
+      if (x.unavailable) expansionUnavailable = true
+      // Related searches people could try next ("running shoes" → "trail running shoes", "sneakers").
+      if (opts.related && !opts.related.length) opts.related.push(...x.terms.slice(0, 6))
+      return x
+    })
     // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
     const expandedSearch = expanding.then(async ({ english, terms }) => {
       if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null

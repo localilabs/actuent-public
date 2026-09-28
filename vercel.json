@@ -113,6 +113,10 @@
       "dest": "/api/data.ts?op=webhooks"
     },
     {
+      "src": "/api/autocomplete",
+      "dest": "/api/data.ts?op=autocomplete"
+    },
+    {
       "src": "/api/status",
       "dest": "/api/data.ts?op=status"
     },

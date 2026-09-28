@@ -7,11 +7,14 @@ import { trackedLink } from "../src/utils/links"
 import { openNow } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
+import { cleanQuery, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
+import { cleanName, snippet, notAResult } from "../src/utils/results"
+import { splitCity } from "../src/utils/local"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number): Promise<void> {
+async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number, resultCount?: number): Promise<void> {
   const send = (row: object) => fetch(`${SUPABASE_URL}/rest/v1/searches`, {
     method: "POST",
     headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
@@ -20,8 +23,9 @@ async function trackSearch(query: string, domains: string[], tier: string, apiKe
   try {
     const row = { query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null }
     // duration_ms (list_seven.sql) feeds the search speed numbers on the ops page.
-    const r = await send(durationMs != null ? { ...row, duration_ms: durationMs } : row)
-    if (!r.ok && durationMs != null) await send(row)
+    // duration_ms and result_count (list_twelve.sql: zero-result searches on the ops page).
+    const r = await send({ ...row, ...(durationMs != null ? { duration_ms: durationMs } : {}), ...(resultCount != null ? { result_count: resultCount } : {}) })
+    if (!r.ok) { const r2 = await send(durationMs != null ? { ...row, duration_ms: durationMs } : row); if (!r2.ok && durationMs != null) await send(row) }
   } catch {}
 }
 
@@ -42,6 +46,54 @@ function cacheGet(key: string): unknown | null {
 function cacheSet(key: string, body: unknown) {
   resultCache.set(key, { body, expires: Date.now() + RESULT_TTL_MS })
   if (resultCache.size > 1000) resultCache.delete(resultCache.keys().next().value!)
+}
+
+// Options (all optional): limit & offset (paging, max 50), category, city, lang, open_now=true,
+// sort=relevance|popular|fresh. Applied to the finished result list, so cached searches can use them.
+type Params = { limit?: number, offset: number, category?: string, city?: string, lang?: string, openNow: boolean, sort: "relevance" | "popular" | "fresh" }
+function readParams(req: VercelRequest): Params {
+  const v = (k: string) => { const x = req.method === "GET" ? req.query[k] : req.body?.[k]; return x == null ? undefined : String(x) }
+  const n = (x?: string) => x != null && /^\d+$/.test(x) ? parseInt(x) : undefined
+  const sort = v("sort")
+  return {
+    limit: n(v("limit")) != null ? Math.min(Math.max(n(v("limit"))!, 1), 50) : undefined, offset: Math.min(n(v("offset")) || 0, 500),
+    category: v("category")?.toLowerCase().slice(0, 40), city: v("city")?.toLowerCase().slice(0, 60), lang: v("lang")?.toLowerCase().slice(0, 2),
+    openNow: v("open_now") === "true", sort: sort === "popular" || sort === "fresh" ? sort : "relevance"
+  }
+}
+
+function present(body: any, p: Params): any {
+  let list: any[] = body.results || []
+  if (p.category) list = list.filter(r => r.category === p.category)
+  if (p.city) list = list.filter(r => String(r.business?.address?.city || "").toLowerCase() === p.city)
+  if (p.openNow) list = list.filter(r => r.open_now === true)
+  if (p.lang) list = [...list.filter(r => r.language === p.lang), ...list.filter(r => r.language !== p.lang)]
+  if (p.sort === "popular") list = [...list].sort((a, b) => (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9))
+  if (p.sort === "fresh") list = [...list].sort((a, b) => Date.parse(b.last_updated || 0) - Date.parse(a.last_updated || 0))
+  const filtered = list.length !== (body.results || []).length || p.sort !== "relevance"
+  const total = list.length
+  if (p.offset || p.limit) list = list.slice(p.offset, p.limit != null ? p.offset + p.limit : undefined)
+  return { ...body, results: list, count: list.length, ...(filtered || p.offset || p.limit ? { total } : {}) }
+}
+
+// Upcoming events for event-style searches ("concerts copenhagen", "what's on in london").
+const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy)\b/i
+async function upcomingEvents(q: string): Promise<any[]> {
+  if (!EVENTY.test(q)) return []
+  const place = splitCity(q)
+  const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(in|on|at|this|next|week|tonight)\b/gi, " ").replace(/\s+/g, " ").trim()
+  const filters = [`start_date=gte.${encodeURIComponent(new Date().toISOString())}`]
+  if (place) filters.push(`or=${encodeURIComponent(`(city.ilike.*${place.city.replace(/[*,()]/g, "")}*,venue.ilike.*${place.city.replace(/[*,()]/g, "")}*)`)}`)
+  if (topic && topic.length >= 3) filters.push(`or=${encodeURIComponent(`(name.ilike.*${topic.replace(/[*,()]/g, "")}*,description.ilike.*${topic.replace(/[*,()]/g, "")}*)`)}`)
+  if (!place && !(topic && topic.length >= 3)) return []
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency&${filters.join("&")}&order=start_date.asc&limit=12`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(2500)
+    })
+    const rows: any[] = r.ok ? await r.json() : []
+    return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 5)
+      .map(e => ({ ...e, visit_url: trackedLink(e.url) }))
+  } catch { return [] }
 }
 
 async function suggestSpelling(q: string): Promise<string | null> {
@@ -113,28 +165,38 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Searches are a few words; very long input only costs CPU (ranking, translation, full-text search).
   if (query.length > 500) return res.status(400).json({ error: "Query too long", message: "Keep searches under 500 characters." })
 
+  // What to search for: "near me" becomes the searcher's city, question-style searches become
+  // keywords ("where can I buy running shoes in London?" → "buy running shoes london").
+  const typed = query.trim()
+  const localized = nearMe(typed, req.headers["x-vercel-ip-city"] as string | undefined)
+  const searchQuery = cleanQuery(localized)
+  const params = readParams(req)
+
   res.setHeader("X-Actuent-Tier", tier)
-  // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private.
+  // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private,
+  // and so is "near me" (the answer depends on where the searcher is).
   res.setHeader("Vary", "Authorization")
-  res.setHeader("Cache-Control", req.method === "GET" && !apiKey
+  res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed
     ? "public, max-age=0, s-maxage=300, stale-while-revalidate=3600"
     : "private, no-store")
 
-  const cacheKey = `${tier}:${query.trim().toLowerCase()}`
-  const cached = cacheGet(cacheKey)
+  const key = `${tier}:${cacheKey(searchQuery)}`
+  const cached = cacheGet(key)
   if (cached) {
-    await later(trackSearch(query.trim(), (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart))
-    return res.status(200).json({ ...(cached as any), query })
+    await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
+    res.setHeader("X-Search-Time", String(Date.now() - requestStart))
+    return res.status(200).json(present({ ...(cached as any), query: typed }, params))
   }
 
   // Products with prices run alongside site search for keyword queries ("running shoes under €100").
-  const isDomainQuery = /^\S+\.[a-z]{2,}(\/\S*)?$/i.test(query.trim())
+  const isDomainQuery = /^\S+\.[a-z]{2,}(\/\S*)?$/i.test(searchQuery)
   // Server-Timing shows where the time goes (sites vs products), for the ops page and debugging.
   const t0 = Date.now()
   let sitesMs = 0, productsMs = 0
   const timing: Record<string, number> = {}
   const notices: Notice[] = []
   const places: any[] = []
+  const related: string[] = []
   // Scraper guard: one client running hundreds of free searches an hour (well past what a person
   // does) gets index-only results with a note, so real users and Pro keep the capacity.
   let lite = false
@@ -144,16 +206,22 @@ async function search(req: VercelRequest, res: VercelResponse) {
     const hourly = await Promise.race([hitCounter(`searches:${ipHash(ip)}`, 3600), new Promise<null>(r => setTimeout(() => r(null), 300))])
     lite = hourly !== null && hourly > FREE_SEARCHES_PER_HOUR
   }
-  const [results, products] = await Promise.all([
-    searchSites(query.trim(), tier, timing, notices, { lite, places }).then(r => { sitesMs = Date.now() - t0; return r }),
-    (isDomainQuery ? Promise.resolve([]) : searchProducts(query.trim(), tier, tier === "pro" ? 20 : 5)).then(r => { productsMs = Date.now() - t0; return r })
+  // Products only for searches that could be shopping, and never holding up the sites for long.
+  const productSearch = isDomainQuery || !wantsProducts(searchQuery) ? Promise.resolve([]) : Promise.race([
+    searchProducts(searchQuery, tier, tier === "pro" ? 20 : 5),
+    new Promise<any[]>(r => setTimeout(() => r([]), 2500))
+  ]).catch(() => [])
+  const [results, products, events] = await Promise.all([
+    searchSites(searchQuery, tier, timing, notices, { lite, places, related }).then(r => { sitesMs = Date.now() - t0; return r }),
+    productSearch.then(r => { productsMs = Date.now() - t0; return r }),
+    isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
   ])
   // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
   // when nothing matched at all, search for the suggestion instead and say so.
   let didYouMean: string | null = null
   let searchedFor: string | null = null
   if (!isDomainQuery && results.length < 3) {
-    didYouMean = await suggestSpelling(query.trim())
+    didYouMean = await suggestSpelling(searchQuery)
     if (didYouMean && !results.length && !products.length) {
       const again = await searchSites(didYouMean, tier, timing, [], { lite })
       if (again.length) { results.push(...again); searchedFor = didYouMean }
@@ -161,16 +229,24 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
   // Adult and gambling sites are left out unless the query asks for them.
-  const shown = withoutHidden(results as any[], query)
+  // Error pages, bot checks and parked domains aren't results; www. and bare domains count once.
+  const seenHost = new Set<string>()
+  const shown = withoutHidden(results as any[], searchQuery).filter((r: any) => {
+    if (notAResult(r)) return false
+    const host = String(r.domain).replace(/^www\./, "")
+    if (seenHost.has(host)) return false
+    seenHost.add(host)
+    return true
+  })
   results.splice(0, results.length, ...shown)
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
-  await later(trackSearch(query.trim(), domains, tier, trackKey, Date.now() - requestStart))
+  await later(trackSearch(typed, domains, tier, trackKey, Date.now() - requestStart, results.length))
 
   if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
-  if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: query.trim() }))
+  if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: typed }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
   // Busy answers are counted, and the status banner (/api/status) turns on when there are many.
@@ -178,11 +254,18 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // executable: the site publishes LAWP action endpoints agents can call via actuent_execute_action
   const now = Date.now()
+  const topScore = Math.max(1e-9, ...results.map((r: any) => Number(r._score) || 0))
   const body = {
-    query,
+    query: typed,
+    // The search that was actually run, when it differs from what was typed.
+    ...(searchQuery !== typed ? { interpreted_as: searchQuery } : {}),
     count: results.length,
-    results: results.map(({ contentHash, ownerKey, productsCrawledAt, rank, ...r }: any) => ({
+    results: results.map(({ contentHash, ownerKey, productsCrawledAt, rank, _score, ...r }: any, i: number) => ({
       ...r,
+      name: cleanName(r.name, r.domain),
+      // The sentence that best answers the search, and how strong the match is (0-100, top = 100).
+      snippet: snippet(r, searchQuery),
+      score: _score ? Math.max(1, Math.round((Number(_score) / topScore) * 100)) : Math.max(1, 100 - i * 5),
       native: !!r.native,
       executable: isExecutable(r),
       // Why this result: which words matched where (search.ts explainMatch).
@@ -193,11 +276,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
       ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
-      visit_url: trackedLink(`https://${r.domain}`, query.trim())
+      visit_url: trackedLink(`https://${r.domain}`, typed)
     })),
     ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
+    ...(events.length ? { events } : {}),
+    ...(related.length ? { related } : {}),
     ...(didYouMean ? { did_you_mean: didYouMean } : {}),
     ...(searchedFor ? { searched_for: searchedFor } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
@@ -205,6 +290,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
   if (degraded) res.setHeader("Cache-Control", "no-store")
-  else if (results.length > 0 || products.length > 0) cacheSet(cacheKey, body)
-  return res.status(200).json(body)
+  else if (results.length > 0 || products.length > 0) cacheSet(key, body)
+  res.setHeader("X-Search-Time", String(Date.now() - requestStart))
+  return res.status(200).json(present(body, params))
 }

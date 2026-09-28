@@ -85,12 +85,14 @@
 <h1>Actuent <span>for humans</span></h1>
 <p class="sub">Developers only. AI agents connect via <a href="https://docs.actuent.ai">agents.actuent.ai</a></p>
 
-<div class="search-box">
-  <input type="text" id="query" placeholder="nike.com or 'barber amsterdam'..." onkeydown="if(event.key==='Enter')doSearch()">
-  <button id="btn" onclick="doSearch()">Search</button>
-</div>
+<form class="search-box" role="search" onsubmit="event.preventDefault();doSearch()" style="position:relative">
+  <label for="query" style="position:absolute;left:-999px">Search</label>
+  <input type="search" id="query" autocomplete="off" aria-autocomplete="list" aria-controls="ac" placeholder="nike.com or 'barber amsterdam'… (press / to search)">
+  <button id="btn" type="submit">Search</button>
+  <ul id="ac" role="listbox" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:10;list-style:none;margin:4px 0 0;padding:6px 0;background:#13131a;border:1px solid #2a2a34;border-radius:8px;text-align:left"></ul>
+</form>
 
-<div id="status"></div>
+<div id="status" role="status" aria-live="polite"></div>
 <div class="results" id="results"></div>
 
 <script>
@@ -116,6 +118,7 @@ function toggleRaw(i) {
 function doSearch() {
   var query = document.getElementById("query").value.trim()
   if (!query) return
+  try { history.replaceState(null, "", "?q=" + encodeURIComponent(query)) } catch (e) {}
 
   var btn = document.getElementById("btn")
   var status = document.getElementById("status")
@@ -155,6 +158,14 @@ function doSearch() {
 
     status.textContent = data.count + " result" + (data.count !== 1 ? "s" : "") + " found"
     var note = data.message ? '<div class="empty" style="margin-bottom:12px">' + esc(data.message) + '</div>' : ""
+    // Spelling, interpretation and related searches, as links that run the search.
+    var link = function(v) { return '<a href="?q=' + encodeURIComponent(v) + '" onclick="event.preventDefault();searchFor(this.dataset.v)" data-v="' + esc(v) + '">' + esc(v) + '</a>' }
+    var hints = []
+    if (data.searched_for) hints.push('Showing results for ' + link(data.searched_for))
+    else if (data.did_you_mean) hints.push('Did you mean ' + link(data.did_you_mean) + '?')
+    if (data.interpreted_as) hints.push('Searched for “' + esc(data.interpreted_as) + '”')
+    if (data.related && data.related.length) hints.push('Related: ' + data.related.map(link).join(" · "))
+    note += hints.length ? '<div class="page-content" style="margin-bottom:12px;color:#a8a8b6">' + hints.join(" &nbsp;|&nbsp; ") + '</div>' : ""
 
     results.innerHTML = note + placesHtml + data.results.map(function(site, i) {
       var s = scoreLAWP(site)
@@ -173,6 +184,11 @@ function doSearch() {
       return '<div class="card">' +
         '<div class="site-domain">'+esc(site.domain)+'</div>' +
         '<div class="site-name">'+esc(site.name||"")+'</div>' +
+        (site.snippet ? '<div class="page-content" style="margin:6px 0">'+esc(site.snippet)+'</div>' : '') +
+        '<div class="page-content" style="color:#8e8e9c;font-size:12px;margin-bottom:6px">' +
+          [site.matched ? 'Why: '+esc(site.matched) : '', site.open_now === true ? '<span style="color:#4ade80">Open now</span>' : site.open_now === false ? 'Closed now' : '',
+           site.regional_sites && site.regional_sites.length ? 'Also: '+site.regional_sites.map(esc).join(", ") : '', site.score ? 'Match '+esc(site.score)+'/100' : ''].filter(Boolean).join(" · ") +
+        '</div>' +
         ((site.native || site.executable) ? '<div class="tags">' +
           (site.executable ? '<span class="tag exec" title="AI agents can perform this site\'s actions via LAWP">⚡ Executable actions</span>' : '') +
           (site.native ? '<span class="tag" title="Published by the site at /.well-known/lawp.json">Native LAWP</span>' : '') +
@@ -192,6 +208,39 @@ function doSearch() {
     results.innerHTML = '<div class="empty">' + esc(err.message && !/fetch|network/i.test(err.message) ? err.message : "Couldn't reach Actuent. Check your connection and try again.") + '</div>'
   })
 }
+</script>
+<script>
+// Shareable searches (?q=…), "/" to focus the search box, and autocomplete (api/autocomplete).
+(function() {
+  var input = document.getElementById("query"), list = document.getElementById("ac"), timer = null
+  var q = new URLSearchParams(location.search).get("q")
+  if (q) { input.value = q; setTimeout(doSearch, 0) }
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus() }
+    if (e.key === "Escape") list.style.display = "none"
+  })
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c] }) }
+  input.addEventListener("input", function() {
+    clearTimeout(timer)
+    var v = input.value.trim()
+    if (v.length < 2) { list.style.display = "none"; return }
+    timer = setTimeout(function() {
+      fetch("https://api.actuent.ai/api/autocomplete?q=" + encodeURIComponent(v)).then(function(r) { return r.json() }).then(function(d) {
+        var items = (d.searches || []).map(function(s) { return { label: s, value: s } })
+          .concat((d.sites || []).map(function(s) { return { label: s.name + " — " + s.domain, value: s.domain } }))
+        if (!items.length || input.value.trim() !== v) { list.style.display = "none"; return }
+        list.innerHTML = items.map(function(it) { return '<li role="option" tabindex="-1" data-v="' + esc(it.value) + '" style="padding:6px 12px;cursor:pointer;color:#c4c4cf;font-size:14px">' + esc(it.label) + '</li>' }).join("")
+        list.style.display = "block"
+      }).catch(function() {})
+    }, 150)
+  })
+  list.addEventListener("mousedown", function(e) {
+    var li = e.target.closest("li"); if (!li) return
+    e.preventDefault(); input.value = li.getAttribute("data-v"); list.style.display = "none"; doSearch()
+  })
+  input.addEventListener("blur", function() { setTimeout(function() { list.style.display = "none" }, 150) })
+})()
+function searchFor(v) { document.getElementById("query").value = v; doSearch() }
 </script>
 </body>
 </html>
