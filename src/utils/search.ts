@@ -412,8 +412,12 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
       // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.
       // Generic words ("online", "software") count half: many good sites never say them.
-      const cats = queryCategories(primaryQuery)
-      const words = [...new Set(primaryQuery.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
+      // A city in the search says where, not what: "running shoes london" is scored on "running
+      // shoes", and businesses actually in London get the local bonus below.
+      const place = splitCity(primaryQuery)
+      const what = place ? place.what : primaryQuery
+      const cats = queryCategories(what)
+      const words = [...new Set(what.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
       const weight = (w: string) => WEAK_WORDS.has(w) ? 0.5 : 1
       const total = words.reduce((n, w) => n + weight(w), 0)
       const coverage = (site: Site) => {
@@ -422,7 +426,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         return words.filter(w => text.includes(w)).reduce((n, w) => n + weight(w), 0) / total
       }
       const score = (site: Site) => {
-        const primary = scoreMatch(site, primaryQuery)
+        const primary = scoreMatch(site, what)
         const related = expanded ? scoreMatch(site, expanded) : 0
         // The database's rank (text match, every-word bonus, popularity: list_nine.sql) counts too.
         const dbRank = Number((site as any).rank) || 0
