@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { changesFeed } from "../src/utils/feeds"
+import { searchTrends } from "../src/utils/trends"
 import { readiness, ScoreBreakdown } from "../src/utils/score"
 import { openNow } from "../src/utils/business"
 import { CATEGORIES, HIDDEN_CATEGORIES } from "../src/utils/category"
@@ -199,20 +201,46 @@ function breadcrumbLd(crumbs: Crumb[]) {
   return { "@type": "BreadcrumbList", itemListElement: crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.url })) }
 }
 
-function layout(opts: { title: string, description: string, canonical: string, image: string, noindex?: boolean, jsonLd?: object, body: string }) {
+function layout(opts: { title: string, description: string, canonical: string, image: string, noindex?: boolean, jsonLd?: object, feed?: string, body: string }) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(opts.title)}</title><meta name="description" content="${esc(opts.description)}">
-<link rel="canonical" href="${esc(opts.canonical)}">${opts.noindex ? '<meta name="robots" content="noindex,follow">' : ""}
+<link rel="canonical" href="${esc(opts.canonical)}">${opts.feed ? `<link rel="alternate" type="application/rss+xml" title="Changes" href="${esc(opts.feed)}">` : ""}${opts.noindex ? '<meta name="robots" content="noindex,follow">' : ""}
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(opts.title)}"><meta property="og:description" content="${esc(opts.description)}">
 <meta property="og:url" content="${esc(opts.canonical)}"><meta property="og:image" content="${esc(opts.image)}"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="${BASE}/assets/actuent-logo.png">
 <script src="/assets/lawpy.js" defer></script>
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd).replace(/</g, "\\u003c")}</script>` : ""}
 <style>${STYLE}:focus-visible{outline:2px solid #8b8bff;outline-offset:2px}.skip{position:absolute;left:-999px;top:8px;background:#fff;color:#000;padding:8px 12px;border-radius:6px}.skip:focus{left:8px}</style></head><body><a class="skip" href="#main">Skip to content</a><main id="main">
-<div class="top"><a href="https://actuent.ai"><img src="${BASE}/assets/actuent-logo.png" alt="Actuent"></a><nav><a href="${BASE}/site">Directory</a><a href="https://humans.actuent.ai">Search</a><a href="https://docs.actuent.ai">Docs</a></nav></div>
+<div class="top"><a href="https://actuent.ai"><img src="${BASE}/assets/actuent-logo.png" alt="Actuent"></a><nav><a href="${BASE}/site">Directory</a><a href="${BASE}/trends">Trends</a><a href="https://humans.actuent.ai">Search</a><a href="https://docs.actuent.ai">Docs</a></nav></div>
 ${opts.body}
 <p class="muted" style="margin-top:40px">Actuent is a search engine for AI agents, made by <a href="https://localilabs.com">localilabs</a>. Data is generated automatically from public web content and may be incomplete.</p>
 </main></body></html>`
+}
+
+// /trends and /trends.json: what people searched most this week (src/utils/trends.ts).
+async function trendsPage(res: VercelResponse, json: boolean) {
+  const t = await searchTrends()
+  res.setHeader("Cache-Control", t.available ? "public, max-age=0, s-maxage=3600, stale-while-revalidate=21600" : "no-store")
+  if (json) {
+    res.setHeader("Content-Type", "application/json; charset=utf-8")
+    res.setHeader("Access-Control-Allow-Origin", "*")
+    return res.status(200).json({ period: `since ${t.since.slice(0, 10)} (up to 7 days)`, rule: "Plain searches made at least 3 times; no personal details", top: t.top, categories: t.categories, cities: t.cities })
+  }
+  const link = (q: string) => `<a href="https://humans.actuent.ai/?q=${encodeURIComponent(q)}">${esc(q)}</a>`
+  const list = (items: { query: string, searches: number }[]) => `<ol class="checks" style="padding-left:20px">${items.map(x => `<li>${link(x.query)} <span class="muted">· ${x.searches}</span></li>`).join("")}</ol>`
+  const cards = (groups: { name: string, searches: number, queries: { query: string, searches: number }[] }[]) => `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px">${groups.map(g => `<div class="card"><strong>${esc(g.name)}</strong> <span class="muted">· ${g.searches} searches</span>${list(g.queries)}</div>`).join("")}</div>`
+  const empty = !t.top.length
+  const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Search trends</h1>
+<p class="lead">What people and AI agents searched for most on Actuent this week${t.since > new Date(Date.now() - 7 * 86400000).toISOString() ? ` (counting since ${new Date(t.since).toLocaleDateString("en-GB", { day: "numeric", month: "long" })})` : ""}. Only searches made at least 3 times are shown, and never anything personal. Updated hourly · <a href="${BASE}/trends.json">JSON</a></p></div>
+<lawpy-mascot state="${empty ? "think" : "talk"}" ${empty ? "" : `loops="3" then="idle"`} scale="4" style="margin-left:auto"></lawpy-mascot></div>
+${empty ? `<div class="card"><p>Not enough searches yet this week for trends. Lawpy is counting. Try <a href="https://humans.actuent.ai">a search</a> of your own.</p></div>` : `
+<h2>Top searches</h2><div class="card">${list(t.top)}</div>
+${t.categories.length ? `<h2>By category</h2>${cards(t.categories.map(c => ({ name: c.label, searches: c.searches, queries: c.queries })))}` : ""}
+${t.cities.length ? `<h2>By city</h2>${cards(t.cities.map(c => ({ name: c.city, searches: c.searches, queries: c.queries })))}` : ""}`}`
+  return res.status(200).send(layout({
+    title: "Search trends — Actuent", description: "What people and AI agents searched for most on Actuent this week, by category and city.",
+    canonical: `${BASE}/trends`, image: ogImage("Search trends", "What people and AI agents searched for this week", "api.actuent.ai/trends", "talk"), noindex: empty, body
+  }))
 }
 
 // Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
@@ -374,6 +402,8 @@ ${d.top_sites?.length ? `<h2>Sites agents found most</h2>${table(["Site", "Appea
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Content-Type", "text/html; charset=utf-8")
   if (req.query.weekly) return weeklyPage(res, String(req.query.weekly))
+  if (req.query.changes === "rss" && !req.query.domain) return changesFeed(res, null)
+  if (req.query.trends) return trendsPage(res, req.query.trends === "json")
   if (req.query.city && req.query.events) {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     return eventsPage(res, slug(String(req.query.city)), req.query.events === "ics" ? "ics" : "page")
@@ -384,6 +414,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/[^a-z0-9.-]/g, "")
   if (!domain) return directory(res)
+  if (req.query.changes === "rss") return changesFeed(res, domain)
 
   const [site] = await rows(`lawp_sites?select=*&domain=eq.${encodeURIComponent(domain)}`)
   if (!site) return notFound(res, domain)
@@ -457,7 +488,7 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
 <div class="muted" style="margin-top:8px">Last updated ${site.updated_at ? esc(new Date(site.updated_at).toUTCString().slice(5, 16)) : "recently"}${site.language && site.language !== "en" ? ` · original language: ${esc(site.language)}` : ""}</div></div>
 
 <h2>Is this your site?</h2><div class="card cta"><div>Claim ${esc(domain)} to edit what AI agents see, make your actions executable, and show your score:</div>
-<div style="margin-top:10px"><a href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download your lawp.json →</a> &nbsp; <a href="https://analytics.actuent.ai/?edit=${esc(domain)}">${site.owner_key ? "Edit what agents see →" : "Claim and edit this site →"}</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
+<div style="margin-top:10px"><a href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download your lawp.json →</a> &nbsp; <a href="https://analytics.actuent.ai/?edit=${esc(domain)}">${site.owner_key ? "Edit what agents see →" : "Claim and edit this site →"}</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a> &nbsp; <a href="${BASE}/site/${esc(domain)}/changes.rss">Changes feed (RSS) →</a></div>
 <div class="muted" style="margin-top:10px">Show your score: <code>&lt;script src="${BASE}/badge.js" data-domain="${esc(domain)}" async&gt;&lt;/script&gt;</code> or the image <code>${BASE}/badge.svg?domain=${esc(domain)}&amp;style=card</code></div></div>`
 
   const hours = (b?.opening_hours || []).filter((h: any) => Array.isArray(h.days) && h.opens && h.closes)
@@ -481,6 +512,6 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
   return res.status(200).send(layout({
     title: `${name} (${domain}) — AI agent profile | Actuent`, description, canonical: `${BASE}/site/${domain}`,
     image: ogImage(`${name} is ${score}/100 agent-ready`, `What AI agents see on ${domain}: pages, actions${products.length ? " and products" : ""}`, `api.actuent.ai/site/${domain}`, score >= 90 ? "dance" : score >= 50 ? "wave" : "think"),
-    noindex: thin, jsonLd, body
+    noindex: thin, jsonLd, feed: `${BASE}/site/${domain}/changes.rss`, body
   }))
 }

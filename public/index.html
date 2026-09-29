@@ -147,15 +147,32 @@
 })()
 </script>
 
+<script>
+// The page speaks the visitor's language (browser setting, or ?lang=da). Results stay as agents get
+// them, in English. Anything not translated here stays in English.
+var I18N = {"da": {"for humans": "for mennesker","Human Debug Mode": "Fejlfinding for mennesker","sub": "Se præcis, hvad en AI-agent får tilbage, når den søger på Actuent: sider, produkter, steder, begivenheder og svar. Agenter forbinder via","Search anything… (press / to focus)": "Søg efter hvad som helst… (tryk / for at søge)","Search": "Søg","Searching…": "Søger…","Quick results · finding more…": "Hurtige resultater · finder flere…","What's on tonight near me": "Hvad sker der i aften i nærheden","Looking for tonight…": "Kigger efter i aften…","Tonight in": "I aften i","Nothing found for “{q}” yet.": "Intet fundet for “{q}” endnu.","Couldn't reach Actuent. Check your connection and try again.": "Kunne ikke nå Actuent. Tjek din forbindelse, og prøv igen.","Couldn’t reach Actuent. Try again.": "Kunne ikke nå Actuent. Prøv igen.","Showing results for": "Viser resultater for","Did you mean": "Mente du","Related:": "Relateret:","Places near {city} first": "Steder nær {city} først","Sites": "Sider","Upcoming events": "Kommende begivenheder","site": "side","sites": "sider","product": "produkt","products": "produkter","event": "begivenhed","events": "begivenheder","footer": "Resultaterne kommer fra samme API, som AI-agenter bruger","trends": "tendenser"},"sv": {"for humans": "för människor","Human Debug Mode": "Felsökning för människor","sub": "Se exakt vad en AI-agent får tillbaka när den söker på Actuent: webbplatser, produkter, platser, evenemang och svar. Agenter ansluter via","Search anything… (press / to focus)": "Sök efter vad som helst… (tryck / för att söka)","Search": "Sök","Searching…": "Söker…","Quick results · finding more…": "Snabba resultat · hittar fler…","What's on tonight near me": "Vad händer i kväll nära mig","Looking for tonight…": "Letar efter i kväll…","Tonight in": "I kväll i","Nothing found for “{q}” yet.": "Inget hittades för “{q}” än.","Couldn't reach Actuent. Check your connection and try again.": "Kunde inte nå Actuent. Kontrollera anslutningen och försök igen.","Couldn’t reach Actuent. Try again.": "Kunde inte nå Actuent. Försök igen.","Showing results for": "Visar resultat för","Did you mean": "Menade du","Related:": "Relaterat:","Places near {city} first": "Platser nära {city} först","Sites": "Webbplatser","Upcoming events": "Kommande evenemang","site": "webbplats","sites": "webbplatser","product": "produkt","products": "produkter","event": "evenemang","events": "evenemang","footer": "Resultaten kommer från samma API som AI-agenter använder","trends": "trender"},"nb": {"for humans": "for mennesker","Human Debug Mode": "Feilsøking for mennesker","sub": "Se nøyaktig hva en AI-agent får tilbake når den søker på Actuent: nettsteder, produkter, steder, arrangementer og svar. Agenter kobler til via","Search anything… (press / to focus)": "Søk etter hva som helst… (trykk / for å søke)","Search": "Søk","Searching…": "Søker…","Quick results · finding more…": "Raske resultater · finner flere…","What's on tonight near me": "Hva skjer i kveld i nærheten","Looking for tonight…": "Ser etter i kveld…","Tonight in": "I kveld i","Nothing found for “{q}” yet.": "Ingenting funnet for “{q}” ennå.","Couldn't reach Actuent. Check your connection and try again.": "Kunne ikke nå Actuent. Sjekk tilkoblingen og prøv igjen.","Couldn’t reach Actuent. Try again.": "Kunne ikke nå Actuent. Prøv igjen.","Showing results for": "Viser resultater for","Did you mean": "Mente du","Related:": "Relatert:","Places near {city} first": "Steder nær {city} først","Sites": "Nettsteder","Upcoming events": "Kommende arrangementer","site": "nettsted","sites": "nettsteder","product": "produkt","products": "produkter","event": "arrangement","events": "arrangementer","footer": "Resultatene kommer fra samme API som AI-agenter bruker","trends": "trender"},"de": {"for humans": "für Menschen","Human Debug Mode": "Debug-Modus für Menschen","sub": "Sieh genau, was ein KI-Agent zurückbekommt, wenn er auf Actuent sucht: Websites, Produkte, Orte, Veranstaltungen und Antworten. Agenten verbinden sich über","Search anything… (press / to focus)": "Nach allem suchen… (/ drücken zum Suchen)","Search": "Suchen","Searching…": "Suche läuft…","Quick results · finding more…": "Schnelle Ergebnisse · suche weitere…","What's on tonight near me": "Was heute Abend in meiner Nähe los ist","Looking for tonight…": "Suche nach heute Abend…","Tonight in": "Heute Abend in","Nothing found for “{q}” yet.": "Noch nichts gefunden für „{q}“.","Couldn't reach Actuent. Check your connection and try again.": "Actuent ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.","Couldn’t reach Actuent. Try again.": "Actuent ist nicht erreichbar. Versuche es erneut.","Showing results for": "Ergebnisse für","Did you mean": "Meintest du","Related:": "Ähnlich:","Places near {city} first": "Orte in der Nähe von {city} zuerst","Sites": "Websites","Upcoming events": "Kommende Veranstaltungen","site": "Website","sites": "Websites","product": "Produkt","products": "Produkte","event": "Veranstaltung","events": "Veranstaltungen","footer": "Die Ergebnisse kommen von derselben API, die KI-Agenten nutzen","trends": "Trends"},"fr": {"for humans": "pour les humains","Human Debug Mode": "Mode débogage humain","sub": "Voyez exactement ce qu’un agent IA reçoit quand il cherche sur Actuent : sites, produits, lieux, événements et réponses. Les agents se connectent via","Search anything… (press / to focus)": "Cherchez n’importe quoi… (appuyez sur / pour chercher)","Search": "Chercher","Searching…": "Recherche…","Quick results · finding more…": "Premiers résultats · recherche en cours…","What's on tonight near me": "Que faire ce soir près de chez moi","Looking for tonight…": "Recherche pour ce soir…","Tonight in": "Ce soir à","Nothing found for “{q}” yet.": "Rien trouvé pour « {q} » pour l’instant.","Couldn't reach Actuent. Check your connection and try again.": "Impossible de joindre Actuent. Vérifiez votre connexion et réessayez.","Couldn’t reach Actuent. Try again.": "Impossible de joindre Actuent. Réessayez.","Showing results for": "Résultats pour","Did you mean": "Vouliez-vous dire","Related:": "Voir aussi :","Places near {city} first": "Lieux près de {city} en premier","Sites": "Sites","Upcoming events": "Événements à venir","site": "site","sites": "sites","product": "produit","products": "produits","event": "événement","events": "événements","footer": "Les résultats viennent de la même API que celle des agents IA","trends": "tendances"},"es": {"for humans": "para humanos","Human Debug Mode": "Modo depuración humano","sub": "Mira exactamente lo que recibe un agente de IA cuando busca en Actuent: sitios, productos, lugares, eventos y respuestas. Los agentes se conectan a través de","Search anything… (press / to focus)": "Busca lo que quieras… (pulsa / para buscar)","Search": "Buscar","Searching…": "Buscando…","Quick results · finding more…": "Resultados rápidos · buscando más…","What's on tonight near me": "Qué hay esta noche cerca de mí","Looking for tonight…": "Buscando para esta noche…","Tonight in": "Esta noche en","Nothing found for “{q}” yet.": "Todavía no hay nada para «{q}».","Couldn't reach Actuent. Check your connection and try again.": "No se pudo conectar con Actuent. Revisa tu conexión e inténtalo de nuevo.","Couldn’t reach Actuent. Try again.": "No se pudo conectar con Actuent. Inténtalo de nuevo.","Showing results for": "Resultados para","Did you mean": "¿Quisiste decir","Related:": "Relacionado:","Places near {city} first": "Primero lugares cerca de {city}","Sites": "Sitios","Upcoming events": "Próximos eventos","site": "sitio","sites": "sitios","product": "producto","products": "productos","event": "evento","events": "eventos","footer": "Los resultados vienen de la misma API que usan los agentes de IA","trends": "tendencias"},"it": {"for humans": "per umani","Human Debug Mode": "Modalità debug umana","sub": "Guarda esattamente cosa riceve un agente IA quando cerca su Actuent: siti, prodotti, luoghi, eventi e risposte. Gli agenti si collegano tramite","Search anything… (press / to focus)": "Cerca qualsiasi cosa… (premi / per cercare)","Search": "Cerca","Searching…": "Ricerca in corso…","Quick results · finding more…": "Risultati rapidi · ne cerco altri…","What's on tonight near me": "Cosa c’è stasera vicino a me","Looking for tonight…": "Cerco per stasera…","Tonight in": "Stasera a","Nothing found for “{q}” yet.": "Ancora niente per «{q}».","Couldn't reach Actuent. Check your connection and try again.": "Impossibile raggiungere Actuent. Controlla la connessione e riprova.","Couldn’t reach Actuent. Try again.": "Impossibile raggiungere Actuent. Riprova.","Showing results for": "Risultati per","Did you mean": "Forse cercavi","Related:": "Correlati:","Places near {city} first": "Prima i luoghi vicino a {city}","Sites": "Siti","Upcoming events": "Prossimi eventi","site": "sito","sites": "siti","product": "prodotto","products": "prodotti","event": "evento","events": "eventi","footer": "I risultati arrivano dalla stessa API usata dagli agenti IA","trends": "tendenze"},"nl": {"for humans": "voor mensen","Human Debug Mode": "Debugmodus voor mensen","sub": "Zie precies wat een AI-agent terugkrijgt als hij zoekt op Actuent: sites, producten, plekken, evenementen en antwoorden. Agents verbinden via","Search anything… (press / to focus)": "Zoek wat je wilt… (druk op / om te zoeken)","Search": "Zoeken","Searching…": "Zoeken…","Quick results · finding more…": "Snelle resultaten · meer zoeken…","What's on tonight near me": "Wat is er vanavond te doen in de buurt","Looking for tonight…": "Zoeken naar vanavond…","Tonight in": "Vanavond in","Nothing found for “{q}” yet.": "Nog niets gevonden voor ‘{q}’.","Couldn't reach Actuent. Check your connection and try again.": "Kan Actuent niet bereiken. Controleer je verbinding en probeer het opnieuw.","Couldn’t reach Actuent. Try again.": "Kan Actuent niet bereiken. Probeer het opnieuw.","Showing results for": "Resultaten voor","Did you mean": "Bedoelde je","Related:": "Gerelateerd:","Places near {city} first": "Plekken bij {city} eerst","Sites": "Sites","Upcoming events": "Komende evenementen","site": "site","sites": "sites","product": "product","products": "producten","event": "evenement","events": "evenementen","footer": "De resultaten komen van dezelfde API die AI-agents gebruiken","trends": "trends"},"pt": {"for humans": "para humanos","Human Debug Mode": "Modo de depuração humano","sub": "Veja exatamente o que um agente de IA recebe quando pesquisa no Actuent: sites, produtos, lugares, eventos e respostas. Os agentes ligam-se através de","Search anything… (press / to focus)": "Pesquise qualquer coisa… (prima / para pesquisar)","Search": "Pesquisar","Searching…": "A pesquisar…","Quick results · finding more…": "Resultados rápidos · a procurar mais…","What's on tonight near me": "O que há esta noite perto de mim","Looking for tonight…": "A procurar para esta noite…","Tonight in": "Esta noite em","Nothing found for “{q}” yet.": "Ainda nada encontrado para “{q}”.","Couldn't reach Actuent. Check your connection and try again.": "Não foi possível contactar o Actuent. Verifique a ligação e tente novamente.","Couldn’t reach Actuent. Try again.": "Não foi possível contactar o Actuent. Tente novamente.","Showing results for": "Resultados para","Did you mean": "Queria dizer","Related:": "Relacionado:","Places near {city} first": "Primeiro lugares perto de {city}","Sites": "Sites","Upcoming events": "Próximos eventos","site": "site","sites": "sites","product": "produto","products": "produtos","event": "evento","events": "eventos","footer": "Os resultados vêm da mesma API que os agentes de IA usam","trends": "tendências"},"fi": {"for humans": "ihmisille","Human Debug Mode": "Vianetsintä ihmisille","sub": "Näe tarkalleen, mitä tekoälyagentti saa, kun se hakee Actuentista: sivustoja, tuotteita, paikkoja, tapahtumia ja vastauksia. Agentit yhdistävät osoitteen","Search anything… (press / to focus)": "Hae mitä tahansa… (paina / hakeaksesi)","Search": "Hae","Searching…": "Haetaan…","Quick results · finding more…": "Nopeat tulokset · haetaan lisää…","What's on tonight near me": "Mitä tänä iltana lähelläni","Looking for tonight…": "Etsitään tälle illalle…","Tonight in": "Tänä iltana:","Nothing found for “{q}” yet.": "Haulle ”{q}” ei löytynyt vielä mitään.","Couldn't reach Actuent. Check your connection and try again.": "Actuentiin ei saatu yhteyttä. Tarkista yhteys ja yritä uudelleen.","Couldn’t reach Actuent. Try again.": "Actuentiin ei saatu yhteyttä. Yritä uudelleen.","Showing results for": "Näytetään tulokset haulle","Did you mean": "Tarkoititko","Related:": "Liittyvät:","Places near {city} first": "Ensin paikat lähellä: {city}","Sites": "Sivustot","Upcoming events": "Tulevat tapahtumat","site": "sivusto","sites": "sivustoa","product": "tuote","products": "tuotetta","event": "tapahtuma","events": "tapahtumaa","footer": "Tulokset tulevat samasta rajapinnasta, jota tekoälyagentit käyttävät","trends": "trendit"}}
+var LANG = (function() {
+  var asked = new URLSearchParams(location.search).get("lang")
+  var l = String(asked || navigator.language || "en").slice(0, 2).toLowerCase()
+  return l === "no" || l === "nn" ? "nb" : l
+})()
+function t(s, vars) {
+  var out = (I18N[LANG] && I18N[LANG][s]) || s
+  for (var k in vars || {}) out = out.replace("{" + k + "}", vars[k])
+  return out
+}
+// "3 sites", "1 product"…
+function countOf(n, one, many) { return n + " " + t(n === 1 ? one : many) }
+</script>
 <header>
   <img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent">
   <a href="https://docs.actuent.ai">Docs →</a>
 </header>
 
 <lawpy-mascot id="lawpy" state="wave" loops="2" then="idle" scale="5" title="Hi, I'm Lawpy"></lawpy-mascot>
-<div class="badge">⚠ Human Debug Mode</div>
-<h1>Actuent <span>for humans</span></h1>
-<p class="sub">See exactly what an AI agent gets back when it searches Actuent: sites, products, places, events and answers. Agents connect via <a href="https://docs.actuent.ai">agents.actuent.ai</a>.</p>
+<div class="badge">⚠ <span data-i18n="Human Debug Mode">Human Debug Mode</span></div>
+<h1>Actuent <span data-i18n="for humans">for humans</span></h1>
+<p class="sub"><span data-i18n="sub">See exactly what an AI agent gets back when it searches Actuent: sites, products, places, events and answers. Agents connect via</span> <a href="https://docs.actuent.ai">agents.actuent.ai</a>.</p>
 
 <form class="search-box" role="search" onsubmit="event.preventDefault();doSearch()">
   <label for="query" style="position:absolute;left:-999px">Search</label>
@@ -165,6 +182,7 @@
 </form>
 
 <div class="chips" id="chips" aria-label="Example searches">
+  <button class="chip" type="button" data-tonight="1">🌙 <span data-i18n="What's on tonight near me">What's on tonight near me</span></button>
   <button class="chip" type="button">running shoes under 800 dkk</button>
   <button class="chip" type="button">notion vs obsidian</button>
   <button class="chip" type="button">vegan restaurant copenhagen open late</button>
@@ -179,7 +197,7 @@
 <div id="status" role="status" aria-live="polite"></div>
 <div class="results" id="results"></div>
 
-<footer>Results come from the same API AI agents use · <a href="https://docs.actuent.ai">docs</a> · <a href="https://actuent.ai">actuent.ai</a></footer>
+<footer><span data-i18n="footer">Results come from the same API AI agents use</span> · <a href="https://api.actuent.ai/trends" data-i18n="trends">trends</a> · <a href="https://docs.actuent.ai">docs</a> · <a href="https://actuent.ai">actuent.ai</a></footer>
 
 <script>
 function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function(c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c] }) }
@@ -216,11 +234,11 @@ function shortDate(d) {
 // Hints: spelling, interpretation and related searches, as links that run the search.
 function hintsHtml(data) {
   var hints = []
-  if (data.searched_for) hints.push('Showing results for ' + searchLink(data.searched_for))
-  else if (data.did_you_mean) hints.push('Did you mean ' + searchLink(data.did_you_mean) + '?')
+  if (data.searched_for) hints.push(esc(t('Showing results for')) + ' ' + searchLink(data.searched_for))
+  else if (data.did_you_mean) hints.push(esc(t('Did you mean')) + ' ' + searchLink(data.did_you_mean) + '?')
   if (data.interpreted_as) hints.push('Searched for “' + esc(data.interpreted_as) + '”')
-  if (data.near) hints.push('Places near ' + esc(data.near) + ' first')
-  if (data.related && data.related.length) hints.push('Related: ' + data.related.map(searchLink).join(" · "))
+  if (data.near) hints.push(esc(t('Places near {city} first', { city: data.near })))
+  if (data.related && data.related.length) hints.push(esc(t('Related:')) + ' ' + data.related.map(searchLink).join(" · "))
   return hints.length ? '<div class="hints">' + hints.join(" &nbsp;|&nbsp; ") + '</div>' : ""
 }
 
@@ -281,7 +299,7 @@ function productsHtml(items) {
 
 function eventsHtml(items) {
   if (!items || !items.length) return ""
-  return '<div class="box"><div class="section">Upcoming events</div>' + items.map(function(e) {
+  return '<div class="box"><div class="section">' + esc(t('Upcoming events')) + '</div>' + items.map(function(e) {
     var where = [e.venue, e.city].filter(Boolean).map(esc).join(", ")
     return '<div class="row"><div class="date">' + shortDate(e.start_date) + '</div><div><a href="' + safeUrl(e.url) + '" target="_blank" rel="noopener">' + esc(e.name) + '</a>' +
       '<div class="muted small">' + [where, e.price != null ? money(e.price, e.currency) : "", esc(e.domain)].filter(Boolean).join(" · ") + '</div></div></div>'
@@ -364,7 +382,7 @@ function askSite(form) {
     lawpy(found ? "talk" : "idle", found ? 2 : 0)
     out.innerHTML = found ? d.sentences.map(function(s) { return '<div class="answer-line">“' + esc(s.text) + '”<a href="' + safeUrl(s.url) + '" target="_blank" rel="noopener">source</a></div>' }).join("")
       : '<span class="muted small">' + esc(d.message || "No answer on its pages.") + '</span>'
-  }).catch(function() { lawpy("idle"); out.innerHTML = '<span class="muted small">Couldn’t reach Actuent. Try again.</span>' })
+  }).catch(function() { lawpy("idle"); out.innerHTML = '<span class="muted small">' + esc(t('Couldn’t reach Actuent. Try again.')) + '</span>' })
 }
 
 function similarTo(btn, domain) {
@@ -381,14 +399,14 @@ var searchId = 0
 function doSearch() {
   var query = document.getElementById("query").value.trim()
   if (!query) return
-  try { history.replaceState(null, "", "?q=" + encodeURIComponent(query)) } catch (e) {}
+  try { history.replaceState(null, "", "?q=" + encodeURIComponent(query) + (new URLSearchParams(location.search).get("lang") ? "&lang=" + LANG : "")) } catch (e) {}
   if (/^lawpy[!?.]*$/i.test(query)) return meetLawpy()
   document.title = query + " — Actuent"
 
   var btn = document.getElementById("btn"), status = document.getElementById("status"), results = document.getElementById("results")
   btn.disabled = true
-  btn.textContent = "Searching…"
-  status.innerHTML = '<span class="spinner"></span>Searching…'
+  btn.textContent = t("Searching…")
+  status.innerHTML = '<span class="spinner"></span>' + esc(t("Searching…"))
   results.innerHTML = ""
   var started = Date.now()
   lawpy("think")
@@ -397,7 +415,7 @@ function doSearch() {
   // The quick first answer (best-known sites, in well under a second) while the full search runs.
   fetch("https://api.actuent.ai/api/search?fast=1&q=" + encodeURIComponent(query)).then(function(r) { return r.ok ? r.json() : null }).then(function(quick) {
     if (finished || id !== searchId || !quick || !quick.results || !quick.results.length) return
-    status.innerHTML = '<span class="spinner"></span>Quick results · finding more…'
+    status.innerHTML = '<span class="spinner"></span>' + esc(t('Quick results · finding more…'))
     results.innerHTML = quick.results.map(function(site, i) { return siteHtml(site, i, site.matched === "exact name" ? "exact name" : "") }).join("")
   }).catch(function() {})
 
@@ -415,24 +433,24 @@ function doSearch() {
     if (id !== searchId) return
     loading(false)
     btn.disabled = false
-    btn.textContent = "Search"
+    btn.textContent = t("Search")
     var sites = data.results || []
     var extras = comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
-    var parts = [sites.length ? sites.length + " site" + (sites.length !== 1 ? "s" : "") : "",
-      data.products && data.products.length ? data.products.length + " product" + (data.products.length !== 1 ? "s" : "") : "",
-      data.events && data.events.length ? data.events.length + " event" + (data.events.length !== 1 ? "s" : "") : ""].filter(Boolean)
+    var parts = [sites.length ? countOf(sites.length, "site", "sites") : "",
+      data.products && data.products.length ? countOf(data.products.length, "product", "products") : "",
+      data.events && data.events.length ? countOf(data.events.length, "event", "events") : ""].filter(Boolean)
     status.textContent = parts.length ? parts.join(" · ") + " · " + ((Date.now() - started) / 1000).toFixed(1) + "s" : ""
     // Lawpy: explains an answer, dances when something was found, calms down when nothing was.
     lawpy(data.answer || data.comparison ? "talk" : sites.length || extras ? "dance" : "idle", 2)
 
     var note = data.message ? '<div class="empty" style="padding:0 0 14px">' + esc(data.message) + '</div>' : ""
     if (!sites.length && !extras) {
-      results.innerHTML = '<div class="empty"><lawpy-mascot state="think" scale="4" style="display:block;margin:0 auto 12px"></lawpy-mascot>' + esc(data.message || ('Nothing found for “' + query + '” yet.')) + '</div>' + hintsHtml(data)
+      results.innerHTML = '<div class="empty"><lawpy-mascot state="think" scale="4" style="display:block;margin:0 auto 12px"></lawpy-mascot>' + esc(data.message || t('Nothing found for “{q}” yet.', { q: query })) + '</div>' + hintsHtml(data)
       return
     }
     var compared = data.comparison && data.comparison.sites || []
     results.innerHTML = note + hintsHtml(data) + extras +
-      (sites.length && extras ? '<div class="section" style="margin:18px 0 10px">Sites</div>' : '') +
+      (sites.length && extras ? '<div class="section" style="margin:18px 0 10px">' + esc(t('Sites')) + '</div>' : '') +
       sites.map(function(site, i) {
         var first = compared.indexOf(site.domain) >= 0 ? "compared" :
           data.answer && data.answer.domain === site.domain ? "answer source" :
@@ -447,7 +465,7 @@ function doSearch() {
     btn.disabled = false
     btn.textContent = "Search"
     status.textContent = ""
-    results.innerHTML = '<div class="empty">' + esc(err.message && !/fetch|network/i.test(err.message) ? err.message : "Couldn't reach Actuent. Check your connection and try again.") + '</div>'
+    results.innerHTML = '<div class="empty">' + esc(err.message && !/fetch|network/i.test(err.message) ? err.message : t("Couldn't reach Actuent. Check your connection and try again.")) + '</div>'
     lawpy("idle")
   })
 }
@@ -489,6 +507,28 @@ function thinkingFrames(done) {
   img.src = "/assets/lawpy/think.svg"
 }
 
+// "What's on tonight near me": events tonight in the visitor's city (api/tonight), with local start times.
+function showTonight() {
+  var status = document.getElementById("status"), results = document.getElementById("results")
+  status.innerHTML = '<span class="spinner"></span>' + esc(t('Looking for tonight…'))
+  results.innerHTML = ""
+  lawpy("think")
+  fetch("https://api.actuent.ai/api/tonight").then(function(r) { return r.json() }).then(function(d) {
+    status.textContent = ""
+    if (!d.events) { results.innerHTML = '<div class="empty">' + esc(d.error || "Couldn't find your city. Try searching “events in <city> tonight”.") + '</div>'; lawpy("idle"); return }
+    if (!d.events.length) {
+      results.innerHTML = '<div class="empty"><lawpy-mascot state="think" scale="4" style="display:block;margin:0 auto 12px"></lawpy-mascot>' + esc(d.message) + (d.whats_on ? ' <a href="' + safeUrl(d.whats_on) + '">Later this week →</a>' : "") + '</div>'
+      lawpy("idle"); return
+    }
+    lawpy("dance", 2)
+    results.innerHTML = '<div class="box"><div class="section">' + esc(t('Tonight in')) + ' ' + esc(d.city) + '</div>' + d.events.map(function(e) {
+      var where = [e.venue, e.city].filter(Boolean).map(esc).join(", ")
+      return '<div class="row"><div class="date">' + esc(e.starts) + '</div><div><a href="' + safeUrl(e.url) + '" target="_blank" rel="noopener">' + esc(e.name) + '</a>' +
+        '<div class="muted small">' + [where, e.price != null ? money(e.price, e.currency) : "", esc(e.domain)].filter(Boolean).join(" · ") + '</div></div></div>'
+    }).join("") + '</div>'
+  }).catch(function() { status.textContent = ""; results.innerHTML = '<div class="empty">Couldn\'t reach Actuent. Try again.</div>'; lawpy("idle") })
+}
+
 // The easter egg: search "lawpy".
 function meetLawpy() {
   document.title = "Lawpy — Actuent"
@@ -510,13 +550,24 @@ function meetLawpy() {
 }
 </script>
 <script>
+// Static text in the visitor's language (I18N above).
+(function() {
+  if (!I18N[LANG]) return
+  document.documentElement.lang = LANG
+  document.querySelectorAll("[data-i18n]").forEach(function(el) { el.textContent = t(el.getAttribute("data-i18n")) })
+  document.getElementById("query").placeholder = t("Search anything… (press / to focus)")
+  document.getElementById("btn").textContent = t("Search")
+})()
+</script>
+<script>
 // Shareable searches (?q=…), example chips, "/" to focus the search box, and autocomplete (api/autocomplete).
 (function() {
   var input = document.getElementById("query"), list = document.getElementById("ac"), timer = null
   var q = new URLSearchParams(location.search).get("q")
   if (q) { input.value = q; setTimeout(doSearch, 0) }
   document.getElementById("chips").addEventListener("click", function(e) {
-    var b = e.target.closest(".chip"); if (b) searchFor(b.textContent)
+    var b = e.target.closest(".chip"); if (!b) return
+    if (b.getAttribute("data-tonight")) showTonight(); else searchFor(b.textContent)
   })
   document.addEventListener("keydown", function(e) {
     if (e.key === "/" && document.activeElement !== input) { e.preventDefault(); input.focus() }

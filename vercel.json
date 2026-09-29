@@ -140,6 +140,10 @@
       "dest": "/api/data.ts?op=similar"
     },
     {
+      "src": "/api/tonight",
+      "dest": "/api/data.ts?op=tonight"
+    },
+    {
       "src": "/api/status",
       "dest": "/api/data.ts?op=status"
     },
@@ -158,6 +162,18 @@
     {
       "src": "/indexnow\\.txt",
       "dest": "/api/data.ts?op=indexnow"
+    },
+    {
+      "src": "/trends\\.json",
+      "dest": "/api/site.ts?trends=json"
+    },
+    {
+      "src": "/trends/?",
+      "dest": "/api/site.ts?trends=html"
+    },
+    {
+      "src": "/changes\\.rss",
+      "dest": "/api/site.ts?changes=rss"
     },
     {
       "src": "/state/weekly\\.rss",
@@ -213,6 +229,10 @@
     {
       "src": "/site/?",
       "dest": "/api/site.ts"
+    },
+    {
+      "src": "/site/([^/?]+)/changes\\.rss",
+      "dest": "/api/site.ts?domain=$1&changes=rss"
     },
     {
       "src": "/site/([^/?]+)/?",

@@ -217,6 +217,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Tier comes only from a valid API key in Supabase — never from a client-supplied header.
   const apiKey = bearerKey(req.headers["authorization"])
   const tier = await verifyApiKey(apiKey) ? "pro" : "free"
+  // Our own checks (nightly benchmark, post-deploy smoke test, load tests) are logged as "test", so
+  // they don't count as real searches (search trends, ops numbers).
+  const logTier = req.query?.bench === "1" || /^Actuent-(Benchmark|Smoke|LoadTest|Alerts)\//.test(String(req.headers["user-agent"] || "")) ? "test" : tier
   const maxPerMinute = tier === "pro" ? 60 : 20
 
   // The MCP server rate limits its own users, so its calls skip this limit.
@@ -280,7 +283,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const cached = inMemory ?? await sharedCacheGet(key)
   if (cached) {
     if (!inMemory) cacheSet(key, cached)
-    await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
+    await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), logTier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
     res.setHeader("X-Search-Time", String(Date.now() - requestStart))
     return res.status(200).json(present({ ...(cached as any), query: typed }, params))
   }
@@ -395,7 +398,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
-  await later(trackSearch(typed, domains, tier, trackKey, Date.now() - requestStart, results.length))
+  await later(trackSearch(typed, domains, logTier, trackKey, Date.now() - requestStart, results.length))
 
   if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
   if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: typed }))

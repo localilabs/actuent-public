@@ -180,7 +180,7 @@ function pageRating(html: string): Business["rating"] {
 }
 
 // Is it open right now? Uses the business's country for its time zone (null when unknown).
-const TIME_ZONES: Record<string, string> = {
+export const TIME_ZONES: Record<string, string> = {
   DK: "Europe/Copenhagen", SE: "Europe/Stockholm", NO: "Europe/Oslo", FI: "Europe/Helsinki", DE: "Europe/Berlin", NL: "Europe/Amsterdam",
   BE: "Europe/Brussels", FR: "Europe/Paris", ES: "Europe/Madrid", IT: "Europe/Rome", PT: "Europe/Lisbon", AT: "Europe/Vienna",
   CH: "Europe/Zurich", PL: "Europe/Warsaw", IE: "Europe/Dublin", GB: "Europe/London", UK: "Europe/London", US: "America/New_York",
