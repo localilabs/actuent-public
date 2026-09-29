@@ -231,7 +231,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     : "private, no-store")
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
-  const key = `${tier}:${cacheKey(cleanQueryKeepPrice(localized))}`
+  // The deploy is part of it too, so a fix shows up straight away instead of after the cache expires.
+  const key = `${tier}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}`
   // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
   // (A memory hit isn't stored again: that would keep an old answer alive for as long as people ask.)
   const inMemory = cacheGet(key)
