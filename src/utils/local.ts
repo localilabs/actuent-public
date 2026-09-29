@@ -30,6 +30,27 @@ const CITY_COUNTRY: Record<string, string> = {
   turin: "it", bologna: "it", prague: "cz", warsaw: "pl", krakow: "pl", budapest: "hu", athens: "gr", istanbul: "tr", toronto: "ca", vancouver: "ca",
   montreal: "ca", sydney: "au", melbourne: "au", brisbane: "au", perth: "au", auckland: "nz", wellington: "nz", tokyo: "jp", singapore: "sg", dubai: "ae"
 }
+// A country's name and main language, for "shoes copenhagen": shops in Denmark and Danish sites.
+export const COUNTRY_INFO: Record<string, { name: string, lang: string | null }> = {
+  dk: { name: "denmark", lang: "da" }, se: { name: "sweden", lang: "sv" }, no: { name: "norway", lang: "no" }, fi: { name: "finland", lang: "fi" },
+  is: { name: "iceland", lang: "is" }, gb: { name: "uk", lang: null }, ie: { name: "ireland", lang: null }, nl: { name: "netherlands", lang: "nl" },
+  be: { name: "belgium", lang: null }, de: { name: "germany", lang: "de" }, at: { name: "austria", lang: "de" }, ch: { name: "switzerland", lang: null },
+  fr: { name: "france", lang: "fr" }, es: { name: "spain", lang: "es" }, pt: { name: "portugal", lang: "pt" }, it: { name: "italy", lang: "it" },
+  cz: { name: "czech", lang: "cs" }, pl: { name: "poland", lang: "pl" }, hu: { name: "hungary", lang: "hu" }, gr: { name: "greece", lang: "el" },
+  tr: { name: "turkey", lang: "tr" }, ca: { name: "canada", lang: null }, au: { name: "australia", lang: null }, nz: { name: "new zealand", lang: null },
+  jp: { name: "japan", lang: "ja" }, sg: { name: "singapore", lang: null }, ae: { name: "uae", lang: null }, us: { name: "usa", lang: null }
+}
+// Whether a site is in (or made for) that country: its domain ending, its address, or its language.
+export function inCountry(site: { domain: string, business?: any, language?: string | null }, country: string | null): boolean {
+  if (!country) return false
+  const tld = site.domain.split("/")[0].split(".").pop() || ""
+  if (tld === country || (country === "gb" && tld === "uk")) return true
+  const addr = String(site.business?.address?.country || "").toLowerCase()
+  if (addr && (addr === country || addr === COUNTRY_INFO[country]?.name)) return true
+  const lang = COUNTRY_INFO[country]?.lang
+  return !!lang && site.language === lang
+}
+
 export function cityCountry(city: string | null | undefined): string | null {
   if (!city) return null
   const c = city.toLowerCase()

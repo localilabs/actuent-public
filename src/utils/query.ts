@@ -44,6 +44,8 @@ export function nearMe(q: string, cityHeader: string | undefined): string {
 }
 
 const NOT_SHOPPING = /\b(software|app|saas|api|hosting|news|weather|recipes?|course|courses|jobs?|dentist|doctor|lawyer|plumber|electrician|barber|hairdresser|restaurant|cafe|bar|hotel|flights?|museum|events?|tickets?|concerts?|near me|how to)\b/i
-export function wantsProducts(q: string): boolean {
-  return !NOT_SHOPPING.test(q)
+// Yes/no questions ("does basecamp have a free plan") and comparisons ("notion vs obsidian") aren't shopping.
+const NOT_SHOPPING_TYPED = /^(does|do|is|are|can|could|will|has|have|should|how (to|do|does))\b|\s(vs\.?|versus)\s/i
+export function wantsProducts(q: string, typed: string = q): boolean {
+  return !NOT_SHOPPING.test(q) && !NOT_SHOPPING_TYPED.test(typed.trim())
 }

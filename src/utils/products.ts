@@ -145,7 +145,7 @@ export async function parsePriceLimit(query: string): Promise<{ text: string, ma
 
 // Where the shopper is: the currency they named ("500 dkk") or the country of the city they named.
 // Shops in that market rank first, and shops in far-off markets are dropped when local ones exist.
-const COUNTRY_CURRENCY: Record<string, string> = { dk: "DKK", se: "SEK", no: "NOK", gb: "GBP", uk: "GBP", us: "USD", ch: "CHF", pl: "PLN", cz: "CZK" }
+const COUNTRY_CURRENCY: Record<string, string> = { dk: "DKK", se: "SEK", no: "NOK", gb: "GBP", uk: "GBP", us: "USD", ch: "CHF", pl: "PLN", cz: "CZK", is: "ISK", in: "INR", jp: "JPY", au: "AUD", ca: "CAD", nz: "NZD", br: "BRL", mx: "MXN", za: "ZAR", sg: "SGD", hk: "HKD", kr: "KRW", ae: "AED", tr: "TRY", cn: "CNY", id: "IDR", ph: "PHP", my: "MYR", th: "THB", il: "ILS", sa: "SAR", ng: "NGN", ar: "ARS", cl: "CLP", co: "COP" }
 const EUROZONE = new Set(["de", "fr", "nl", "be", "es", "it", "pt", "at", "ie", "fi", "gr", "lu", "ee", "lv", "lt", "sk", "si", "mt", "cy", "hr"])
 export type Market = { currency: string | null, country: string | null }
 function marketScore(row: any, m: Market): number {
@@ -155,7 +155,20 @@ function marketScore(row: any, m: Market): number {
   if (m.country && (tld === m.country || (m.country === "gb" && tld === "uk"))) s += 2
   if (m.country && EUROZONE.has(m.country) && row.currency === "EUR") s += 1
   if (["EUR", "USD", "GBP"].includes(row.currency)) s += 0.5 // big markets usually ship internationally
+  // A European shopper: shops in other European currencies are nearer than the US or Asia.
+  if (m.country && (EUROPE.has(m.country) || EUROZONE.has(m.country)) && EUROPEAN_CURRENCIES.has(row.currency)) s += 1
   return s
+}
+const EUROPE = new Set(["dk", "se", "no", "gb", "uk", "ch", "pl", "cz", "is"])
+const EUROPEAN_CURRENCIES = new Set(["EUR", "DKK", "SEK", "NOK", "GBP", "CHF", "PLN", "CZK", "ISK"])
+
+// Shops' product names sometimes arrive with HTML entities ("Cake &#038; Cream", "&amp;").
+const NAMED_ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", hellip: "…", eacute: "é", uuml: "ü", ouml: "ö", auml: "ä", aring: "å", oslash: "ø", aelig: "æ" }
+export function decodeEntities(s: string): string {
+  return String(s ?? "").replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
+    if (e[0] === "#") { const n = e[1].toLowerCase() === "x" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : all }
+    return NAMED_ENTITIES[e.toLowerCase()] ?? all
+  })
 }
 
 // Product names can be in any language; results are shown in English.
@@ -204,11 +217,14 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
     if (!r.ok) return []
     let rows = await r.json()
     if (!Array.isArray(rows) || !rows.length) return []
-    // The shopper's market first; far-off markets only when nothing closer matched.
+    rows = rows.map((row: any) => ({ ...row, name: decodeEntities(row.name) }))
+    // The shopper's market first. Shops in far-off markets (rupees for a Copenhagen search) are
+    // never shown to a shopper whose market is known: nothing is better than products they can't buy.
     if (market.currency || market.country) {
-      const scored = rows.map((row: any, i: number) => ({ row, s: marketScore(row, market), i }))
-      const near = scored.filter(x => x.s >= 1)
-      rows = (near.length >= Math.min(3, max) ? near : scored).sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.row)
+      const scored = rows.map((row: any, i: number) => ({ row, s: marketScore(row, market), i })).filter((x: any) => x.s > 0)
+      const near = scored.filter((x: any) => x.s >= 1)
+      rows = (near.length >= Math.min(3, max) ? near : scored).sort((a: any, b: any) => b.s - a.s || a.i - b.i).map((x: any) => x.row)
+      if (!rows.length) return []
     }
 
     // Group matches of the same product, keeping search order.

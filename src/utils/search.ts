@@ -1,9 +1,9 @@
 import { translateKeywords, queryLanguage } from "./multilingual"
 import { notice, Notice } from "./notices"
-import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor } from "./local"
+import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor, cityCountry, inCountry, COUNTRY_INFO } from "./local"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
-import { nameOf, looksLikeName, brandSites, sameOwner, officialWebsite } from "./brand"
+import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite } from "./brand"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -199,7 +199,8 @@ async function searchPages(query: string, onFail?: () => void): Promise<Site[]> 
     .sort((a: any, b: any) => b.score - a.score)
     .slice(0, 5)
     .map(({ row }: any) => ({
-      domain: `${row.domain}${row.path}`,
+      // A homepage is the site itself ("localilabs.com", not a second "localilabs.com/" result).
+      domain: row.path === "/" || !row.path ? row.domain : `${row.domain}${row.path}`,
       name: row.title,
       pages: { [row.path]: { title: row.title, content: row.content } },
       actions: row.actions || []
@@ -420,6 +421,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       // shoes", and businesses actually in London get the local bonus below.
       const place = splitCity(primaryQuery)
       const needs = localNeeds(query)
+      // "shoes copenhagen": shops in Denmark (a .dk site, a Danish address, a Danish site) rank
+      // above the world's big shoe shops.
+      const country = place ? cityCountry(place.city) : null
       const what = (place ? place.what : primaryQuery).replace(/\b(open (now|late)|late[- ]night|tonight|today|tomorrow|this (evening|morning|weekend)|(on )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?|friendly)\b/gi, " ").replace(/\s+/g, " ").trim() || primaryQuery
       const cats = queryCategories(what)
       const words = [...new Set(what.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
@@ -446,7 +450,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const languageBoost = lang && (site as any).language === lang ? 1.15 : 1
         // Local needs: "vegan", "dogs", "open late", "brunch sunday" (OpenStreetMap features and opening hours).
         const needsBoost = (site as any).business ? needsFactor((site as any).business, needs) : 1
-        return base * (0.15 + 0.85 * c * c) * categoryBoost * clickBoost * languageBoost * needsBoost
+        const countryBoost = country && inCountry(site as any, country) ? 1.6 : 1
+        return base * (0.15 + 0.85 * c * c) * categoryBoost * countryBoost * clickBoost * languageBoost * needsBoost
           * intentBoost(query, site) * freshnessBoost(query, (site as any).updated_at) * qualityFactor(site)
       }
       // Businesses in the searched city compete in the same ranking, with a bonus for the city
@@ -507,7 +512,13 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
     const nameSearch: Promise<any[]> = name && !oneGenericWord && looksLikeName(name, false)
       ? brandSites(name).then(async found => {
-          if (found.length) return [...found.slice(0, 2), ...await sameOwner(found[0])]
+          if (found.length) {
+            // Its other projects: sites claimed by the same account, and sites its homepage links to.
+            const [owned, linked] = await Promise.all([sameOwner(found[0]), linkedProjects(found[0])])
+            const seen = new Set<string>()
+            return [...found.slice(0, 2), ...owned.map(x => ({ ...x, matched: `same owner as ${found[0].domain}` })),
+              ...linked.map(x => ({ ...x, matched: `a project linked from ${found[0].domain}` }))].filter(x => !seen.has(x.domain) && seen.add(x.domain))
+          }
           // Not in the index under that name: Wikidata's official website for it, if Actuent has it.
           const domain = await officialWebsite(name)
           if (!domain) return []
@@ -520,7 +531,14 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // things you buy or use online (running shoes, software) it only gets in the way.
     const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
     const goesThere = place ? [...queryCategories(place.what)].some(c => PLACE_KINDS.has(c)) : true
-    const plainFound = searchable ? await both(place && !goesThere ? place.what : plainQuery) : { sites: [], pages: [] }
+    // Things you buy in a city ("shoes copenhagen"): also sites that mention the country, so
+    // Danish shops are among the candidates, not only the world's biggest shoe sites.
+    const placeCountry = place && !goesThere ? COUNTRY_INFO[cityCountry(place.city) || ""]?.name : null
+    const [plainFound, countryFound] = await Promise.all([
+      searchable ? both(place && !goesThere ? place.what : plainQuery) : Promise.resolve({ sites: [] as Site[], pages: [] as Site[] }),
+      searchable && placeCountry ? both(`${place!.what} ${placeCountry}`).catch(() => ({ sites: [] as Site[], pages: [] as Site[] })) : Promise.resolve({ sites: [] as Site[], pages: [] as Site[] })
+    ])
+    if (countryFound.sites.length) plainFound.sites.push(...countryFound.sites.filter(x => !plainFound.sites.some(y => y.domain === x.domain)))
     const localSites = await localSearch
     const plain = { ...plainFound, local: localSites.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [] })) as Site[] }
     // No local websites indexed yet: places from OpenStreetMap, returned separately and labelled.
@@ -528,7 +546,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const found = await osmPlaces(place.what, place.city)
       if (found?.length) opts.places.push(...found)
     }
-    const named: Site[] = (await nameSearch).map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: "exact name" }))
+    const named: Site[] = (await nameSearch).map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: x.matched || "exact name" }))
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
     // A name search skips the guessed related terms: they're what put "arkoselabs" and "slack"

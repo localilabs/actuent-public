@@ -14,6 +14,11 @@ create index if not exists search_cache_expires_idx on search_cache (expires_at)
 -- a search index on just those sites makes that branch an index lookup instead of a table scan.
 create index if not exists lawp_sites_top_search_idx on lawp_sites using gin (search_text) where status is null and popularity_rank <= 20000;
 
+-- 3b. Name searches ("localilabs", "british museum") look sites up by their exact name. Without
+-- this index that is a scan of the whole table (5-8 seconds); with it, milliseconds.
+create extension if not exists pg_trgm;
+create index if not exists lawp_sites_name_trgm_idx on lawp_sites using gin (name gin_trgm_ops) where status is null;
+
 -- 3. Official websites found through Wikidata for famous names ("sagrada familia" → sagradafamilia.org),
 -- cached so each name is looked up once.
 create table if not exists name_websites (

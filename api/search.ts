@@ -233,9 +233,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
   const key = `${tier}:${cacheKey(cleanQueryKeepPrice(localized))}`
   // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
-  const cached = cacheGet(key) ?? await sharedCacheGet(key)
+  // (A memory hit isn't stored again: that would keep an old answer alive for as long as people ask.)
+  const inMemory = cacheGet(key)
+  const cached = inMemory ?? await sharedCacheGet(key)
   if (cached) {
-    cacheSet(key, cached)
+    if (!inMemory) cacheSet(key, cached)
     await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
     res.setHeader("X-Search-Time", String(Date.now() - requestStart))
     return res.status(200).json(present({ ...(cached as any), query: typed }, params))
@@ -265,7 +267,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const productPlace = splitCity(cleanQueryKeepPrice(localized))
   const productText = productPlace ? productPlace.what : cleanQueryKeepPrice(localized)
   const shopperCountry = cityCountry(productPlace?.city) || String(req.headers["x-vercel-ip-country"] || "").toLowerCase().slice(0, 2) || null
-  const productSearch = isDomainQuery || !wantsProducts(searchQuery) ? Promise.resolve([]) : Promise.race([
+  const productSearch = isDomainQuery || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])

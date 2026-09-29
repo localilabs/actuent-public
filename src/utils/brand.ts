@@ -2,8 +2,13 @@
 // with that name comes first, found directly instead of through full-text search:
 //   1. brandSites: <name>.com/.io/.ai/.dk/… and sites whose name is exactly the search.
 //   2. sameOwner: sites claimed by the same account follow it (a company's other projects).
+//   2b. linkedProjects: a small company's other sites, from the links on its homepage
+//       (localilabs.com → actuent.ai, rejn.app), when Actuent has them.
 //   3. officialWebsite: when the index has no match, Wikidata's "official website" for the name
 //      (free, no key), cached in name_websites (list_thirteen.sql).
+
+import { fetchPublic } from "./safe-fetch"
+import { USER_AGENT } from "./robots"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const HEADERS = { "apikey": process.env.SUPABASE_SERVICE_KEY!, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" }
@@ -37,9 +42,11 @@ export async function brandSites(name: string): Promise<any[]> {
   const hyphen = name.replace(/[\s'&.]+/g, "-")
   const domains = [...new Set(TLDS.flatMap(t => [`${label}.${t}`, `${hyphen}.${t}`]))]
   const list = encodeURIComponent(domains.map(d => `"${d}"`).join(","))
+  // By domain is a primary-key lookup (instant). By name needs the trigram index on name
+  // (list_thirteen.sql); without it the lookup is slow, so it only gets a short wait.
   const [byDomain, byName] = await Promise.all([
-    rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`),
-    rows(`lawp_sites?select=${FIELDS}&status=is.null&name=ilike.${encodeURIComponent(name.replace(/[%_*,()]/g, ""))}&limit=5`)
+    rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`, 3000),
+    rows(`lawp_sites?select=${FIELDS}&status=is.null&name=ilike.${encodeURIComponent(name.replace(/[%_*,()]/g, ""))}&limit=5`, 1200)
   ])
   const seen = new Set<string>()
   const all = [...byDomain, ...byName].filter(s => !seen.has(s.domain) && seen.add(s.domain))
@@ -77,4 +84,34 @@ export async function officialWebsite(name: string): Promise<string | null> {
     body: JSON.stringify({ query: key, domain, label, checked_at: new Date().toISOString() })
   }).catch(() => {})
   return domain
+}
+
+// Links on a homepage that aren't the company's own projects.
+const NOT_PROJECTS = /(^|\.)(google|googleapis|gstatic|facebook|instagram|twitter|x|linkedin|youtube|tiktok|github|gitlab|medium|substack|discord|t|wa|apple|microsoft|cloudflare|jsdelivr|unpkg|cdnjs|fontawesome|typekit|wix|squarespace|shopify|wordpress|webflow|framer|lovable|vercel|netlify|stripe|paypal|hubspot|mailchimp|calendly|notion|figma|gravatar|w3|schema|apps|play|pinterest|reddit|threads|bsky|mastodon|producthunt|trustpilot|cookiebot|onetrust|gdpr|creativecommons)\.[a-z.]+$/
+const projectCache = new Map<string, { domains: string[], expires: number }>()
+
+// A small company's own projects: the other sites its homepage links to, that Actuent has indexed.
+// Only for little-known sites (a big brand's homepage links to everything); cached for 6 hours.
+export async function linkedProjects(site: any): Promise<any[]> {
+  if (!site?.domain || (site.popularity_rank && site.popularity_rank <= 100000)) return []
+  let domains = projectCache.get(site.domain)?.expires! > Date.now() ? projectCache.get(site.domain)!.domains : null
+  if (!domains) {
+    try {
+      const r = await fetchPublic(`https://${site.domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(1500) })
+      const html = r?.ok ? (await r.text()).slice(0, 300_000) : ""
+      const own = site.domain.replace(/^www\./, "")
+      const found = new Set<string>()
+      for (const m of html.matchAll(/href=["']https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
+        const d = m[1].toLowerCase().replace(/^www\./, "")
+        if (d === own || d.endsWith(`.${own}`) || NOT_PROJECTS.test(d)) continue
+        found.add(d)
+      }
+      domains = [...found].slice(0, 8)
+    } catch { domains = [] }
+    projectCache.set(site.domain, { domains, expires: Date.now() + 6 * 3600_000 })
+    if (projectCache.size > 500) projectCache.delete(projectCache.keys().next().value!)
+  }
+  if (!domains.length) return []
+  const list = encodeURIComponent(domains.map(d => `"${d}"`).join(","))
+  return rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`, 1500)
 }
