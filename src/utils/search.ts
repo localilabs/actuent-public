@@ -4,6 +4,7 @@ import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor, cityCou
 import { synonymsOf, synonymVariants } from "./rank_extras"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
+import { comparisonSides } from "./answer"
 import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite, cityMuseums, sitesFor, closestName } from "./brand"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
@@ -626,7 +627,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // A name ("localilabs", "british museum", "louvre tickets"): that site first, found directly.
     const name = nameOf(plainQuery, place?.city)
     const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
-    const nameSearch: Promise<any[]> = name && !oneGenericWord && looksLikeName(name, false)
+    // Not for "A vs B": each side is looked up by the comparison instead.
+    const nameSearch: Promise<any[]> = name && !oneGenericWord && looksLikeName(name, false) && !comparisonSides(plainQuery)
       ? brandSites(name).then(async found => {
           // Several sites with that name (obsidian.md and obsidian.net): the one Wikidata lists as
           // the official website goes first, and look-alikes drop back into the normal results.

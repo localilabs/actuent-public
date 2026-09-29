@@ -180,7 +180,8 @@ export async function sitesFor(domains: string[]): Promise<any[]> {
 // "spotfy" → Spotify: the closest name among well-known sites (list_fourteen.sql), when it's close
 // enough to be a typo. null without that function, or when nothing is close.
 export async function closestName(name: string): Promise<any | null> {
-  if (name.length < 4 || name.split(" ").length > 3) return null
+  // One- or two-word names only: longer searches aren't a misspelt name.
+  if (name.length < 4 || name.split(" ").length > 2) return null
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: name }), signal: AbortSignal.timeout(1200) })
     const found = r.ok ? await r.json() : []
