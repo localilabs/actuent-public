@@ -38,7 +38,7 @@ type Backup = { id: string, baseURL: string, apiKey: string, model: string }
 const BACKUPS: Backup[] = [
   ...(process.env.MISTRAL_API_KEY ? [{ id: "mistral", baseURL: "https://api.mistral.ai/v1", apiKey: process.env.MISTRAL_API_KEY, model: process.env.MISTRAL_MODEL || "mistral-small-latest" }] : []),
   ...(process.env.GITHUB_MODELS_TOKEN ? [{ id: "github-models", baseURL: "https://models.github.ai/inference", apiKey: process.env.GITHUB_MODELS_TOKEN, model: process.env.GITHUB_MODELS_MODEL || "openai/gpt-4.1-mini" }] : []),
-  ...(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN ? [{ id: "cloudflare", baseURL: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`, apiKey: process.env.CLOUDFLARE_AI_TOKEN, model: process.env.CLOUDFLARE_AI_MODEL || "@cf/meta/llama-3.1-8b-instruct" }] : [])
+  ...(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_AI_TOKEN ? [{ id: "cloudflare", baseURL: `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`, apiKey: process.env.CLOUDFLARE_AI_TOKEN, model: process.env.CLOUDFLARE_AI_MODEL || "@cf/mistralai/mistral-small-3.1-24b-instruct" }] : [])
 ]
 
 async function callBackup(b: Backup, prompt: string, timeoutMs: number): Promise<string | null> {
