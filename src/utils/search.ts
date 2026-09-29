@@ -171,6 +171,19 @@ async function searchSupabase(query: string, onFail?: () => void): Promise<Site[
   }))
 }
 
+// Sites in one country that match the words ("shoes" + Denmark → .dk and Danish-language sites).
+// The main search favours well-known sites, so a country's own shops are fetched separately.
+async function countrySites(what: string, country: string, lang: string | null): Promise<Site[]> {
+  const words = what.replace(/[^\p{L}\p{N}\s]/gu, " ").trim()
+  if (!words) return []
+  const where = [`domain.like.*.${country === "gb" ? "uk" : country}`, ...(lang ? [`language.eq.${lang}`] : [])].join(",")
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank&status=is.null&search_text=plfts(english).${encodeURIComponent(words)}&or=(${encodeURIComponent(where)})&limit=30`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(2500) })
+    const rows = r.ok ? await r.json() : []
+    return Array.isArray(rows) ? rows.map((row: any) => ({ ...row, pages: row.pages || {}, actions: row.actions || [] })) : []
+  } catch { return [] }
+}
+
 async function searchPages(query: string, onFail?: () => void): Promise<Site[]> {
   const rows = await rpc("search_lawp_pages", query, 50, onFail)
     ?? await fetchSample("lawp_pages", "domain,path,title,content,actions")
@@ -533,12 +546,12 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const goesThere = place ? [...queryCategories(place.what)].some(c => PLACE_KINDS.has(c)) : true
     // Things you buy in a city ("shoes copenhagen"): also sites that mention the country, so
     // Danish shops are among the candidates, not only the world's biggest shoe sites.
-    const placeCountry = place && !goesThere ? COUNTRY_INFO[cityCountry(place.city) || ""]?.name : null
+    const placeCountry = place && !goesThere ? cityCountry(place.city) : null
     const [plainFound, countryFound] = await Promise.all([
       searchable ? both(place && !goesThere ? place.what : plainQuery) : Promise.resolve({ sites: [] as Site[], pages: [] as Site[] }),
-      searchable && placeCountry ? both(`${place!.what} ${placeCountry}`).catch(() => ({ sites: [] as Site[], pages: [] as Site[] })) : Promise.resolve({ sites: [] as Site[], pages: [] as Site[] })
+      searchable && placeCountry ? countrySites(place!.what, placeCountry, COUNTRY_INFO[placeCountry]?.lang || null) : Promise.resolve([] as Site[])
     ])
-    if (countryFound.sites.length) plainFound.sites.push(...countryFound.sites.filter(x => !plainFound.sites.some(y => y.domain === x.domain)))
+    if (countryFound.length) plainFound.sites.push(...countryFound.filter(x => !plainFound.sites.some(y => y.domain === x.domain)))
     const localSites = await localSearch
     const plain = { ...plainFound, local: localSites.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [] })) as Site[] }
     // No local websites indexed yet: places from OpenStreetMap, returned separately and labelled.

@@ -292,7 +292,15 @@ async function search(req: VercelRequest, res: VercelResponse) {
     .map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: compared ? "compared site" : "the site the question is about" }))
   if (firstUp.length) {
     const first = new Set(firstUp.map(x => x.domain))
-    results.splice(0, results.length, ...firstUp, ...results.filter((r: any) => !first.has(r.domain)))
+    let rest = results.filter((r: any) => !first.has(r.domain))
+    // A question about one site: its own pages next ("basecamp.com/pricing"), then results that
+    // mention it, then the rest (a page that only shares the words "free" and "plan" comes last).
+    if (asked && !compared) {
+      const d = asked.site.domain, word = d.split(".")[0].toLowerCase()
+      const tier = (r: any) => r.domain.startsWith(`${d}/`) ? 0 : `${r.name} ${r.domain} ${r.matched || ""}`.toLowerCase().includes(word) ? 1 : 2
+      rest = rest.map((r: any, i: number) => ({ r, i, t: tier(r) })).sort((a: any, b: any) => a.t - b.t || a.i - b.i).map((x: any) => x.r)
+    }
+    results.splice(0, results.length, ...firstUp, ...rest)
   }
   // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
   // when nothing matched at all, search for the suggestion instead and say so.
