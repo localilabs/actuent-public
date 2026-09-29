@@ -195,7 +195,13 @@ function rowToSite(row: any): Site {
 }
 
 async function searchSupabase(query: string, onFail?: () => void): Promise<Site[]> {
-  const [full, top] = await Promise.all([rpc("search_lawp_sites", query, 50, onFail), topSites(query, synonymVariants(query))])
+  // The well-known-sites lookup is a safety net: it runs only when the full search is slow (not
+  // back within 0.8 s) or synonyms need it, so a normal search is one database query, not two.
+  const fullSearch = rpc("search_lawp_sites", query, 50, onFail)
+  const variants = synonymVariants(query)
+  const quick = variants.length ? null : await Promise.race([fullSearch.then(r => ({ r })), new Promise<null>(r => setTimeout(() => r(null), 800))])
+  // (A fast answer with nothing in it may be a failed query, so the safety net runs then too.)
+  const [full, top] = quick && quick.r?.length ? [quick.r, [] as any[]] : await Promise.all([fullSearch, topSites(query, variants)])
   const found = full ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
   const rows = [...found, ...top.filter(t => !found.some((f: any) => f.domain === t.domain))]
   return rows.map(rowToSite)
@@ -482,7 +488,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // Only keyword queries are expanded; a domain means that exact site. Speed: the plain search,
     // the expansion (an LLM call unless cached) and then the expanded search all overlap, and the
     // expansion is only waited for briefly when the plain search already found enough results.
-    const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q, onIndexFail), searchPages(q, onIndexFail)]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
+    // One-word searches ("nike", "coffee") skip the page search: it rarely adds anything there and
+    // is one of the heavier database queries.
+    const both = async (q: string) => { const t = Date.now(); const [a, b] = await Promise.all([searchSupabase(q, onIndexFail), q.trim().split(/\s+/).length > 1 ? searchPages(q, onIndexFail) : Promise.resolve([] as Site[])]); mark(q === query ? "plain" : "expanded", t); return { sites: a, pages: b } }
     const rank = (found: { sites: Site[], pages: Site[], local?: Site[] }, primaryQuery: string, expanded: string) => {
       // The user's own words (in English) count most; related terms add a smaller boost, or a lower score on their own.
       // Coverage: a site matching every word ("dentist" and "berlin") beats one matching only some.

@@ -15,19 +15,29 @@ import { comparison, comparisonSides, questionSite, answerFromSite } from "../sr
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number, resultCount?: number): Promise<void> {
-  const send = (row: object) => fetch(`${SUPABASE_URL}/rest/v1/searches`, {
+// The search log is written in batches: the first search starts a 5-second timer, and every search
+// that arrives meanwhile goes in the same insert (one database write for a burst of searches). The
+// timer runs after the response (later/waitUntil), so nothing is lost when the server goes idle.
+const logBuffer: any[] = []
+async function flushSearchLog(): Promise<void> {
+  const rows = logBuffer.splice(0, logBuffer.length)
+  if (!rows.length) return
+  const send = (body: object[]) => fetch(`${SUPABASE_URL}/rest/v1/searches`, {
     method: "POST",
-    headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(row)
+    headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(5000)
   })
   try {
-    const row = { query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null }
-    // duration_ms (list_seven.sql) feeds the search speed numbers on the ops page.
-    // duration_ms and result_count (list_twelve.sql: zero-result searches on the ops page).
-    const r = await send({ ...row, ...(durationMs != null ? { duration_ms: durationMs } : {}), ...(resultCount != null ? { result_count: resultCount } : {}) })
-    if (!r.ok) { const r2 = await send(durationMs != null ? { ...row, duration_ms: durationMs } : row); if (!r2.ok && durationMs != null) await send(row) }
+    const r = await send(rows)
+    // Older databases without duration_ms/result_count (list_seven/list_twelve.sql): the basic columns.
+    if (!r.ok) await send(rows.map(({ duration_ms, result_count, ...basic }) => basic))
   } catch {}
+}
+async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number, resultCount?: number): Promise<void> {
+  // Same columns in every row: a batch insert needs them to match.
+  logBuffer.push({ query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null, duration_ms: durationMs ?? null, result_count: resultCount ?? null })
+  if (logBuffer.length >= 25) return flushSearchLog()
+  if (logBuffer.length === 1) { await new Promise(r => setTimeout(r, 5000)); return flushSearchLog() }
 }
 
 // Launch-day caching: identical searches within 60s reuse the result instead of re-running search,
@@ -230,11 +240,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const params = readParams(req)
 
   res.setHeader("X-Actuent-Tier", tier)
-  // Signed-out GET searches can also be cached by Vercel's CDN; anything with a key is private,
+  // Signed-out GET searches can also be cached by Vercel's CDN for 15 minutes (a new deploy clears
+  // it); anything with a key is private,
   // and so is "near me" (the answer depends on where the searcher is).
   res.setHeader("Vary", "Authorization")
   res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed
-    ? "public, max-age=0, s-maxage=300, stale-while-revalidate=3600"
+    ? "public, max-age=0, s-maxage=900, stale-while-revalidate=3600"
     : "private, no-store")
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.

@@ -78,11 +78,35 @@ function memoryCount(key: string): number {
   return timestamps.length
 }
 
+// Counted in memory first, written to the database in batches (hit_rate_limit_add, list_sixteen.sql):
+// the first request from a client each minute goes to the database, then only every 10 seconds or
+// when it gets near the limit. Limits still hold across servers, with far fewer database writes.
+const localLimits = new Map<string, { minute: number, known: number, pending: number, syncedAt: number }>()
+
 // Per-minute counter in Supabase (rate_limits table), so limits hold across cold starts and instances.
 export async function rateLimit(key: string, maxPerMinute: number): Promise<RateLimit> {
   const reset = 60 - new Date().getUTCSeconds()
   const result = (count: number | null, limited: boolean): RateLimit =>
     ({ limited, limit: maxPerMinute, remaining: count === null ? null : Math.max(0, maxPerMinute - count), reset })
+  const minute = Math.floor(Date.now() / 60000)
+  let st = localLimits.get(key)
+  if (!st || st.minute !== minute) { st = { minute, known: 0, pending: 0, syncedAt: 0 }; localLimits.set(key, st) }
+  if (localLimits.size > 5000) for (const [k, v] of localLimits) if (v.minute !== minute) localLimits.delete(k)
+  const estimate = st.known + st.pending + 1
+  if (st.syncedAt && Date.now() - st.syncedAt < 10_000 && estimate <= maxPerMinute * 0.7) {
+    st.pending++
+    return result(estimate, false)
+  }
+  try {
+    const add = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_rate_limit_add`, {
+      method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key, n: st.pending + 1 }), signal: AbortSignal.timeout(3000)
+    })
+    if (add.ok) {
+      const count = Number(await add.json())
+      st.known = count; st.pending = 0; st.syncedAt = Date.now()
+      return result(count, count > maxPerMinute)
+    }
+  } catch {}
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_rate_limit_count`, {
       method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key }), signal: AbortSignal.timeout(3000)
@@ -154,7 +178,20 @@ export const BLOCKED_MESSAGE = { error: "Blocked for too many requests. Try agai
 // ----- Longer counters (list_ten.sql) -----
 // Counts in windows of any length: busy notices per 5 minutes (the "busy right now" banner) and
 // free searches per IP per hour (the scraper guard). null when the counter isn't available.
+// Also batched: added in memory and written every minute or every 10 hits (hit_counter_add).
+const localCounters = new Map<string, { window: number, known: number, pending: number, syncedAt: number }>()
+
 export async function hitCounter(key: string, windowSeconds: number): Promise<number | null> {
+  const window = Math.floor(Date.now() / 1000 / windowSeconds)
+  let st = localCounters.get(key)
+  if (!st || st.window !== window) { st = { window, known: 0, pending: 0, syncedAt: 0 }; localCounters.set(key, st) }
+  if (localCounters.size > 5000) for (const [k, v] of localCounters) if (v.window !== window) localCounters.delete(k)
+  if (st.syncedAt && Date.now() - st.syncedAt < 60_000 && st.pending < 10) { st.pending++; return st.known + st.pending }
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_counter_add`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key, window_seconds: windowSeconds, n: st.pending + 1 }), signal: AbortSignal.timeout(2000) })
+    if (r.ok) { st.known = Number(await r.json()); st.pending = 0; st.syncedAt = Date.now(); return st.known }
+  } catch {}
+  // Before list_sixteen.sql: one write per hit.
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/hit_counter`, { method: "POST", headers: SUPABASE_HEADERS, body: JSON.stringify({ k: key, window_seconds: windowSeconds }), signal: AbortSignal.timeout(2000) })
     return r.ok ? Number(await r.json()) : null
