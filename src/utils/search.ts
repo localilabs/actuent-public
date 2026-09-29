@@ -184,6 +184,9 @@ async function countrySites(what: string, country: string, lang: string | null):
   } catch { return [] }
 }
 
+// Country endings used by sites everywhere (.io, .ai, .co…): they don't say where a site is.
+const GENERIC_CCTLDS = new Set(["io", "ai", "co", "me", "tv", "fm", "ly", "gg", "to", "so", "sh", "ac", "cc", "ws", "is", "am", "la", "gl", "vc", "sc", "xyz", "eu"])
+
 async function searchPages(query: string, onFail?: () => void): Promise<Site[]> {
   const rows = await rpc("search_lawp_pages", query, 50, onFail)
     ?? await fetchSample("lawp_pages", "domain,path,title,content,actions")
@@ -463,7 +466,10 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const languageBoost = lang && (site as any).language === lang ? 1.15 : 1
         // Local needs: "vegan", "dogs", "open late", "brunch sunday" (OpenStreetMap features and opening hours).
         const needsBoost = (site as any).business ? needsFactor((site as any).business, needs) : 1
-        const countryBoost = country && inCountry(site as any, country) ? 1.6 : 1
+        // …and shops clearly in another country (.co.uk, .ca for a Copenhagen search) rank lower.
+        const tld = site.domain.split("/")[0].split(".").pop() || ""
+        const elsewhere = country && tld.length === 2 && !GENERIC_CCTLDS.has(tld) && !inCountry(site as any, country)
+        const countryBoost = country && inCountry(site as any, country) ? 1.6 : elsewhere ? 0.6 : 1
         return base * (0.15 + 0.85 * c * c) * categoryBoost * countryBoost * clickBoost * languageBoost * needsBoost
           * intentBoost(query, site) * freshnessBoost(query, (site as any).updated_at) * qualityFactor(site)
       }

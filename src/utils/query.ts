@@ -15,7 +15,11 @@ export function cleanQuery(raw: string): string {
   for (let i = 0; i < 2; i++) q = q.replace(LEADING, "")
   const words = q.split(" ")
   // Only long, question-like searches lose filler words; "the north face" stays as it is.
-  if (words.length >= 4) q = q.replace(FILLER, " ")
+  // Yes/no questions lose their question words too: "does basecamp have a free plan" → "basecamp free plan".
+  if (words.length >= 4) {
+    q = q.replace(FILLER, " ")
+    if (/^(does|do|is|are|can|could|will|has|should)\s/i.test(q)) q = q.replace(/^\S+\s+/, "").replace(/\b(have|has|there|offer|offers|it|they|you|i|we)\b/gi, " ")
+  }
   // Prices are for the product search ("under 500 dkk"), not words to look for on websites.
   q = q.replace(/\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than)\s*[€$£]?\s*\d+(?:[.,]\d+)?\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr\.?|kroner|dkk|sek|nok)?\b/gi, " ")
   q = q.replace(/\s+in\s+/gi, " ").replace(/\s+/g, " ").trim()
@@ -43,7 +47,7 @@ export function nearMe(q: string, cityHeader: string | undefined): string {
   return q.replace(/\b(near me|nearby|around me|close to me)\b/i, city).replace(/\s+/g, " ").trim()
 }
 
-const NOT_SHOPPING = /\b(software|app|saas|api|hosting|news|weather|recipes?|course|courses|jobs?|dentist|doctor|lawyer|plumber|electrician|barber|hairdresser|restaurant|cafe|bar|hotel|flights?|museum|events?|tickets?|concerts?|near me|how to)\b/i
+const NOT_SHOPPING = /\b(software|app|saas|api|hosting|news|weather|recipes?|course|courses|jobs?|dentist|doctor|lawyer|plumber|electrician|barber|hairdresser|restaurants?|cafes?|coffee shops?|bars?|pubs?|hotels?|hostels?|flights?|museums?|events?|tickets?|concerts?|near me|how to|bakery|bakeries|pizza|sushi|brunch|gyms?|spas?|salons?|pharmacy|clinic|vet|cinema|theatre|theater|nightclubs?|parks?|dinner|lunch|breakfast)\b/i
 // Yes/no questions ("does basecamp have a free plan") and comparisons ("notion vs obsidian") aren't shopping.
 const NOT_SHOPPING_TYPED = /^(does|do|is|are|can|could|will|has|have|should|how (to|do|does))\b|\s(vs\.?|versus)\s/i
 export function wantsProducts(q: string, typed: string = q): boolean {
