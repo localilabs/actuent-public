@@ -8,7 +8,7 @@ import { openNow } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
-import { cleanName, snippet, notAResult } from "../src/utils/results"
+import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
 import { splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 import { answerSummary, QUESTION } from "../src/utils/summary"
@@ -383,6 +383,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const seenHost = new Set<string>()
   const shown = withoutHidden(results as any[], searchQuery).filter((r: any) => {
     if (notAResult(r)) return false
+    // A search for a word, not a domain: near-empty sites aren't worth showing.
+    if (!isDomainQuery && !r.domain.includes("/") && nearlyEmpty(r)) return false
     // "localilabs.com/" (a row saved with a trailing slash) is the same site as localilabs.com.
     const host = String(r.domain).replace(/^www\./, "").replace(/\/+$/, "")
     if (seenHost.has(host)) return false

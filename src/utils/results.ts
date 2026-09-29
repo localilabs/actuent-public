@@ -21,6 +21,17 @@ export function notAResult(site: { name?: string, pages?: Record<string, any> })
   return (home.length < 400 && ERROR_PAGE.test(text)) || PARKED.test(text)
 }
 
+// Near-empty sites: nothing but "Website at x.com" / "a Danish-language website at x.dk", one page
+// and no actions. Useless as a keyword result (they're shown for their own domain, and come back
+// once converted properly).
+export function nearlyEmpty(site: { domain?: string, pages?: Record<string, any>, actions?: any[], business?: any }): boolean {
+  if ((site.actions || []).length || site.business) return false
+  const pages = Object.values(site.pages || {})
+  if (pages.length > 1) return false
+  const text = String(pages[0]?.content || "").trim()
+  return !text || /^(website at |[\w-]+ is an? [\w-]+-language website at )/i.test(text) || text.length < 40
+}
+
 // The sentence from the site's pages that answers the search best (for showing under the result),
 // cut to ~200 characters. Every page counts (pricing, about, contact…), and a page whose address
 // or title is about the search ("free plan" → /pricing) is preferred. "plans" matches "plan".
