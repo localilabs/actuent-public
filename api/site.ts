@@ -22,6 +22,16 @@ function esc(v: unknown): string {
   return String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!))
 }
 
+// A database function's rows; null when the function doesn't exist yet (404).
+async function rpcRows(fn: string, args: object): Promise<any[] | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, { method: "POST", headers: { ...HEADERS, "Content-Type": "application/json" }, body: JSON.stringify(args), signal: AbortSignal.timeout(8000) })
+    if (r.status === 404) return null
+    const data = r.ok ? await r.json() : []
+    return Array.isArray(data) ? data : []
+  } catch { return [] }
+}
+
 async function rows(path: string): Promise<any[]> {
   try {
     let r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: HEADERS })
@@ -89,7 +99,10 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
   const pattern = encodeURIComponent(city.replace(/[*,()]/g, "").replace(/ /g, "*"))
   const hidden = [...HIDDEN_CATEGORIES].map(c => `"${c}"`).join(",")
   const filter = category ? `&category=eq.${encodeURIComponent(category)}` : `&category=not.in.(${encodeURIComponent(hidden)})`
-  const sites = await rows(`lawp_sites?select=domain,name,category,native,actions,business&business->address->>city=ilike.${pattern}${filter}&status=is.null&order=native.desc,updated_at.desc&limit=300`)
+  // Through the city index (sites_in_city, list_fifteen.sql); the plain filter below reads the whole
+  // table, so it's only a fallback until that function exists.
+  let sites = await rpcRows("sites_in_city", { c: city, cat: category })
+  if (sites === null) sites = await rows(`lawp_sites?select=domain,name,category,native,actions,business&business->address->>city=ilike.${pattern}${filter}&status=is.null&order=native.desc,updated_at.desc&limit=300`)
   const listed = sites.filter(s => !HIDDEN_CATEGORIES.has(s.category))
   if (!listed.length) {
     res.setHeader("Cache-Control", "public, max-age=0, s-maxage=600")

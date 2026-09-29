@@ -144,6 +144,13 @@ async function sharedCacheSet(key: string, body: unknown): Promise<void> {
     body: JSON.stringify({ key, body, expires_at: new Date(Date.now() + SHARED_TTL_MS).toISOString() }),
     signal: AbortSignal.timeout(3000)
   }).catch(() => {})
+  // Now and then, expired answers are deleted, so the cache never grows much (each is ~100 KB and
+  // the free database has 500 MB). Uses the expires_at index.
+  if (Math.random() < 0.05) {
+    await fetch(`${SUPABASE_URL}/rest/v1/search_cache?expires_at=lt.${encodeURIComponent(new Date().toISOString())}`, {
+      method: "DELETE", headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Prefer": "return=minimal" }, signal: AbortSignal.timeout(3000)
+    }).catch(() => {})
+  }
 }
 
 async function suggestSpelling(q: string): Promise<string | null> {

@@ -39,16 +39,25 @@ async function rows(path: string, ms = 2000): Promise<any[]> {
   } catch { return [] }
 }
 
+async function sitesNamed(name: string): Promise<any[]> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/sites_named`, { method: "POST", headers: HEADERS, body: JSON.stringify({ n: name }), signal: AbortSignal.timeout(1500) })
+    const data = r.ok ? await r.json() : []
+    return Array.isArray(data) ? data : []
+  } catch { return [] }
+}
+
 export async function brandSites(name: string): Promise<any[]> {
   const label = name.replace(/[\s'&.]+/g, "")
   const hyphen = name.replace(/[\s'&.]+/g, "-")
   const domains = [...new Set(TLDS.flatMap(t => [`${label}.${t}`, `${hyphen}.${t}`]))]
   const list = encodeURIComponent(domains.map(d => `"${d}"`).join(","))
-  // By domain is a primary-key lookup (instant). By name needs the trigram index on name
-  // (list_thirteen.sql); without it the lookup is slow, so it only gets a short wait.
+  // By domain is a primary-key lookup (instant). By name goes through sites_named()
+  // (list_fifteen.sql), which uses the name index; a plain name=ilike filter can't, and read the
+  // whole sites table on every name search. Without the function, only the domain lookup runs.
   const [byDomain, byName] = await Promise.all([
     rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`, 3000),
-    rows(`lawp_sites?select=${FIELDS}&status=is.null&name=ilike.${encodeURIComponent(name.replace(/[%_*,()]/g, ""))}&limit=5`, 1200)
+    sitesNamed(name)
   ])
   const seen = new Set<string>()
   const all = [...byDomain, ...byName].filter(s => !seen.has(s.domain) && seen.add(s.domain))
