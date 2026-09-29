@@ -7,6 +7,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const HEADERS = { "apikey": process.env.SUPABASE_SERVICE_KEY!, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_KEY}` }
+// Domains that are plumbing, not websites people choose (CDNs, ad and tracking servers, app backends).
+const INFRASTRUCTURE = /(^|\.)(akamai|akamaized|cloudfront|fastly|cloudflare|edgekey|edgesuite|doubleclick|googlesyndication|googleadservices|googleapis|gstatic|amazonaws|azureedge|whatsapp\.net|fbcdn|cdninstagram|twimg|ytimg|googlevideo|msedge|trafficmanager|appsflyer|adnxs|criteo|taboola|outbrain|scorecardresearch|demdex|omtrdc)\b/i
 const STOP = new Set("the and for with your you our are from that this all more have has can get how what who new now best free online app apps site website web home page welcome official about into over just make made use using used most every their them they its it's".split(" "))
 
 async function rows(path: string, ms = 4000): Promise<any[]> {
@@ -32,12 +34,15 @@ export async function similarSites(domain: string, max = 10): Promise<any[]> {
   if (!site) return []
   const brand = domain.split(".")[0]
   const words = mainWords(site)
-  const [byWords, clickedFor] = await Promise.all([
-    words.length && site.category
-      ? rows(`lawp_sites?select=domain,name,category,popularity_rank&status=is.null&category=eq.${encodeURIComponent(site.category)}&domain=neq.${encodeURIComponent(domain)}&search_text=wfts(english).${encodeURIComponent(words.join(" or "))}&order=popularity_rank.asc.nullslast&limit=30`)
-      : Promise.resolve([]),
+  // Sites of the same kind that share its two main words ("email" and "marketing"); when that finds
+  // too few, any of its main words. Popular infrastructure (CDNs, ad servers) never counts.
+  const sameKind = (filter: string) => rows(`lawp_sites?select=domain,name,category,popularity_rank,actions&status=is.null&category=eq.${encodeURIComponent(site.category)}&domain=neq.${encodeURIComponent(domain)}&actions=neq.%5B%5D&search_text=${filter}&order=popularity_rank.asc.nullslast&limit=30`)
+  const [both, clickedFor] = await Promise.all([
+    words.length >= 2 && site.category ? sameKind(`plfts(english).${encodeURIComponent(words.slice(0, 2).join(" "))}`) : Promise.resolve([]),
     rows(`query_clicks?select=query&domain=eq.${encodeURIComponent(domain)}&order=clicks.desc&limit=10`, 2000)
   ])
+  const any = both.length < 5 && words.length && site.category ? await sameKind(`wfts(english).${encodeURIComponent(words.slice(0, 3).join(" or "))}`) : []
+  const byWords = [...both, ...any.filter((a: any) => !both.some((b: any) => b.domain === a.domain))].filter((s: any) => !INFRASTRUCTURE.test(s.domain))
   // Sites opened for the same searches as this one.
   const coClicked = new Map<string, number>()
   if (clickedFor.length) {
