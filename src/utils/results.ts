@@ -21,18 +21,32 @@ export function notAResult(site: { name?: string, pages?: Record<string, any> })
   return (home.length < 400 && ERROR_PAGE.test(text)) || PARKED.test(text)
 }
 
-// The sentence from the site's pages that matches the most search words (for showing under the
-// result), cut to ~200 characters.
+// The sentence from the site's pages that answers the search best (for showing under the result),
+// cut to ~200 characters. Every page counts (pricing, about, contact…), and a page whose address
+// or title is about the search ("free plan" → /pricing) is preferred. "plans" matches "plan".
+const PAGE_HINTS: [RegExp, RegExp][] = [
+  [/\b(price|prices|pricing|cost|costs|plan|plans|free|subscription)\b/, /pric|plan/],
+  [/\b(contact|phone|email|address|support)\b/, /contact|support/],
+  [/\b(about|who|team|company|founded)\b/, /about|team|company/],
+  [/\b(hours|opening|open)\b/, /hours|opening|visit/],
+  [/\b(menu|food|dishes)\b/, /menu/],
+  [/\b(jobs?|careers?|hiring)\b/, /career|jobs/]
+]
 export function snippet(site: { pages?: Record<string, any> }, query: string): string | undefined {
-  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  const q = query.toLowerCase()
+  const words = q.split(/\s+/).filter(w => w.length > 2).map(w => w.length > 4 ? w.replace(/(ies|es|s)$/, "") : w)
+  const hints = PAGE_HINTS.filter(([asks]) => asks.test(q)).map(([, path]) => path)
   let best = "", bestScore = -1
-  for (const page of Object.values(site.pages || {})) {
+  for (const [path, page] of Object.entries(site.pages || {})) {
     const text = String(page?.content || "")
+    const about = `${path} ${page?.title || ""}`.toLowerCase()
+    const pageBonus = (hints.some(h => h.test(about)) ? 12 : 0) + words.filter(w => about.includes(w)).length * 3
     for (const sentence of text.split(/(?<=[.!?])\s+/)) {
       const s = sentence.trim()
       if (s.length < 30) continue
       const lower = s.toLowerCase()
-      const score = words.filter(w => lower.includes(w)).length * 10 - Math.abs(s.length - 140) / 40
+      const hits = words.filter(w => lower.includes(w)).length
+      const score = hits * 10 + (hits ? pageBonus : pageBonus / 4) - Math.abs(s.length - 140) / 40
       if (score > bestScore) { bestScore = score; best = s }
     }
   }

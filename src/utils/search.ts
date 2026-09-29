@@ -525,9 +525,10 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const siteCat = (site as any).category
         const online = [...cats].some(c => ONLINE_KINDS.has(c))
         const categoryBoost = !cats.size || !siteCat ? 1 : cats.has(siteCat) ? (online ? 1.5 : 1.3) : online ? 0.7 : 1
-        // Results people opened for this search before (query_clicks), up to +40%.
+        // Results people opened for this search before (query_clicks: the humans page and agents'
+        // tracked links), up to +80%: 1 click ≈ +12%, 7 clicks ≈ +38%, 60+ clicks the full +80%.
         const clickCount = clicks.get(site.domain) || 0
-        const clickBoost = clickCount ? 1 + Math.min(0.4, Math.log2(1 + clickCount) / 12) : 1
+        const clickBoost = clickCount ? 1 + Math.min(0.8, Math.log2(1 + clickCount) / 8) : 1
         // Sites in the searcher's own language (a German search, a German site) rank a little higher.
         const languageBoost = lang && (site as any).language === lang ? 1.15 : 1
         // Local needs: "vegan", "dogs", "open late", "brunch sunday" (OpenStreetMap features and opening hours).
@@ -617,6 +618,14 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
     const nameSearch: Promise<any[]> = name && !oneGenericWord && looksLikeName(name, false)
       ? brandSites(name).then(async found => {
+          // Several sites with that name (obsidian.md and obsidian.net): the one Wikidata lists as
+          // the official website goes first, and look-alikes drop back into the normal results.
+          if (found.length >= 2) {
+            const official = await officialWebsite(name).catch(() => null)
+            const i = official ? found.findIndex(s => s.domain === official || s.domain === `www.${official}`) : -1
+            if (i >= 0) found = [found[i]]
+            else if (official) { const saved = await getSavedSite(official); if (saved) found = [{ ...saved, owner_key: undefined }] }
+          }
           if (found.length) {
             // Its other projects: sites claimed by the same account, and sites its homepage links to.
             const [owned, linked] = await Promise.all([sameOwner(found[0]), linkedProjects(found[0])])
@@ -661,10 +670,26 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     if (countryFound.length) plainFound.sites.push(...countryFound.filter(x => !plainFound.sites.some(y => y.domain === x.domain)))
     const localSites = await localSearch
     const plain = { ...plainFound, local: localSites.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [] })) as Site[] }
-    // No local websites indexed yet: places from OpenStreetMap, returned separately and labelled.
-    if (place && !localSites.length && opts.places && queryCategories(place.what).size) {
+    // Few local websites indexed yet: places from OpenStreetMap. They're returned in `places`, and the
+    // ones with a website also compete in the main results (labelled as found on OpenStreetMap, and
+    // queued so Actuent crawls them properly).
+    if (place && localSites.length < 3 && opts.places && queryCategories(place.what).size) {
       const found = await osmPlaces(place.what, place.city)
-      if (found?.length) opts.places.push(...found)
+      if (found?.length) {
+        opts.places.push(...found)
+        const cat = [...queryCategories(place.what)][0]
+        for (const p of found) {
+          let host = ""
+          try { host = new URL(String(p.website || "")).hostname.toLowerCase().replace(/^www\./, "") } catch {}
+          if (!host || plain.local.some(x => x.domain === host)) continue
+          queueCrawl(host)
+          plain.local.push({
+            domain: host, name: p.name, actions: [], category: cat, source: "openstreetmap",
+            pages: { "/": { title: p.name, content: `${p.name}: ${p.type || cat} in ${place.city}, found on OpenStreetMap for "${place.what}". ${p.address || ""}` } },
+            business: { name: p.name, type: p.type, address: { street: p.address || null, city: place.city } }
+          } as any)
+        }
+      }
     }
     const namedList = [...await nameSearch, ...await museumSearch]
     if (namedList.length) { namedFound = true; if (opts.related) opts.related.length = 0 }
