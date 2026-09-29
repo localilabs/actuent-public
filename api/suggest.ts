@@ -44,10 +44,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Suggest a Site — Actuent</title>
 <link rel="icon" type="image/png" href="https://api.actuent.ai/assets/actuent-logo.png">
+<script src="/assets/lawpy.js" defer></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#0a0a0a; color:#f0f0f0; font-family:-apple-system,sans-serif; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
-img { height:24px; margin-bottom:40px; }
+img { height:24px; margin-bottom:28px; }
+#lawpy { margin-bottom:16px; }
 .box { background:#13131a; border:1px solid #2a2a34; border-radius:12px; padding:32px; width:100%; max-width:420px; }
 h1 { font-size:18px; font-weight:600; margin-bottom:6px; }
 p { color:#a8a8b6; font-size:13px; margin-bottom:24px; line-height:1.5; }
@@ -62,6 +64,7 @@ button:hover { opacity:0.85; }
 </head>
 <body>
 <img src="https://api.actuent.ai/assets/actuent-logo.png" alt="Actuent">
+<lawpy-mascot id="lawpy" scale="4"></lawpy-mascot>
 <div class="box">
   <h1>Suggest a site</h1>
   <p>Know a site that should be on Actuent? Submit it and we'll add it to the LAWP index.</p>
@@ -78,11 +81,15 @@ async function submit() {
   const domain = document.getElementById("domain").value.trim().toLowerCase().replace(/^https?:\/\//,"").replace(/\/.*/,"")
   const email = document.getElementById("email").value.trim()
   if (!domain || !domain.includes(".")) { document.getElementById("error").style.display="block"; return }
+  // Lawpy thinks while it's sent, and dances when the site is accepted.
+  const lawpy = (state, loops) => { const el = document.getElementById("lawpy"); if (el && el.play) el.play(state, loops ? { loops, then: "idle" } : {}) }
+  lawpy("think")
   const res = await fetch("/suggest", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ domain, submitted_by: email || null })
   })
+  lawpy(res.ok ? "dance" : "idle", res.ok ? 3 : 0)
   if (res.ok) {
     document.getElementById("success").style.display = "block"
     document.getElementById("error").style.display = "none"

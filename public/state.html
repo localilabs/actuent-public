@@ -52,7 +52,12 @@
 (function busy() {
   fetch("https://api.actuent.ai/api/status").then(function(r) { return r.json() }).then(function(s) {
     var b = document.getElementById("busy-banner")
-    if (s.busy && s.message) { b.textContent = s.message; b.style.display = "block" } else b.style.display = "none"
+    // Lawpy thinks alongside the message (public/assets/lawpy.js).
+    if (s.busy && s.message) {
+      b.innerHTML = '<lawpy-mascot state="think" scale="2" style="vertical-align:middle;margin-right:10px"></lawpy-mascot><span></span>'
+      b.lastChild.textContent = s.message
+      b.style.display = "block"
+    } else b.style.display = "none"
   }).catch(function() {})
   setTimeout(busy, 60000)
 })()

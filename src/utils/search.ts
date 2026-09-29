@@ -1,9 +1,10 @@
 import { translateKeywords, queryLanguage } from "./multilingual"
 import { notice, Notice } from "./notices"
 import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor, cityCountry, inCountry, COUNTRY_INFO } from "./local"
+import { synonymsOf, synonymVariants } from "./rank_extras"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
-import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite } from "./brand"
+import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite, cityMuseums, sitesFor, closestName } from "./brand"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -51,12 +52,16 @@ export function withoutHidden<T extends { category?: string, domain?: string }>(
 
 // Light stemming so "payments" matches "payment" and "restaurants" matches "restaurant"
 // (substring matching then covers the rest: "book" matches "booking").
+const ING: Record<string, string> = { cycling: "cycl", biking: "bik", hiking: "hik", camping: "camp", fishing: "fish", skiing: "ski", surfing: "surf",
+  climbing: "climb", sailing: "sail", swimming: "swim", dancing: "danc", painting: "paint", knitting: "knit", shopping: "shop", gardening: "garden" }
 export function stem(word: string): string {
   const w = word.toLowerCase()
   if (w.length > 4 && w.endsWith("ies")) return w.slice(0, -3) + "y"
   if (w.length > 4 && w.endsWith("es") && /(ch|sh|x|ss)es$/.test(w)) return w.slice(0, -2)
   if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1)
-  return w
+  // Activities: "cycling" also matches cycle, "hiking" hike. Only these: "accounting" must not
+  // become "account" (every login page) and "running" must not become "run".
+  return ING[w] || w
 }
 // Words that say little about what a site is ("online payments": "payments" is what matters).
 const WEAK_WORDS = new Set(["online", "software", "app", "apps", "platform", "tool", "tools", "service", "services", "best", "top", "free", "cheap", "website", "site", "near", "me", "the", "and", "for", "with"])
@@ -167,25 +172,54 @@ async function fetchSample(table: string, select: string): Promise<any[]> {
 // hundred milliseconds even when the full search is slow the first time a search is run (the
 // free database can't keep the whole index in memory). mailchimp.com for "email marketing" then
 // always makes it, even if the full search times out.
-async function topSites(query: string): Promise<any[]> {
-  const words = query.replace(/[^\p{L}\p{N}\s]/gu, " ").trim()
-  if (!words) return []
+// With `anyOf`, sites matching any of several phrases ("sneakers" or "trainers"), for related terms.
+async function topSites(query: string, anyOf: string[] = []): Promise<any[]> {
+  const clean = (x: string) => x.replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()
+  const words = clean(query)
+  const phrases = anyOf.map(clean).filter(Boolean)
+  if (!words && !phrases.length) return []
+  const filter = phrases.length ? `wfts(english).${encodeURIComponent([words, ...phrases].filter(Boolean).join(" or "))}` : `plfts(english).${encodeURIComponent(words)}`
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank&status=is.null&popularity_rank=lte.20000&search_text=plfts(english).${encodeURIComponent(words)}&order=popularity_rank.asc&limit=40`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(2500) })
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank&status=is.null&popularity_rank=lte.20000&search_text=${filter}&order=popularity_rank.asc&limit=40`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(2500) })
     const rows = r.ok ? await r.json() : []
     // Ranked like the full search would: every word matched (+1) and how well known the site is.
-    return Array.isArray(rows) ? rows.map((row: any) => ({ ...row, rank: 1 + Math.max(0, 6 - Math.log10(Math.max(row.popularity_rank || 1, 1))) / 12 })) : []
+    return Array.isArray(rows) ? rows.map((row: any) => ({ ...row, rank: (phrases.length ? 0.5 : 1) + Math.max(0, 6 - Math.log10(Math.max(row.popularity_rank || 1, 1))) / 12 })) : []
   } catch { return [] }
 }
 
-async function searchSupabase(query: string, onFail?: () => void): Promise<Site[]> {
-  const [full, top] = await Promise.all([rpc("search_lawp_sites", query, 50, onFail), topSites(query)])
-  const found = full ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
-  const rows = [...found, ...top.filter(t => !found.some((f: any) => f.domain === t.domain))]
-  return rows.map((row: any) => ({
+function rowToSite(row: any): Site {
+  return {
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
     updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined, popularity_rank: row.popularity_rank || undefined, rank: row.rank || undefined
-  }))
+  } as Site
+}
+
+async function searchSupabase(query: string, onFail?: () => void): Promise<Site[]> {
+  const [full, top] = await Promise.all([rpc("search_lawp_sites", query, 50, onFail), topSites(query, synonymVariants(query))])
+  const found = full ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
+  const rows = [...found, ...top.filter(t => !found.some((f: any) => f.domain === t.domain))]
+  return rows.map(rowToSite)
+}
+
+// A quick first answer (fast=1 on api/search): a site with exactly that name, local businesses and
+// the best-known matching sites, from small indexes in a few hundred milliseconds with no LLM. The
+// humans page shows it while the full search runs.
+export async function quickSearch(query: string): Promise<Site[]> {
+  const ml = translateKeywords(query)
+  const place = splitCity(ml.query)
+  const what = place ? place.what : ml.query
+  const name = nameOf(ml.query, place?.city)
+  const generic = name.split(" ").length === 1 && queryCategories(name).size > 0
+  const [top, named, local] = await Promise.all([
+    topSites(what, synonymVariants(what)).then(rows => rows.map(rowToSite)),
+    looksLikeName(name, false) && !generic ? brandSites(name).catch(() => []) : Promise.resolve([]),
+    place ? localBusinesses(place.what, place.city).catch(() => []) : Promise.resolve([])
+  ])
+  const seen = new Set<string>()
+  return [...named.slice(0, 2).map((x: any) => ({ ...x, matched: "exact name" })), ...local, ...top]
+    .filter((x: any) => !seen.has(x.domain) && seen.add(x.domain))
+    .map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined }))
+    .slice(0, 15) as Site[]
 }
 
 // Sites in one country that match the words ("shoes" + Denmark → .dk and Danish-language sites).
@@ -200,6 +234,8 @@ async function countrySites(what: string, country: string, lang: string | null):
     return Array.isArray(rows) ? rows.map((row: any) => ({ ...row, pages: row.pages || {}, actions: row.actions || [] })) : []
   } catch { return [] }
 }
+
+const ONLINE_KINDS = new Set(["software", "developer", "ai", "finance", "education"])
 
 // Country endings used by sites everywhere (.io, .ai, .co…): they don't say where a site is.
 const GENERIC_CCTLDS = new Set(["io", "ai", "co", "me", "tv", "fm", "ly", "gg", "to", "so", "sh", "ac", "cc", "ws", "is", "am", "la", "gl", "vc", "sc", "xyz", "eu"])
@@ -390,7 +426,7 @@ const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 
 // opts.lite: heavy free use from one client (scraper guard, api/search.ts) — index only, no LLM,
 // live crawls or guessing. opts.places receives OpenStreetMap places for local searches.
-export type SearchOptions = { lite?: boolean, places?: any[], related?: string[] }
+export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[] }
 
 export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
@@ -465,7 +501,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const coverage = (site: Site) => {
         if (words.length < 2 || !total) return 1
         const text = `${site.name} ${site.domain} ${JSON.stringify(site.pages || {})} ${JSON.stringify(site.actions || [])} ${JSON.stringify((site as any).business?.address || {})}`.toLowerCase()
-        return words.filter(w => text.includes(w)).reduce((n, w) => n + weight(w), 0) / total
+        return words.filter(w => text.includes(w) || synonymsOf(w).some(x => text.includes(x))).reduce((n, w) => n + weight(w), 0) / total
       }
       const score = (site: Site) => {
         const primary = scoreMatch(site, what)
@@ -475,7 +511,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const base = (primary > 0 ? primary + related * 0.3 : related * 0.5) + (primary > 0 || related > 0 ? dbRank * 6 : 0)
         const c = coverage(site)
         // The kind of site the search means ("accounting software" → software/finance) ranks higher.
-        const categoryBoost = cats.size && (site as any).category && cats.has((site as any).category) ? 1.3 : 1
+        // For software and online services ("cloud hosting", "website builder") the category counts
+        // more: a site of another known kind that just uses the words ranks lower.
+        const siteCat = (site as any).category
+        const online = [...cats].some(c => ONLINE_KINDS.has(c))
+        const categoryBoost = !cats.size || !siteCat ? 1 : cats.has(siteCat) ? (online ? 1.5 : 1.3) : online ? 0.7 : 1
         // Results people opened for this search before (query_clicks), up to +40%.
         const clickCount = clicks.get(site.domain) || 0
         const clickBoost = clickCount ? 1 + Math.min(0.4, Math.log2(1 + clickCount) / 12) : 1
@@ -509,7 +549,17 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       if (brandIndex > 0 && brandIndex < 15) ranked.unshift(ranked.splice(brandIndex, 1)[0])
       const seen = new Set<string>()
       const results: Site[] = []
-      for (const site of [...ranked, ...found.pages]) {
+      // A page (not a whole site) has to earn its place: its title or address has at least half the
+      // search's words, and a blog post or article all of them ("email marketing" isn't answered by
+      // a blog post about contact groups).
+      const earnsPlace = (page: Site) => {
+        if (!words.length) return true
+        const text = `${page.name || ""} ${page.domain}`.toLowerCase()
+        const hits = words.filter(w => text.includes(w)).length
+        const article = /\/(blog|ideas|news|articles?|posts?|stories|resources|learn|insights|guides?)\//.test(page.domain)
+        return hits >= (article ? words.length : Math.ceil(words.length / 2))
+      }
+      for (const site of [...ranked, ...found.pages.filter(earnsPlace)]) {
         if (!seen.has(site.domain)) { seen.add(site.domain); results.push({ ...site, matched: explainMatch(site, primaryQuery, expanded, query) } as Site) }
       }
       // One result per brand (nike.com with nike.com.br folded underneath), the page that answers
@@ -532,11 +582,17 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
     const expandedSearch = expanding.then(async ({ english, terms }) => {
       if (english.toLowerCase() === query.toLowerCase() && !terms.length) return null
-      // The original words stay in, so sites in the query's own language still match.
-      // At most 4 related terms: each extra word makes the database search heavier.
-      const fewer = terms.slice(0, 4)
-      const fullQuery = [english !== query ? `${query} ${english}` : query, fewer.join(" ")].filter(Boolean).join(" ")
-      return { english, expanded: fewer.join(" "), found: await both(fullQuery) }
+      // Light on the database (it was the slowest part of a search): the full search runs again
+      // only for a translation ("laufschuhe" → "running shoes", original words kept so sites in
+      // the query's own language still match). Two related terms ("sneakers", "trainers") are
+      // looked up among the 20,000 best-known sites only, a small fast index.
+      const fewer = terms.slice(0, 2)
+      const translated = english.toLowerCase() !== query.toLowerCase()
+      const [full, related] = await Promise.all([
+        translated ? both(`${query} ${english}`) : Promise.resolve({ sites: [] as Site[], pages: [] as Site[] }),
+        fewer.length ? topSites(translated ? english : query, fewer).then(rows => rows.map(rowToSite)) : Promise.resolve([] as Site[])
+      ])
+      return { english, expanded: fewer.join(" "), found: { sites: [...full.sites, ...related.filter(r => !full.sites.some(f => f.domain === r.domain))], pages: full.pages } }
     })
     // Other languages: common words are translated instantly from a built-in dictionary
     // ("zahnarzt berlin" → "dentist berlin"), so the plain search already runs in English. A query
@@ -561,10 +617,25 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
           }
           // Not in the index under that name: Wikidata's official website for it, if Actuent has it.
           const domain = await officialWebsite(name)
-          if (!domain) return []
+          if (!domain) {
+            // A typo of a well-known name ("spotfy"): that site first, and "did you mean Spotify?".
+            const close = await closestName(name)
+            if (!close) return []
+            opts.didYouMean?.push(close.suggested_name)
+            return [{ ...close, matched: `closest name to "${name}"` }]
+          }
           const saved = await getSavedSite(domain)
           if (!saved) { queueCrawl(domain); return [] }
           return [{ ...saved, owner_key: undefined }]
+        }).catch(() => [])
+      : Promise.resolve([])
+    // "museum madrid", "musée paris": the city's best-known museums (Wikidata) come first; the ones
+    // Actuent doesn't have yet are queued for crawling.
+    const museumSearch: Promise<any[]> = place && queryCategories(place.what).has("museum_culture") && /museum|museo|musée|musee|museen|gallery|galler/i.test(query)
+      ? cityMuseums(place.city).then(async domains => {
+          const found = await sitesFor(domains)
+          domains.filter(d => !found.some(f => f.domain === d)).slice(0, 3).forEach(d => queueCrawl(d))
+          return found.map(x => ({ ...x, matched: `a well-known museum in ${place.city} (Wikidata)` }))
         }).catch(() => [])
       : Promise.resolve([])
     // For things you go to (barber, restaurant, dentist) the city helps find the right sites; for
@@ -586,7 +657,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const found = await osmPlaces(place.what, place.city)
       if (found?.length) opts.places.push(...found)
     }
-    const namedList = await nameSearch
+    const namedList = [...await nameSearch, ...await museumSearch]
     if (namedList.length) { namedFound = true; if (opts.related) opts.related.length = 0 }
     const named: Site[] = namedList.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: x.matched || "exact name" }))
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3

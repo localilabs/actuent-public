@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { withoutHidden, searchSites } from "../src/utils/search"
+import { withoutHidden, searchSites, quickSearch } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
@@ -244,6 +244,21 @@ async function search(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json(present({ ...(cached as any), query: typed }, params))
   }
 
+  // fast=1: a quick first answer (best-known sites, exact name, local businesses) while the full
+  // search runs; the humans page asks for both. Not cached, not counted as a search.
+  if (req.query?.fast === "1" && req.method === "GET") {
+    const quick = withoutHidden(await quickSearch(searchQuery).catch(() => []) as any[], searchQuery).filter((r: any) => !notAResult(r))
+    res.setHeader("Cache-Control", "private, no-store")
+    return res.status(200).json({
+      query: typed, partial: true, count: quick.length,
+      results: quick.map(({ ownerKey, rank, ...r }: any) => ({
+        ...r, name: cleanName(r.name, r.domain), snippet: snippet(r, searchQuery), native: !!r.native, executable: isExecutable(r),
+        ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
+        visit_url: trackedLink(`https://${r.domain}`, typed)
+      }))
+    })
+  }
+
   // Products with prices run alongside site search for keyword queries ("running shoes under €100").
   const isDomainQuery = /^\S+\.[a-z]{2,}(\/\S*)?$/i.test(searchQuery)
   // Server-Timing shows where the time goes (sites vs products), for the ops page and debugging.
@@ -280,8 +295,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
+  const nameTypos: string[] = []
   const [results, products, events] = await Promise.all([
-    searchSites(searchQuery, tier, timing, notices, { lite, places, related }).then(r => { sitesMs = Date.now() - t0; return r }),
+    searchSites(searchQuery, tier, timing, notices, { lite, places, related, didYouMean: nameTypos }).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
     isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
   ])
@@ -304,9 +320,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
   // when nothing matched at all, search for the suggestion instead and say so.
-  let didYouMean: string | null = null
+  let didYouMean: string | null = nameTypos[0] || null
   let searchedFor: string | null = null
-  if (!isDomainQuery && results.length < 3) {
+  if (!isDomainQuery && !didYouMean && results.length < 3) {
     didYouMean = await suggestSpelling(searchQuery)
     if (didYouMean && !results.length && !products.length) {
       const again = await searchSites(didYouMean, tier, timing, [], { lite })

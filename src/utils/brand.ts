@@ -117,3 +117,55 @@ export async function linkedProjects(site: any): Promise<any[]> {
   const list = encodeURIComponent(domains.map(d => `"${d}"`).join(","))
   return rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`, 1500)
 }
+
+// "museum madrid", "musée paris": the city's best-known museums from Wikidata, with their official
+// websites. Wikidata's text search for museums described as being in that city ("art museum in
+// Paris, France"), ranked by how many Wikipedia articles each has (the Louvre first). Free, no key;
+// cached for 30 days in name_websites under "museums:<city>" (label = the domains, best-known first).
+export async function cityMuseums(city: string): Promise<string[]> {
+  const key = `museums:${city.toLowerCase().trim()}`.slice(0, 120)
+  const cached = await rows(`name_websites?select=label,checked_at&query=eq.${encodeURIComponent(key)}`, 1500)
+  if (cached.length && Date.parse(cached[0].checked_at) > Date.now() - 30 * 86400000) return String(cached[0].label || "").split(",").filter(Boolean)
+  const ua = { "User-Agent": "Actuent/1.0 (+https://docs.actuent.ai/bot; support@localilabs.com)" }
+  let domains: string[] = []
+  try {
+    const search = await fetch(`https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(`museum ${city} haswbstatement:P856 haswbstatement:P31`)}&srlimit=20&format=json`, { headers: ua, signal: AbortSignal.timeout(3000) }).then(r => r.json())
+    const ids: string[] = (search?.query?.search || []).map((x: any) => x.title).filter((id: string) => /^Q\d+$/.test(id))
+    if (ids.length) {
+      const ent = await fetch(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.join("|")}&props=claims|sitelinks|descriptions&languages=en&format=json`, { headers: ua, signal: AbortSignal.timeout(3000) }).then(r => r.json())
+      const inCity = new RegExp(`\\b${city.replace(/[.*+?^${}()|[\]\\]/g, "")}\\b`, "i")
+      domains = ids.map(id => ent?.entities?.[id]).filter((e: any) => e && /museum|gallery/i.test(e.descriptions?.en?.value || "") && inCity.test(e.descriptions?.en?.value || ""))
+        .map((e: any) => ({ links: Object.keys(e.sitelinks || {}).length, site: e.claims?.P856?.[0]?.mainsnak?.datavalue?.value }))
+        .filter((x: any) => typeof x.site === "string").sort((a: any, b: any) => b.links - a.links)
+        .map((x: any) => { try { return new URL(x.site).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" } })
+        .filter((d: string, i: number, all: string[]) => d && all.indexOf(d) === i).slice(0, 6)
+    }
+  } catch { return [] } // Wikidata slow or down: try again next time
+  fetch(`${SUPABASE_URL}/rest/v1/name_websites?on_conflict=query`, {
+    method: "POST", headers: { ...HEADERS, "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify({ query: key, domain: domains[0] || null, label: domains.join(","), checked_at: new Date().toISOString() })
+  }).catch(() => {})
+  return domains
+}
+
+// Sites Actuent has for these domains (in the given order).
+export async function sitesFor(domains: string[]): Promise<any[]> {
+  if (!domains.length) return []
+  const list = encodeURIComponent(domains.map(d => `"${d}"`).join(","))
+  const found = await rows(`lawp_sites?select=${FIELDS}&status=is.null&domain=in.(${list})`, 1500)
+  return domains.map(d => found.find(s => s.domain === d)).filter(Boolean)
+}
+
+// "spotfy" → Spotify: the closest name among well-known sites (list_fourteen.sql), when it's close
+// enough to be a typo. null without that function, or when nothing is close.
+export async function closestName(name: string): Promise<any | null> {
+  if (name.length < 4 || name.split(" ").length > 3) return null
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: name }), signal: AbortSignal.timeout(1200) })
+    const found = r.ok ? await r.json() : []
+    const best = Array.isArray(found) ? found[0] : null
+    if (!best || best.similarity < 0.45 || String(best.name).toLowerCase() === name.toLowerCase()) return null
+    const [site] = await sitesFor([best.domain])
+    return site ? { ...site, suggested_name: best.name } : null
+  } catch { return null }
+}

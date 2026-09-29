@@ -216,7 +216,10 @@ export function translateKeywords(query: string): { query: string, english: stri
     if (direct && (ENGLISH.has(word) || direct === word)) { out.push(word); continue }
     if (direct) { found.push(direct); out.push(direct); foreign = true; continue }
     const parts = splitCompound(word)
-    if (parts) { const e = parts.join(" "); found.push(e); out.push(e); foreign = true; continue }
+    // Both halves known ("laufschuhe" → "running shoes"): a translation. Only the end known
+    // ("rijksmuseum" → museum): probably a name, so the word itself stays in ("rijksmuseum museum").
+    if (parts && parts.length === 2) { const e = parts.join(" "); found.push(e); out.push(e); foreign = true; continue }
+    if (parts) { found.push(parts[0]); out.push(`${word} ${parts[0]}`); continue }
     out.push(word)
   }
   // Leftover one- and two-letter words in a foreign query are articles and prepositions ("de", "mi").

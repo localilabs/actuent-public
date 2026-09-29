@@ -1,0 +1,17 @@
+name: Check Search After Deploy
+on:
+  deployment_status:
+  workflow_dispatch:
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Give the new deploy a moment to take over from the old one.
+      - run: sleep 30
+      - run: node scripts/smoke.mjs

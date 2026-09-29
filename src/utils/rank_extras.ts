@@ -27,7 +27,7 @@ const CATEGORY_WORDS: [RegExp, string[]][] = [
   [/\b(food delivery|takeaway|take-away)\b/, ["food_delivery"]],
   [/\b(software|app|saas|crm|project management|note taking|password manager|website builder|email marketing|video conferencing|online store platform|design tool)\b/, ["software", "developer", "ai"]],
   [/\b(accounting|bookkeeping|invoic(e|es|ing)|payroll|payments?|banking|bank|budgeting|tax)\b/, ["finance", "software"]],
-  [/\b(api|sdk|hosting|database|devops|code|developer)\b/, ["developer"]],
+  [/\b(api|sdk|hosting|database|devops|code|developer|cloud|domain names?|vpn|servers?)\b/, ["developer", "software"]],
   [/\b(ai|chatbot|llm|gpt)\b/, ["ai"]],
   [/\b(news|newspaper|headlines)\b/, ["news_media"]],
   [/\b(courses?|learn|learning|school|university|tutoring)\b/, ["education"]],
@@ -158,4 +158,37 @@ export function diversify<T extends { domain: string, name?: string }>(results: 
     top.push(r)
   }
   return [...top, ...later]
+}
+
+// ----- Same meaning, different words -----
+// Without waiting for the LLM: "bicycle shop" finds bike shops, "car hire" finds car rental.
+// Used for ranking (a synonym counts as the word) and in the fast lookup of well-known sites.
+const SYNONYM_GROUPS: string[][] = [
+  ["bike", "bicycle", "cycling", "cycle"], ["sneaker", "trainer"], ["shop", "store"], ["flight", "airline"],
+  ["car rental", "car hire", "rent a car"], ["hotel", "accommodation"], ["laptop", "notebook"], ["phone", "smartphone", "mobile phone"],
+  ["tv", "television"], ["sofa", "couch"], ["apartment", "flat"], ["film", "movie"], ["holiday", "vacation"],
+  ["lawyer", "attorney", "solicitor"], ["doctor", "physician", "gp"], ["food delivery", "takeaway"], ["course", "class"],
+  ["job", "career", "vacancy"], ["cinema", "movie theater"], ["pharmacy", "chemist", "drugstore"], ["hairdresser", "hair salon"],
+  ["email marketing", "newsletter"], ["video conferencing", "video call", "online meeting"], ["website builder", "site builder"]
+]
+const SYNONYMS = new Map<string, string[]>()
+for (const group of SYNONYM_GROUPS) for (const w of group) SYNONYMS.set(w, group.filter(x => x !== w))
+
+// The other words for a (stemmed) word: "bicycle" → ["bike", "cycling", "cycle"].
+export function synonymsOf(word: string): string[] {
+  return SYNONYMS.get(word) || SYNONYMS.get(word.replace(/s$/, "")) || []
+}
+
+// The search with synonyms swapped in, at most 3 versions: "bicycle shop berlin" → "bike shop berlin", …
+export function synonymVariants(query: string): string[] {
+  const q = query.toLowerCase()
+  const out: string[] = []
+  // Phrases first ("car hire"), then single words.
+  for (const [w, others] of [...SYNONYMS.entries()].sort((a, b) => b[0].length - a[0].length)) {
+    const re = new RegExp(`\\b${w}s?\\b`)
+    if (!re.test(q)) continue
+    for (const o of others) if (out.length < 3) out.push(q.replace(re, o))
+    break
+  }
+  return out
 }
