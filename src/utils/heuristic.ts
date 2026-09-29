@@ -138,7 +138,10 @@ export function heuristicLAWP(domain: string, raw: string, isHtml: boolean): any
   // Non-English titles would leak the original language, so foreign sites are named by brand.
   const brand = domain.replace(/^www\./, "").split(".")[0]
   const brandName = brand.charAt(0).toUpperCase() + brand.slice(1)
-  const name = (siteName || (foreign ? brandName : title.split(/\s[|\-–—:]\s/)[0]) || brandName).trim().slice(0, 80)
+  // A site's own name is fine in any language ("Musée du Louvre", "Tivoli"): it's what people
+  // search for. Only descriptive text has to be English. Foreign sites fall back to the brand.
+  const ownName = (siteName || title.split(/\s[|\-–—:·]\s/)[0] || "").trim()
+  const name = (ownName && ownName.length <= 60 ? ownName : brandName).trim().slice(0, 80)
   const content = foreign
     ? `${name} is a ${LANGUAGE_NAMES[language!] || language}-language website at ${domain}.`
     : (description || title).slice(0, 400)

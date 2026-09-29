@@ -11,6 +11,10 @@ export type Business = {
   geo?: { lat: number, lon: number }, opening_hours?: OpeningHours[]
   rating?: { value: number, count?: number, best?: number }
   offers?: Offer[]
+  // From OpenStreetMap: "vegan", "vegetarian", "gluten_free", "wheelchair", "outdoor_seating", "wifi", "dogs", "kids"; hotel stars.
+  features?: string[]
+  stars?: number
+  source?: string
 }
 
 const BUSINESS_TYPES = /LocalBusiness|Organization|Store|Restaurant|CafeOrCoffeeShop|BarOrPub|FoodEstablishment|HealthAndBeautyBusiness|HairSalon|BeautySalon|DaySpa|MedicalBusiness|Dentist|Physician|Hotel|LodgingBusiness|AutoRepair|AutomotiveBusiness|ProfessionalService|LegalService|FinancialService|RealEstateAgent|SportsActivityLocation|ExerciseGym|EntertainmentBusiness|TouristAttraction|ShoppingCenter|HomeAndConstructionBusiness|EducationalOrganization|Library|Museum/i
