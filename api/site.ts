@@ -457,7 +457,7 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
 <div class="muted" style="margin-top:8px">Last updated ${site.updated_at ? esc(new Date(site.updated_at).toUTCString().slice(5, 16)) : "recently"}${site.language && site.language !== "en" ? ` · original language: ${esc(site.language)}` : ""}</div></div>
 
 <h2>Is this your site?</h2><div class="card cta"><div>Claim ${esc(domain)} to edit what AI agents see, make your actions executable, and show your score:</div>
-<div style="margin-top:10px"><a href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download your lawp.json →</a> &nbsp; <a href="https://analytics.actuent.ai">Claim this site →</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
+<div style="margin-top:10px"><a href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download your lawp.json →</a> &nbsp; <a href="https://analytics.actuent.ai/?edit=${esc(domain)}">${site.owner_key ? "Edit what agents see →" : "Claim and edit this site →"}</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
 <div class="muted" style="margin-top:10px">Show your score: <code>&lt;script src="${BASE}/badge.js" data-domain="${esc(domain)}" async&gt;&lt;/script&gt;</code> or the image <code>${BASE}/badge.svg?domain=${esc(domain)}&amp;style=card</code></div></div>`
 
   const hours = (b?.opening_hours || []).filter((h: any) => Array.isArray(h.days) && h.opens && h.closes)

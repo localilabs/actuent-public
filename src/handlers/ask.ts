@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { answerFromSite, questionKeywords } from "../utils/answer"
 import { rateLimit, ipHash } from "../utils/limits"
+import { later } from "../utils/later"
 
 // /api/ask?domain=…&q=…: answer a question from one website's own pages ("is there parking?"),
 // in the site's own words with the page each sentence came from. No AI involved: sentences that
@@ -29,7 +30,14 @@ export default async function ask(req: VercelRequest, res: VercelResponse) {
   const words = questionKeywords(q)
   const actions = (site.actions || []).filter((a: any) => words.some(w => `${a.name} ${(a.intent || []).join(" ")}`.toLowerCase().includes(w)))
     .slice(0, 3).map((a: any) => ({ id: a.id, name: a.name, description: a.description, ...(a.url ? { url: a.url } : {}) }))
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  // For the site's owner (Analytics → questions visitors ask): the question alone, grouped, never
+  // who asked. Anything with an email address or a long number (phone, order no.) isn't kept.
+  const found = !!answer?.sentences?.length
+  if (!/@|\d{5,}/.test(q)) await later(fetch(`${SUPABASE_URL}/rest/v1/rpc/add_ask_question`, {
+    method: "POST", headers: { ...HEADERS, "Content-Type": "application/json" }, body: JSON.stringify({ d: site.domain, q: q.toLowerCase().replace(/\s+/g, " ").replace(/[?!.]+$/, "").trim(), answered: found }), signal: AbortSignal.timeout(3000)
+  }))
+  // Not cached at the CDN: each question is counted.
+  res.setHeader("Cache-Control", "private, no-store")
   return res.status(200).json({
     domain: site.domain, name: site.name || site.domain, question: q,
     sentences: answer?.sentences || [], actions,
