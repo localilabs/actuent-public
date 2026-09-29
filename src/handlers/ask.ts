@@ -19,7 +19,9 @@ export default async function ask(req: VercelRequest, res: VercelResponse) {
   if (limit.limited) return res.status(429).json({ error: "Rate limit exceeded", message: `Too many questions. Please wait ${limit.reset} seconds.`, retry_after_seconds: limit.reset })
 
   const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions&domain=in.(${encodeURIComponent(`"${domain}","www.${domain}"`)})&limit=1`, { headers: HEADERS, signal: AbortSignal.timeout(4000) }).catch(() => null)
-  const site = r?.ok ? (await r.json())[0] : null
+  // A slow or failing lookup isn't "not on Actuent": say it's busy, so people try again.
+  if (!r?.ok) return res.status(503).json({ domain, question: q, sentences: [], message: "Sorry — too many people are using Actuent right now. Please try again in a minute.", retry_after_seconds: 30 })
+  const site = (await r.json())[0]
   if (!site) return res.status(404).json({ domain, question: q, sentences: [], message: `${domain} isn't on Actuent yet. Search for it at humans.actuent.ai and it will be added.` })
 
   const answer = await answerFromSite(site, questionKeywords(q, `${site.name || ""} ${domain}`)).catch(() => null)
