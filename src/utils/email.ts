@@ -26,6 +26,7 @@ export function welcomeEmail(domain: string): { subject: string, html: string } 
   return {
     subject: `${domain} is live on Actuent`,
     html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a;line-height:1.6">
+<img src="https://api.actuent.ai/assets/lawpy/lawpy-dance.gif" width="108" height="72" alt="Lawpy, the Actuent mascot, dancing" style="display:block;margin:0 0 6px;border:0">
 <h2 style="margin:0 0 12px">${d} is live on Actuent 🎉</h2>
 <p>You've claimed <strong>${d}</strong>. AI agents using Actuent (in ChatGPT, Claude and other apps) now see the version you control.</p>
 <p><a href="${page}" style="display:inline-block;background:#ff8a3d;color:#0a0a0a;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:700">See what AI agents see →</a></p>

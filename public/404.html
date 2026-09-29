@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Page not found — Actuent</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/png" href="https://api.actuent.ai/assets/actuent-logo.png">
+  <script src="/assets/lawpy.js" defer></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0a0a0a;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 16px;text-align:center}
+    h1{font-size:26px;letter-spacing:-1px;margin:22px 0 10px}
+    p{color:#a8a8b6;font-size:14px;line-height:1.6;max-width:440px}
+    a{color:#ff8a3d;text-decoration:none}
+    a:hover{text-decoration:underline}
+    .links{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:24px}
+    .links a{background:#13131a;border:1px solid #2a2a34;border-radius:8px;padding:8px 14px;font-size:13px;color:#dcdce3}
+    .links a:hover{border-color:#ff8a3d;text-decoration:none}
+    code{background:#17171f;border:1px solid #2a2a34;padding:1px 6px;border-radius:4px;font-size:12px;color:#f0f0f0}
+  </style>
+</head>
+<body>
+  <lawpy-mascot state="think" scale="7" title="Lawpy is looking everywhere"></lawpy-mascot>
+  <h1>Lawpy couldn't find that page</h1>
+  <p>He looked everywhere, including under the sitemap. <span id="path"></span></p>
+  <div class="links">
+    <a href="https://humans.actuent.ai">Search Actuent</a>
+    <a href="https://api.actuent.ai/site">Directory of sites</a>
+    <a href="https://api.actuent.ai/trends">Search trends</a>
+    <a href="https://docs.actuent.ai">Docs</a>
+    <a href="https://api.actuent.ai/openapi.json">OpenAPI</a>
+  </div>
+  <script>
+    // /something.com that isn't a page: offer that site's Actuent page.
+    var bit = location.pathname.replace(/^\/+|\/+$/g, "")
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(bit)) {
+      var el = document.getElementById("path")
+      el.innerHTML = 'Looking for <a></a>?'
+      el.firstElementChild.href = "https://api.actuent.ai/site/" + bit.toLowerCase()
+      el.firstElementChild.textContent = "what agents see on " + bit.toLowerCase()
+    }
+  </script>
+</body>
+</html>

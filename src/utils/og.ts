@@ -1,30 +1,45 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { lawpyRects, LAWPY_FRAMES } from "./lawpy_frames"
 
-// Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…
+// Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…&lawpy=wave
+// Lawpy stands in the corner; `lawpy` picks his pose (idle, wave, talk, think, dance; site pages
+// match it to the score). Drawn from pixel grids (lawpy_frames.ts), so nothing is fetched.
 // Runs on Node: the Edge build here can't compile @vercel/og's WebAssembly renderer. Served by
 // api/badge.ts (/og → ?op=og) to stay within the Hobby plan's 12-function limit.
 
 const h = (type: string, style: Record<string, unknown>, children?: unknown) => ({ type, props: { style, children } })
+
+// The pose frame that reads best as a still image.
+const POSE: Record<string, number> = { wave: 2, dance: 4, think: 3, talk: 2, idle: 0 }
+
+function lawpy(state: string, scale: number) {
+  const pixels = lawpyRects(state, POSE[state] || 0)
+  return h("div", { position: "absolute", right: "72px", bottom: "112px", width: `${18 * scale}px`, height: `${12 * scale}px`, display: "flex" },
+    pixels.map(p => h("div", { position: "absolute", left: `${p.x * scale}px`, top: `${p.y * scale}px`, width: `${p.w * scale}px`, height: `${scale}px`, background: p.fill })))
+}
 
 export async function ogImage(req: VercelRequest, res: VercelResponse) {
   const q = new URL(req.url || "/", "https://api.actuent.ai").searchParams
   const title = (q.get("title") || "The Internet for AI").slice(0, 90)
   const subtitle = (q.get("subtitle") || "Search engine for AI agents · structured data for any website").slice(0, 140)
   const tag = (q.get("tag") || "actuent.ai").slice(0, 40)
+  const pose = q.get("lawpy") || "wave"
+  const state = pose in LAWPY_FRAMES && pose !== "blink" ? pose : "wave"
 
-  const card = h("div", { width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "72px", background: "#0a0a0a", color: "#f5f5f7", fontFamily: "sans-serif" }, [
+  const card = h("div", { width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "72px", background: "#0a0a0a", color: "#f5f5f7", fontFamily: "sans-serif", position: "relative" }, [
     h("div", { display: "flex", alignItems: "center", gap: "20px" }, [
       h("div", { width: "64px", height: "64px", borderRadius: "14px", background: "#ff8a3d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "44px", fontWeight: 700, color: "#fff" }, "A"),
       h("div", { fontSize: "34px", fontWeight: 700 }, "Actuent")
     ]),
-    h("div", { display: "flex", flexDirection: "column", gap: "20px" }, [
+    h("div", { display: "flex", flexDirection: "column", gap: "20px", paddingRight: "300px" }, [
       h("div", { fontSize: title.length > 40 ? "64px" : "78px", fontWeight: 800, letterSpacing: "-2px", lineHeight: 1.05 }, title),
       h("div", { fontSize: "32px", color: "#c4c4cf", lineHeight: 1.3 }, subtitle)
     ]),
     h("div", { display: "flex", justifyContent: "space-between", alignItems: "center" }, [
       h("div", { fontSize: "26px", color: "#ff8a3d", fontWeight: 700 }, tag),
       h("div", { width: "240px", height: "10px", borderRadius: "5px", background: "#ff8a3d" })
-    ])
+    ]),
+    lawpy(state, 14)
   ])
 
   // The image is rendered fully before responding: a streamed ImageResponse arrived empty on Vercel.

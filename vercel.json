@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "regions": [
+    "dub1"
+  ],
   "builds": [
     {
       "src": "api/search.ts",
@@ -76,6 +79,10 @@
     },
     {
       "src": "public/actuent.postman_collection.json",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "public/404.html",
       "use": "@vercel/static"
     }
   ],
@@ -288,6 +295,11 @@
     {
       "src": "/",
       "dest": "/public/index.html"
+    },
+    {
+      "src": "/(.*)",
+      "status": 404,
+      "dest": "/public/404.html"
     }
   ]
 }

@@ -270,8 +270,8 @@ ${userFacing.length ? `<div class="muted" style="margin-top:8px">${userFacing.le
 <details><summary>Let them in (add to robots.txt)</summary><div class="muted" style="margin-top:8px">${userFacing.length ? "These lines allow the search and assistant bots while leaving training bots blocked." : "Add these lines to allow them."} Put them above any <code>User-agent: *</code> group.</div><pre><code>${esc(fix)}</code></pre></details></div>`
 }
 
-function ogImage(title: string, subtitle: string, tag: string) {
-  return `${BASE}/og?${new URLSearchParams({ title, subtitle, tag })}`
+function ogImage(title: string, subtitle: string, tag: string, lawpy = "wave") {
+  return `${BASE}/og?${new URLSearchParams({ title, subtitle, tag, lawpy })}`
 }
 
 async function topCities(): Promise<string> {
@@ -303,7 +303,7 @@ function notFound(res: VercelResponse, domain: string) {
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=600")
   return res.status(404).send(layout({
     title: `${domain} — not on Actuent yet`, description: `${domain} isn't in the Actuent index yet.`, canonical: `${BASE}/site/${domain}`,
-    image: ogImage("Not indexed yet", domain, "api.actuent.ai"), noindex: true,
+    image: ogImage("Not indexed yet", domain, "api.actuent.ai", "think"), noindex: true,
     body: `<lawpy-mascot state="think" scale="5" style="margin-bottom:12px"></lawpy-mascot><h1>${esc(domain)} isn't on Actuent yet</h1><p class="lead">Search for it on <a href="https://humans.actuent.ai">humans.actuent.ai</a> and Actuent will index it, or <a href="https://docs.actuent.ai/#platforms">publish your own LAWP</a>.</p>`
   }))
 }
@@ -480,7 +480,7 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: `${name} (${domain}) — AI agent profile | Actuent`, description, canonical: `${BASE}/site/${domain}`,
-    image: ogImage(`${name} is ${score}/100 agent-ready`, `What AI agents see on ${domain}: pages, actions${products.length ? " and products" : ""}`, `api.actuent.ai/site/${domain}`),
+    image: ogImage(`${name} is ${score}/100 agent-ready`, `What AI agents see on ${domain}: pages, actions${products.length ? " and products" : ""}`, `api.actuent.ai/site/${domain}`, score >= 90 ? "dance" : score >= 50 ? "wave" : "think"),
     noindex: thin, jsonLd, body
   }))
 }

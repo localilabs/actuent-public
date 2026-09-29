@@ -21,6 +21,21 @@
     header img { height: 24px; }
     header a { font-size: 12px; }
     #lawpy { margin-bottom: 18px; }
+    /* Lawpy walking under the search box while a slow search loads. */
+    #walk { width: 100%; max-width: 600px; height: 26px; position: relative; overflow: hidden; margin: -6px 0 6px; display: none; }
+    #walk.on { display: block; }
+    #walk span { position: absolute; bottom: 0; left: -40px; width: 36px; height: 24px; image-rendering: pixelated; background: url(/assets/lawpy/dance.svg?v=2) no-repeat 0 100% / 432px 24px; animation: lp-steps 1.2s steps(12) infinite, lp-walk 5s linear infinite; }
+    @keyframes lp-steps { to { background-position: -432px 100%; } }
+    @keyframes lp-walk { from { left: -40px; } to { left: 100%; } }
+    /* Search "lawpy": he dances across the page, and his profile card appears. */
+    #lawpy-parade { position: fixed; bottom: 24px; left: -120px; z-index: 30; pointer-events: none; animation: parade 7s linear forwards; }
+    @keyframes parade { to { left: calc(100% + 20px); } }
+    .profile { display: flex; gap: 22px; align-items: center; background: #13131a; border: 1px solid #2a2a34; border-radius: 12px; padding: 22px; text-align: left; }
+    .profile h2 { font-size: 20px; margin-bottom: 4px; }
+    .profile dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; color: #c4c4cf; margin-top: 10px; }
+    .profile dt { color: #8e8e9c; }
+    @media (prefers-reduced-motion: reduce) { #walk span, #lawpy-parade { animation: none; } #lawpy-parade { display: none; } }
+    @media (max-width: 600px) { .profile { flex-direction: column; text-align: center; } }
     .badge { background: #17171f; border: 1px solid #34343f; color: #a8a8b6; font-size: 10px; padding: 4px 14px; border-radius: 20px; margin-bottom: 24px; letter-spacing: 2px; text-transform: uppercase; }
     h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; letter-spacing: -1px; text-align: center; }
     h1 span { color: #8e8e9c; }
@@ -115,8 +130,10 @@
 <body>
 <div id="busy-banner" role="status" style="display:none;background:#2a1d10;border-bottom:1px solid #ff8a3d;color:#ffd9bf;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:10px 16px;text-align:center;position:fixed;top:0;left:0;right:0;z-index:20"></div>
 <script>
-// "Busy right now" banner (api.actuent.ai/api/status), refreshed every minute.
+// "Busy right now" banner (api.actuent.ai/api/status), refreshed every 2 minutes while the tab is open
+// in front (a hidden tab doesn't ask).
 (function busy() {
+  if (document.hidden) { setTimeout(busy, 120000); return }
   fetch("https://api.actuent.ai/api/status").then(function(r) { return r.json() }).then(function(s) {
     var b = document.getElementById("busy-banner")
     // Lawpy thinks alongside the message (public/assets/lawpy.js).
@@ -126,7 +143,7 @@
       b.style.display = "block"
     } else b.style.display = "none"
   }).catch(function() {})
-  setTimeout(busy, 60000)
+  setTimeout(busy, 120000)
 })()
 </script>
 
@@ -158,6 +175,7 @@
   <button class="chip" type="button">nike.com</button>
 </div>
 
+<div id="walk" aria-hidden="true"><span></span></div>
 <div id="status" role="status" aria-live="polite"></div>
 <div class="results" id="results"></div>
 
@@ -364,6 +382,7 @@ function doSearch() {
   var query = document.getElementById("query").value.trim()
   if (!query) return
   try { history.replaceState(null, "", "?q=" + encodeURIComponent(query)) } catch (e) {}
+  if (/^lawpy[!?.]*$/i.test(query)) return meetLawpy()
   document.title = query + " — Actuent"
 
   var btn = document.getElementById("btn"), status = document.getElementById("status"), results = document.getElementById("results")
@@ -374,6 +393,7 @@ function doSearch() {
   var started = Date.now()
   lawpy("think")
   var id = ++searchId, finished = false
+  loading(true)
   // The quick first answer (best-known sites, in well under a second) while the full search runs.
   fetch("https://api.actuent.ai/api/search?fast=1&q=" + encodeURIComponent(query)).then(function(r) { return r.ok ? r.json() : null }).then(function(quick) {
     if (finished || id !== searchId || !quick || !quick.results || !quick.results.length) return
@@ -393,6 +413,7 @@ function doSearch() {
   .then(function(data) {
     finished = true
     if (id !== searchId) return
+    loading(false)
     btn.disabled = false
     btn.textContent = "Search"
     var sites = data.results || []
@@ -422,6 +443,7 @@ function doSearch() {
   .catch(function(err) {
     finished = true
     if (id !== searchId) return
+    loading(false)
     btn.disabled = false
     btn.textContent = "Search"
     status.textContent = ""
@@ -435,6 +457,57 @@ function lawpy(state, loops) {
   if (el && el.play) el.play(state, loops ? { loops: loops, then: "idle" } : {})
 }
 function searchFor(v) { document.getElementById("query").value = v; doSearch(); window.scrollTo({ top: 0, behavior: "smooth" }) }
+
+// While a search runs: Lawpy thinks in the browser tab (the tab icon cycles through his thinking
+// frames, drawn from /assets/lawpy/think.svg), and walks under the search box if it takes over a second.
+var tabIcon = { timer: null, walkTimer: null, frames: null, still: document.querySelector('link[rel="icon"]').href }
+function loading(on) {
+  var icon = document.querySelector('link[rel="icon"]'), walk = document.getElementById("walk")
+  clearInterval(tabIcon.timer); clearTimeout(tabIcon.walkTimer)
+  if (!on) { icon.href = tabIcon.still; walk.className = ""; return }
+  tabIcon.walkTimer = setTimeout(function() { walk.className = "on" }, 1000)
+  thinkingFrames(function(frames) {
+    var i = 0
+    clearInterval(tabIcon.timer)
+    tabIcon.timer = setInterval(function() { icon.href = frames[i++ % frames.length] }, 250)
+  })
+}
+function thinkingFrames(done) {
+  if (tabIcon.frames) return done(tabIcon.frames)
+  var img = new Image()
+  img.onload = function() {
+    var frames = []
+    for (var f = 0; f < 6; f++) {
+      var c = document.createElement("canvas"); c.width = c.height = 64
+      var g = c.getContext("2d"); g.imageSmoothingEnabled = false
+      g.drawImage(img, f * 17, 0, 17, 11, 6, 15, 51, 33)
+      frames.push(c.toDataURL("image/png"))
+    }
+    tabIcon.frames = frames
+    done(frames)
+  }
+  img.src = "/assets/lawpy/think.svg"
+}
+
+// The easter egg: search "lawpy".
+function meetLawpy() {
+  document.title = "Lawpy — Actuent"
+  document.getElementById("status").textContent = ""
+  lawpy("dance", 6)
+  var old = document.getElementById("lawpy-parade"); if (old) old.remove()
+  var parade = document.createElement("lawpy-mascot")
+  parade.id = "lawpy-parade"; parade.setAttribute("state", "dance"); parade.setAttribute("scale", "6"); parade.setAttribute("aria-hidden", "true")
+  document.body.appendChild(parade)
+  setTimeout(function() { parade.remove() }, 7200)
+  document.getElementById("results").innerHTML = '<div class="profile"><lawpy-mascot state="wave" loops="3" then="idle" scale="8"></lawpy-mascot><div>' +
+    '<h2>Lawpy</h2><div class="muted small">Actuent’s mascot · on duty since September 2026</div><dl>' +
+    '<dt>Job</dt><dd>Reads websites so AI agents don’t have to squint</dd>' +
+    '<dt>Loves</dt><dd>Tidy lawp.json files, opening hours in schema.org, fast pages</dd>' +
+    '<dt>Can’t stand</dt><dd>Cookie walls, parked domains, “click here”</dd>' +
+    '<dt>Moves</dt><dd>Waving, thinking, talking, and a 12-step dance (for scores of 90+)</dd>' +
+    '<dt>Find him</dt><dd>Site pages, badges, the docs, and your terminal (<code>npx @actuent/lawp</code>)</dd>' +
+    '</dl></div></div>'
+}
 </script>
 <script>
 // Shareable searches (?q=…), example chips, "/" to focus the search box, and autocomplete (api/autocomplete).
