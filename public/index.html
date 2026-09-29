@@ -373,7 +373,7 @@ function doSearch() {
 
     var note = data.message ? '<div class="empty" style="padding:0 0 14px">' + esc(data.message) + '</div>' : ""
     if (!sites.length && !extras) {
-      results.innerHTML = '<div class="empty">' + esc(data.message || ('Nothing found for “' + query + '” yet.')) + '</div>' + hintsHtml(data)
+      results.innerHTML = '<div class="empty"><lawpy-mascot state="think" scale="4" style="display:block;margin:0 auto 12px"></lawpy-mascot>' + esc(data.message || ('Nothing found for “' + query + '” yet.')) + '</div>' + hintsHtml(data)
       return
     }
     var compared = data.comparison && data.comparison.sites || []

@@ -11,7 +11,7 @@ function token(domain: string): string {
   return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY).update(`score-emails:${domain}`).digest("hex").slice(0, 32)
 }
 
-const page = (title: string, text: string) => `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — Actuent</title><meta name="robots" content="noindex"><style>body{background:#0a0a0a;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:64px 16px;text-align:center}p{color:#c4c4cf}a{color:#ff8a3d}</style></head><body><h1>${title}</h1><p>${text}</p></body></html>`
+const page = (title: string, text: string) => `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — Actuent</title><meta name="robots" content="noindex"><style>body{background:#0a0a0a;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:64px 16px;text-align:center}p{color:#c4c4cf}a{color:#ff8a3d}</style><script src="/assets/lawpy.js" defer></script></head><body><lawpy-mascot state="wave" loops="3" then="idle" scale="5" style="margin-bottom:16px"></lawpy-mascot><h1>${title}</h1><p>${text}</p></body></html>`
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "no-store")
