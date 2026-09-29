@@ -50,7 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const style = req.query.style === "card" ? "card" : "compact"
 
   if (json) {
-    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
     if (!domain) return res.status(400).json({ error: "Add ?domain=yoursite.com" })
     try {
       const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=*&domain=eq.${encodeURIComponent(domain)}`, {
@@ -74,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).send(badge("Listed on", "Actuent", "#f5f5f7", 160))
   }
 
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=*&domain=eq.${encodeURIComponent(domain)}`, {
       headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }

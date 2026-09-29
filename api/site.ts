@@ -85,7 +85,7 @@ async function eventsPage(res: VercelResponse, citySlug: string, format: "page" 
 <h1>What's on in ${esc(city)}</h1>
 <p class="lead">${events.length ? `${events.length} upcoming events` : "No upcoming events yet"} that venues and organisers publish on their own websites. Subscribe in your calendar: <a href="${ics.replace(/^https/, "webcal")}">add to calendar</a> · <code>${esc(ics)}</code></p>
 ${[...byDay.entries()].map(([day, list]) => `<h2>${esc(day)}</h2><div class="card list">${list.map(e => `<a href="${esc(e.url)}" rel="nofollow noopener" target="_blank"><span>${esc(e.name)} <span class="muted">${esc([new Date(e.start_date).toISOString().slice(11, 16) + " UTC", e.venue].filter(Boolean).join(" · "))}</span></span><span>${e.price != null ? `<span class="tag">${esc(e.price)} ${esc(e.currency || "")}</span>` : ""}${e.online ? '<span class="tag">Online</span>' : ""}</span></a>`).join("")}</div>`).join("")}`
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(events.length ? 200 : 404).send(layout({
     title: `What's on in ${city} — Actuent`, description: `Upcoming events in ${city}, from venues' own websites.`, canonical: `${BASE}/site/in/${citySlug}/whats-on`,
     image: ogImage(`What's on in ${city}`, "Events from venues' own websites", `api.actuent.ai/site/in/${citySlug}`), noindex: events.length < 3, body
@@ -128,7 +128,7 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
 <h1>${esc(label)} in ${esc(city)}</h1>
 <p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see. <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on in ${esc(city)} →</a></p>
 ${sections}`
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: `${label} in ${city} — Actuent`, description: `${listed.length} ${label.toLowerCase()} in ${city} that AI agents can read and act on.`,
     canonical: `${BASE}/site/in/${citySlug}${category ? `/${category}` : ""}`, image: ogImage(`${label} in ${city}`, "Agent-ready businesses, by Actuent", `api.actuent.ai/site/in/${citySlug}`),
@@ -292,7 +292,7 @@ async function directory(res: VercelResponse) {
 ${cities}
 <h2>Recently updated</h2>
 <div class="card list">${sites.map(s => `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc(s.domain)}</span></span><span>${s.native ? '<span class="tag hot">Native LAWP</span>' : ""}<span class="tag">${(s.actions || []).length} actions</span></span></a>`).join("")}</div>`
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: "Agent-ready websites — Actuent", description: "Websites AI agents can understand and act on, indexed by Actuent.",
     canonical: `${BASE}/site`, image: ogImage("Agent-ready websites", "Sites AI agents can understand and act on", "api.actuent.ai/site"), body
@@ -317,7 +317,7 @@ async function weeklyPage(res: VercelResponse, which: string) {
     const posts = await rows("weekly_reports?select=week,title,summary,created_at&order=week.desc&limit=30")
     const xml = (v: string) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     res.setHeader("Content-Type", "application/rss+xml; charset=utf-8")
-    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
     return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>State of the AI web — Actuent</title><link>${BASE}/state/weekly</link><description>Every Monday: how much of the web AI agents can read and act on.</description><language>en</language>
 ${posts.map(p => `<item><title>${xml(p.title)}</title><link>${BASE}/state/weekly/${p.week}</link><guid>${BASE}/state/weekly/${p.week}</guid><pubDate>${new Date(p.created_at).toUTCString()}</pubDate><description>${xml(p.summary)}</description></item>`).join("\n")}
@@ -326,7 +326,7 @@ ${posts.map(p => `<item><title>${xml(p.title)}</title><link>${BASE}/state/weekly
   const crumbs: Crumb[] = [{ name: "State of the AI web", url: `${BASE}/state` }, { name: "Weekly", url: `${BASE}/state/weekly` }]
   if (which === "index") {
     const posts = await rows("weekly_reports?select=week,title,summary&order=week.desc&limit=100")
-    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
     return res.status(200).send(layout({
       title: "State of the AI web, weekly — Actuent", description: "Every Monday: how much of the web AI agents can read and act on, and what changed.",
       canonical: `${BASE}/state/weekly`, image: ogImage("State of the AI web", "Every Monday, from the Actuent index", "api.actuent.ai/state/weekly"),
@@ -362,7 +362,7 @@ ${d.top_queries?.length ? `<h2>What agents searched for</h2>${table(["Search", "
 ${d.top_sites?.length ? `<h2>Sites agents found most</h2>${table(["Site", "Appearances"], d.top_sites.map((s: any) => [`<a href="${BASE}/site/${esc(s.domain)}">${esc(s.domain)}</a>`, n(s.appearances)]))}` : ""}
 <p class="muted" style="margin-top:24px">${prev[0] ? `<a href="${BASE}/state/weekly/${esc(prev[0].week)}">← Week of ${esc(weekTitle(prev[0].week))}</a>` : ""}${prev[0] && next[0] ? " · " : ""}${next[0] ? `<a href="${BASE}/state/weekly/${esc(next[0].week)}">Week of ${esc(weekTitle(next[0].week))} →</a>` : ""}</p>
 <p class="muted">Figures come straight from the Actuent index; searches are aggregated and only plain words searched at least 3 times are shown. <a href="${BASE}/state/weekly.rss">RSS</a></p>`
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: `${post.title} — Actuent`, description: String(post.summary).slice(0, 160), canonical: `${BASE}/state/weekly/${week}`,
     image: ogImage("State of the AI web", `${d.readable_percent ?? ""}% of ${n(d.sites)} sites are AI-readable`, `Week of ${weekTitle(week)}`),
@@ -477,7 +477,7 @@ ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they ha
       entity
     ]
   }
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: `${name} (${domain}) — AI agent profile | Actuent`, description, canonical: `${BASE}/site/${domain}`,
     image: ogImage(`${name} is ${score}/100 agent-ready`, `What AI agents see on ${domain}: pages, actions${products.length ? " and products" : ""}`, `api.actuent.ai/site/${domain}`),

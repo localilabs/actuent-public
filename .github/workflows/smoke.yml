@@ -2,6 +2,10 @@ name: Check Search After Deploy
 on:
   deployment_status:
   workflow_dispatch:
+# A newer deploy cancels a check still running for an older one.
+concurrency:
+  group: smoke
+  cancel-in-progress: true
 jobs:
   smoke:
     if: github.event_name == 'workflow_dispatch' || (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')

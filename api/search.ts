@@ -16,9 +16,9 @@ import { answerSummary, QUESTION } from "../src/utils/summary"
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
-// The search log is written in batches: the first search starts a 5-second timer, and every search
-// that arrives meanwhile goes in the same insert (one database write for a burst of searches). The
-// timer runs after the response (later/waitUntil), so nothing is lost when the server goes idle.
+// The search log: searches that finish at the same moment on one server share one insert. No timer:
+// waiting (it used to wait 5 s for more searches) kept every function alive longer, and Vercel
+// bills memory for as long as a function is alive.
 const logBuffer: any[] = []
 async function flushSearchLog(): Promise<void> {
   const rows = logBuffer.splice(0, logBuffer.length)
@@ -37,8 +37,7 @@ async function flushSearchLog(): Promise<void> {
 async function trackSearch(query: string, domains: string[], tier: string, apiKey: string | null, durationMs?: number, resultCount?: number): Promise<void> {
   // Same columns in every row: a batch insert needs them to match.
   logBuffer.push({ query, domains, tier, api_key: apiKey ? keyHash(apiKey) : null, duration_ms: durationMs ?? null, result_count: resultCount ?? null })
-  if (logBuffer.length >= 25) return flushSearchLog()
-  if (logBuffer.length === 1) { await new Promise(r => setTimeout(r, 5000)); return flushSearchLog() }
+  return flushSearchLog()
 }
 
 // Launch-day caching: identical searches within 60s reuse the result instead of re-running search,
