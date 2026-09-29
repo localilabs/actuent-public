@@ -56,6 +56,13 @@
     .product img, .product .noimg { width: 100%; aspect-ratio: 1; object-fit: cover; background: #17171f; display: block; }
     .product .body { padding: 10px; font-size: 12px; line-height: 1.4; }
     .product .price { font-size: 14px; font-weight: 700; color: #f0f0f0; margin-top: 4px; }
+    .vs-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .vs-col { background:#0a0a0a; border:1px solid #2a2a34; border-radius:8px; padding:12px; min-width:0; }
+    .vs-row { display:grid; grid-template-columns:90px 1fr; gap:8px; padding:6px 0; border-top:1px solid #1f1f28; font-size:13px; line-height:1.45; }
+    .vs-row:first-of-type { margin-top:8px; }
+    .vs-k { color:#8e8e9c; font-size:12px; }
+    .vs-list { margin:0; padding-left:16px; }
+    @media (max-width:600px) { .vs-grid { grid-template-columns:1fr; } }
     .spark { display:block; color:#ff8a3d; margin-top:4px; }
     .low { display:inline-block; font-size:10px; color:#4ade80; border:1px solid rgba(74,222,128,.4); border-radius:20px; padding:1px 7px; margin-top:4px; }
     .more { margin-top:10px; border-top:1px solid #1f1f28; padding-top:10px; }
@@ -207,11 +214,37 @@ function answerHtml(a) {
     '<div class="muted small">' + esc(a.note || "") + '</div></div>'
 }
 
-// "notion vs obsidian": both sites head the results.
-function comparisonHtml(c) {
+// "notion vs obsidian": both sites side by side, then "people also compare" (sites like either).
+function comparisonHtml(c, results) {
   if (!c || !c.sites || c.sites.length < 2) return ""
-  return '<div class="box accent"><div class="section">Comparison</div><div class="vs">' + esc(c.sites[0]) + '<span>vs</span>' + esc(c.sites[1]) + '</div>' +
-    '<div class="muted small" style="margin-top:8px">' + esc(c.tip || "") + '</div></div>'
+  var sites = c.sites.slice(0, 2).map(function(d) { return (results || []).filter(function(r) { return r.domain === d })[0] || { domain: d } })
+  var col = function(site) {
+    var q = scoreLAWP(site), b = site.business || {}
+    var acts = (site.actions || []).slice(0, 6).map(function(a) { return '<li>' + esc(a.name || a.id) + (site.executable && a.endpoint ? ' <span class="run">RUN</span>' : '') + '</li>' }).join("")
+    var rows = [
+      ["What it is", esc(String(site.snippet || (Object.values(site.pages || {})[0] || {}).content || "—").slice(0, 220))],
+      ["Kind", esc(site.category ? String(site.category).replace(/_/g, " ") : "—")],
+      ["Agents can", acts ? '<ul class="vs-list">' + acts + '</ul>' : '<span class="muted">No actions yet</span>'],
+      ["Pages", String(Object.keys(site.pages || {}).length)],
+      b.rating ? ["Rating", "★ " + esc(b.rating.value)] : null,
+      b.address && b.address.city ? ["Where", esc(b.address.city)] : null,
+      site.open_now != null ? ["Open now", site.open_now ? '<span class="open">Yes</span>' : "No"] : null,
+      ["LAWP quality", '<span style="color:' + (q.score >= 80 ? "#4ade80" : q.score >= 50 ? "#ff8a3d" : "#a8a8b6") + '">' + q.score + '/100</span>'],
+      ["Updated", site.age_hours != null ? (site.age_hours < 48 ? site.age_hours + "h ago" : Math.round(site.age_hours / 24) + "d ago") : "—"]
+    ].filter(Boolean)
+    return '<div class="vs-col"><a class="site-domain" href="' + safeUrl(site.visit_url || ("https://" + site.domain)) + '" target="_blank" rel="noopener">' + esc(site.domain) + '</a><div class="site-name">' + esc(site.name && site.name !== site.domain ? site.name : "") + '</div>' +
+      rows.map(function(r) { return '<div class="vs-row"><div class="vs-k">' + r[0] + '</div><div>' + r[1] + '</div></div>' }).join("") + '</div>'
+  }
+  // People also compare: sites like either one, loaded after the page shows.
+  setTimeout(function() {
+    Promise.all(c.sites.slice(0, 2).map(function(d) { return fetch("https://api.actuent.ai/api/similar?domain=" + encodeURIComponent(d) + "&limit=4").then(function(r) { return r.json() }).catch(function() { return { sites: [] } }) })).then(function(all) {
+      var seen = {}, list = []
+      all.forEach(function(x) { (x.sites || []).forEach(function(s) { if (!seen[s.domain] && c.sites.indexOf(s.domain) < 0) { seen[s.domain] = 1; list.push(s.domain) } }) })
+      var el = document.getElementById("also"); if (el && list.length) el.innerHTML = 'People also compare: ' + list.slice(0, 6).map(function(d) { return searchLink(c.sites[0] + " vs " + d) }).join(" · ")
+    })
+  }, 0)
+  return '<div class="box accent"><div class="section">' + esc(c.sites[0]) + ' vs ' + esc(c.sites[1]) + '</div><div class="vs-grid">' + col(sites[0]) + col(sites[1]) + '</div>' +
+    '<div class="muted small" id="also" style="margin-top:10px"></div></div>'
 }
 
 function productsHtml(items) {
@@ -363,7 +396,7 @@ function doSearch() {
     btn.disabled = false
     btn.textContent = "Search"
     var sites = data.results || []
-    var extras = comparisonHtml(data.comparison) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
+    var extras = comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
     var parts = [sites.length ? sites.length + " site" + (sites.length !== 1 ? "s" : "") : "",
       data.products && data.products.length ? data.products.length + " product" + (data.products.length !== 1 ? "s" : "") : "",
       data.events && data.events.length ? data.events.length + " event" + (data.events.length !== 1 ? "s" : "") : ""].filter(Boolean)
