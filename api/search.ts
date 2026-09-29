@@ -11,6 +11,7 @@ import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from
 import { cleanName, snippet, notAResult } from "../src/utils/results"
 import { splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
+import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -348,6 +349,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const compared = await comparing
   const asked = await asking
   const answer = asked ? await answerFromSite(asked.site, asked.keywords) : null
+  // Pro: a short answer written from the top results, with sources, for question searches.
+  const summary = tier === "pro" && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
   const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
     .map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: compared ? "compared site" : "the site the question is about" }))
   if (firstUp.length) {
@@ -428,6 +431,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
     ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
+    ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
     ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
     // A search for places without a city: places near the searcher came first.
