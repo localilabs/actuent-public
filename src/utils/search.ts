@@ -426,14 +426,15 @@ const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 
 // opts.lite: heavy free use from one client (scraper guard, api/search.ts) — index only, no LLM,
 // live crawls or guessing. opts.places receives OpenStreetMap places for local searches.
-export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[] }
+// `slow` is set when a database search timed out or failed: the answer is thinner than usual.
+export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[], slow?: boolean }
 
 export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
   const isPro = tier === "pro"
   const parsed = parseFullUrl(query)
   let indexFailed = false
-  const onIndexFail = () => { indexFailed = true }
+  const onIndexFail = () => { indexFailed = true; opts.slow = true }
   const retryAfter = () => llmStatus(tier).retryAfterSeconds || 60
   // Checked only when a free search is about to use the LLM (one rate-limit hit per such search).
   let llmAllowed: boolean | null = null

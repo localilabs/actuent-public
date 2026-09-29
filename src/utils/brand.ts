@@ -97,10 +97,16 @@ const projectCache = new Map<string, { domains: string[], expires: number }>()
 export async function linkedProjects(site: any): Promise<any[]> {
   if (!site?.domain || (site.popularity_rank && site.popularity_rank <= 100000)) return []
   let domains = projectCache.get(site.domain)?.expires! > Date.now() ? projectCache.get(site.domain)!.domains : null
+  // Shared between servers for a week (name_websites, key "links:<domain>").
+  if (!domains) {
+    const saved = await rows(`name_websites?select=label,checked_at&query=eq.${encodeURIComponent(`links:${site.domain}`)}`, 1000)
+    if (saved.length && Date.parse(saved[0].checked_at) > Date.now() - 7 * 86400000) domains = String(saved[0].label || "").split(",").filter(Boolean)
+  }
   if (!domains) {
     try {
-      const r = await fetchPublic(`https://${site.domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(1500) })
-      const html = r?.ok ? (await r.text()).slice(0, 300_000) : ""
+      const r = await fetchPublic(`https://${site.domain}`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(2500) })
+      if (!r?.ok) throw new Error("homepage didn't answer")
+      const html = (await r.text()).slice(0, 300_000)
       const own = site.domain.replace(/^www\./, "")
       const found = new Set<string>()
       for (const m of html.matchAll(/href=["']https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi)) {
@@ -109,8 +115,14 @@ export async function linkedProjects(site: any): Promise<any[]> {
         found.add(d)
       }
       domains = [...found].slice(0, 8)
-    } catch { domains = [] }
-    projectCache.set(site.domain, { domains, expires: Date.now() + 6 * 3600_000 })
+      fetch(`${SUPABASE_URL}/rest/v1/name_websites?on_conflict=query`, {
+        method: "POST", headers: { ...HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({ query: `links:${site.domain}`, domain: null, label: domains.join(","), checked_at: new Date().toISOString() })
+      }).catch(() => {})
+    } catch { domains = null }
+    // A homepage that didn't answer is tried again in 5 minutes, not 6 hours.
+    projectCache.set(site.domain, { domains: domains || [], expires: Date.now() + (domains ? 6 * 3600_000 : 5 * 60_000) })
+    domains = domains || []
     if (projectCache.size > 500) projectCache.delete(projectCache.keys().next().value!)
   }
   if (!domains.length) return []

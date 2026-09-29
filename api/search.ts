@@ -10,7 +10,7 @@ import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
 import { cleanName, snippet, notAResult } from "../src/utils/results"
 import { splitCity, cityCountry } from "../src/utils/local"
-import { comparison, questionSite, answerFromSite } from "../src/utils/answer"
+import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -296,8 +296,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
   const nameTypos: string[] = []
+  const searchOpts: any = { lite, places, related, didYouMean: nameTypos }
   const [results, products, events] = await Promise.all([
-    searchSites(searchQuery, tier, timing, notices, { lite, places, related, didYouMean: nameTypos }).then(r => { sitesMs = Date.now() - t0; return r }),
+    searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
     isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
   ])
@@ -335,7 +336,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const seenHost = new Set<string>()
   const shown = withoutHidden(results as any[], searchQuery).filter((r: any) => {
     if (notAResult(r)) return false
-    const host = String(r.domain).replace(/^www\./, "")
+    // "localilabs.com/" (a row saved with a trailing slash) is the same site as localilabs.com.
+    const host = String(r.domain).replace(/^www\./, "").replace(/\/+$/, "")
     if (seenHost.has(host)) return false
     seenHost.add(host)
     return true
@@ -397,7 +399,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   else if (results.length > 0 || products.length > 0) {
     cacheSet(key, body)
     // Only full answers are shared for 30 minutes: a thin one may be a slow moment in the database.
-    if (results.length >= 3 || isDomainQuery) await later(sharedCacheSet(key, body))
+    // …and never one from a slow moment (a search timed out, or "A vs B" couldn't find both sites).
+    const thin = searchOpts.slow || (!compared && !isDomainQuery && !!comparisonSides(typed))
+    if ((results.length >= 3 || isDomainQuery) && !thin) await later(sharedCacheSet(key, body))
   }
   res.setHeader("X-Search-Time", String(Date.now() - requestStart))
   return res.status(200).json(present(body, params))
