@@ -56,6 +56,15 @@
     .product img, .product .noimg { width: 100%; aspect-ratio: 1; object-fit: cover; background: #17171f; display: block; }
     .product .body { padding: 10px; font-size: 12px; line-height: 1.4; }
     .product .price { font-size: 14px; font-weight: 700; color: #f0f0f0; margin-top: 4px; }
+    .spark { display:block; color:#ff8a3d; margin-top:4px; }
+    .low { display:inline-block; font-size:10px; color:#4ade80; border:1px solid rgba(74,222,128,.4); border-radius:20px; padding:1px 7px; margin-top:4px; }
+    .more { margin-top:10px; border-top:1px solid #1f1f28; padding-top:10px; }
+    .askform { display:flex; gap:6px; }
+    .askform input { flex:1; min-width:0; background:#0a0a0a; border:1px solid #2a2a34; color:#f0f0f0; padding:7px 10px; border-radius:7px; font-size:13px; outline:none; }
+    .askform input:focus { border-color:#ff8a3d; }
+    .askform button { background:#1c1c25; color:#f0f0f0; border:1px solid #2a2a34; border-radius:7px; padding:0 12px; font-size:12px; cursor:pointer; }
+    .linkbtn { background:none; border:none; color:#ff8a3d; font-size:12px; cursor:pointer; padding:6px 0 0; font-family:inherit; }
+    .asked .answer-line { font-size:13px; margin-top:8px; }
     .down { color: #4ade80; font-size: 11px; margin-left: 4px; }
     .row { display: flex; gap: 12px; padding: 9px 0; border-top: 1px solid #1f1f28; font-size: 13px; line-height: 1.45; }
     .row:first-of-type { border-top: none; padding-top: 0; }
@@ -185,6 +194,7 @@ function hintsHtml(data) {
   if (data.searched_for) hints.push('Showing results for ' + searchLink(data.searched_for))
   else if (data.did_you_mean) hints.push('Did you mean ' + searchLink(data.did_you_mean) + '?')
   if (data.interpreted_as) hints.push('Searched for “' + esc(data.interpreted_as) + '”')
+  if (data.near) hints.push('Places near ' + esc(data.near) + ' first')
   if (data.related && data.related.length) hints.push('Related: ' + data.related.map(searchLink).join(" · "))
   return hints.length ? '<div class="hints">' + hints.join(" &nbsp;|&nbsp; ") + '</div>' : ""
 }
@@ -209,10 +219,12 @@ function productsHtml(items) {
   return '<div class="box"><div class="section">Products · ' + items.length + '</div><div class="grid">' + items.slice(0, 12).map(function(p) {
     var others = p.other_shops && p.other_shops.length ? '<div class="muted">+' + p.other_shops.length + ' other shop' + (p.other_shops.length > 1 ? 's' : '') + '</div>' : ""
     var drop = p.price_change_percent < 0 ? '<span class="down">' + esc(p.price_change_percent) + '%</span>' : ""
+    // 90-day price trend as a tiny line, and a tag when today's price is the lowest.
+    var trend = spark(p.price_history) + (p.lowest_90_days ? '<span class="low">Lowest in 90 days</span>' : "")
     return '<a class="product" href="' + safeUrl(p.visit_url || p.url) + '" target="_blank" rel="noopener">' +
       (p.image ? '<img src="' + safeUrl(p.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=\'<div class=noimg></div>\'">' : '<div class="noimg"></div>') +
       '<div class="body">' + esc(p.name) + '<div class="price">' + money(p.price, p.currency) + drop + '</div>' +
-      '<div class="muted">' + esc(p.domain) + (p.available === false ? ' · sold out' : '') + '</div>' + others + '</div></a>'
+      trend + '<div class="muted">' + esc(p.domain) + (p.available === false ? ' · sold out' : '') + '</div>' + others + '</div></a>'
   }).join("") + '</div></div>'
 }
 
@@ -277,7 +289,41 @@ function siteHtml(site, i, first) {
     '</details>' +
     '<details><summary>LAWP quality <span style="color:' + col + '">' + s.score + '/100</span></summary><div class="quality">' + s.lines.join("<br>") + '</div></details>' +
     '<details><summary>Raw JSON (what the agent gets)</summary><pre class="raw">' + esc(JSON.stringify(site, null, 2)) + '</pre></details>' +
+    // Ask a follow-up about this one site (/api/ask), and sites like it (/api/similar).
+    (site.domain.indexOf("/") < 0 ? '<div class="more"><form class="askform" data-domain="' + esc(site.domain) + '" onsubmit="event.preventDefault();askSite(this)"><input name="q" placeholder="Ask ' + esc(site.name && site.name !== site.domain ? site.name : site.domain) + ' something…" maxlength="200" aria-label="Ask this site a question"><button type="submit">Ask</button></form>' +
+      '<button class="linkbtn" onclick="similarTo(this, \'' + esc(site.domain) + '\')">Similar sites</button><div class="asked"></div></div>' : '') +
     '</div>'
+}
+
+// A small line of the last 90 days' prices.
+function spark(points) {
+  if (!points || points.length < 2) return ""
+  var v = points.map(function(p) { return p.price_eur }), min = Math.min.apply(null, v), max = Math.max.apply(null, v), w = 80, h = 18
+  var d = v.map(function(x, i) { return (i ? "L" : "M") + (i / (v.length - 1) * w).toFixed(1) + "," + (max === min ? h / 2 : h - (x - min) / (max - min) * h).toFixed(1) }).join("")
+  return '<svg class="spark" width="' + w + '" height="' + h + '" viewBox="0 -1 ' + w + ' ' + (h + 2) + '" aria-label="Price over the last 90 days"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'
+}
+
+function askSite(form) {
+  var q = form.q.value.trim(), out = form.parentNode.querySelector(".asked")
+  if (!q) return
+  out.innerHTML = '<span class="muted small">Looking through ' + esc(form.getAttribute("data-domain")) + '’s pages…</span>'
+  lawpy("think")
+  fetch("https://api.actuent.ai/api/ask?domain=" + encodeURIComponent(form.getAttribute("data-domain")) + "&q=" + encodeURIComponent(q)).then(function(r) { return r.json() }).then(function(d) {
+    var found = (d.sentences || []).length
+    lawpy(found ? "talk" : "idle", found ? 2 : 0)
+    out.innerHTML = found ? d.sentences.map(function(s) { return '<div class="answer-line">“' + esc(s.text) + '”<a href="' + safeUrl(s.url) + '" target="_blank" rel="noopener">source</a></div>' }).join("")
+      : '<span class="muted small">' + esc(d.message || "No answer on its pages.") + '</span>'
+  }).catch(function() { lawpy("idle"); out.innerHTML = '<span class="muted small">Couldn’t reach Actuent. Try again.</span>' })
+}
+
+function similarTo(btn, domain) {
+  var out = btn.parentNode.querySelector(".asked")
+  out.innerHTML = '<span class="muted small">Finding sites like ' + esc(domain) + '…</span>'
+  fetch("https://api.actuent.ai/api/similar?domain=" + encodeURIComponent(domain)).then(function(r) { return r.json() }).then(function(d) {
+    out.innerHTML = (d.sites || []).length ? '<div class="section" style="margin-top:8px">Sites like ' + esc(domain) + '</div>' + d.sites.map(function(x) {
+      return '<div class="row"><div>' + searchLink(x.domain) + ' <span class="muted small">' + esc(x.name !== x.domain ? x.name : "") + '</span><div class="muted small">' + esc(x.why || "") + '</div></div></div>'
+    }).join("") : '<span class="muted small">' + esc(d.message || "No similar sites yet.") + '</span>'
+  }).catch(function() { out.innerHTML = '<span class="muted small">Couldn’t reach Actuent. Try again.</span>' })
 }
 
 var searchId = 0

@@ -206,6 +206,26 @@ async function otherShopsByGtin(gtins: string[]): Promise<any[]> {
   } catch { return [] }
 }
 
+// Prices seen for these products over the last 90 days (lawp_item_prices, indexed by url): up to 12
+// points each, oldest first. Empty when the lookup is slow: it never holds up a search.
+async function priceHistory(urls: string[]): Promise<Map<string, { date: string, price_eur: number }[]>> {
+  const out = new Map<string, { date: string, price_eur: number }[]>()
+  if (!urls.length) return out
+  try {
+    const since = encodeURIComponent(new Date(Date.now() - 90 * 86400000).toISOString())
+    const list = encodeURIComponent(urls.map(u => `"${String(u).replace(/"/g, "")}"`).join(","))
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_item_prices?select=url,price_eur,observed_at&url=in.(${list})&observed_at=gte.${since}&price_eur=not.is.null&order=observed_at.asc&limit=1000`, { headers: HEADERS, signal: AbortSignal.timeout(1200) })
+    for (const row of r.ok ? await r.json() : []) {
+      const list = out.get(row.url) || []
+      list.push({ date: String(row.observed_at).slice(0, 10), price_eur: Number(row.price_eur) })
+      out.set(row.url, list)
+    }
+    // At most 12 points per product: evenly spread, always keeping the latest.
+    for (const [url, list] of out) if (list.length > 12) out.set(url, list.filter((_, i) => i % Math.ceil(list.length / 12) === 0 || i === list.length - 1))
+  } catch {}
+  return out
+}
+
 export async function searchProducts(query: string, tier: Tier, max: number, country: string | null = null): Promise<any[]> {
   const { text, maxEur, currency } = await parsePriceLimit(query)
   if (!text) return []
@@ -245,8 +265,9 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       const sorted = [...g].sort((a, b) => (a.price_eur == null ? Infinity : Number(a.price_eur)) - (b.price_eur == null ? Infinity : Number(b.price_eur)))
       return { best: { ...sorted[0], name: sorted[0].name ?? g[0].name, image: sorted[0].image ?? g[0].image }, others: sorted.slice(1) }
     })
-    const names = await englishNames(picked.map(p => p.best.name), tier)
+    const [names, history] = await Promise.all([englishNames(picked.map(p => p.best.name), tier), priceHistory(picked.map(p => p.best.url))])
     return picked.map(({ best: row, others }, i) => {
+      const past = history.get(row.url) || []
       const prev = row.previous_price_eur == null ? null : Number(row.previous_price_eur)
       const now = row.price_eur == null ? null : Number(row.price_eur)
       const change = prev && now != null ? Math.round(((now - prev) / prev) * 1000) / 10 : null
@@ -258,6 +279,8 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         ...(row.variant_id ? { cart_url: `https://${row.domain}/cart/${row.variant_id}:1` } : {}),
         // Price history: e.g. -20 means 20% cheaper than before the last change.
         ...(change ? { previous_price_eur: prev, price_change_percent: change, price_changed_at: row.price_changed_at } : {}),
+        // The last 90 days of prices (EUR, oldest first), and whether today's is the lowest of them.
+        ...(past.length >= 2 ? { price_history: past, lowest_90_days: now != null && now <= Math.min(...past.map(p => p.price_eur)) } : {}),
         // The same product in other shops, cheapest first; this result is the cheapest.
         ...(others.length ? {
           cheapest: now != null, matched_by: row.gtin ? "barcode" : "name",

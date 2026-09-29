@@ -38,6 +38,12 @@ export async function questionSite(q: string): Promise<{ site: any, keywords: st
   return { site: found[i], keywords: words.filter(w => w.length >= 3 && !nameWords.has(w) && !["does", "have", "what", "when", "where", "which", "there"].includes(w)) }
 }
 
+// The words of a question worth looking for on a site's pages ("is there parking?" → ["parking"]).
+export function questionKeywords(q: string, siteName = ""): string[] {
+  const nameWords = new Set(siteName.toLowerCase().split(/[\s.]+/))
+  return q.toLowerCase().replace(/[?!.,]/g, " ").split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w) && !nameWords.has(w)).slice(0, 8)
+}
+
 export async function answerFromSite(site: any, keywords: string[]): Promise<{ domain: string, sentences: { text: string, url: string }[] } | null> {
   const pages: { url: string, text: string }[] = Object.entries(site.pages || {}).map(([path, p]: any) => ({ url: `https://${site.domain}${path}`, text: `${p?.title || ""}. ${p?.content || ""}` }))
   try {

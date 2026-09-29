@@ -69,6 +69,10 @@
     {
       "src": "public/assets/**",
       "use": "@vercel/static"
+    },
+    {
+      "src": "public/ask.js",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -115,6 +119,14 @@
     {
       "src": "/api/autocomplete",
       "dest": "/api/data.ts?op=autocomplete"
+    },
+    {
+      "src": "/api/ask",
+      "dest": "/api/data.ts?op=ask"
+    },
+    {
+      "src": "/api/similar",
+      "dest": "/api/data.ts?op=similar"
     },
     {
       "src": "/api/status",
@@ -230,6 +242,15 @@
     {
       "src": "/badge.js",
       "dest": "/public/badge.js",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "src": "/ask.js",
+      "dest": "/public/ask.js",
       "headers": {
         "Content-Type": "application/javascript; charset=utf-8",
         "Access-Control-Allow-Origin": "*",

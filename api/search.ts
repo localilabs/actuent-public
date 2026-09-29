@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { withoutHidden, searchSites, quickSearch } from "../src/utils/search"
+import { withoutHidden, searchSites, quickSearch, isPlaceSearch } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
@@ -163,6 +163,21 @@ async function sharedCacheSet(key: string, body: unknown): Promise<void> {
   }
 }
 
+// Each client's last searched city, for an hour (in memory, hashed client key only).
+const cities = new Map<string, { city: string, at: number }>()
+function rememberCity(client: string, city: string) {
+  cities.set(client, { city, at: Date.now() })
+  if (cities.size > 5000) cities.delete(cities.keys().next().value!)
+}
+function recentCity(client: string): string | null {
+  const c = cities.get(client)
+  return c && Date.now() - c.at < 3600_000 ? c.city : null
+}
+function headerCity(h: string | undefined): string | null {
+  if (!h) return null
+  try { const c = decodeURIComponent(h); return /^[\p{L}\s.'-]{2,40}$/u.test(c) ? c : null } catch { return null }
+}
+
 async function suggestSpelling(q: string): Promise<string | null> {
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/did_you_mean`, {
@@ -243,14 +258,20 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Signed-out GET searches can also be cached by Vercel's CDN for 15 minutes (a new deploy clears
   // it); anything with a key is private,
   // and so is "near me" (the answer depends on where the searcher is).
+  // So is a search for places without a city ("cafés"): it favours the searcher's own city.
+  const clientKey = ipHash((req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim())
+  const searchedCity = splitCity(searchQuery)?.city
+  if (searchedCity) rememberCity(clientKey, searchedCity)
+  const placeSearch = isPlaceSearch(searchQuery)
+  const homeCity = placeSearch ? recentCity(clientKey) || headerCity(req.headers["x-vercel-ip-city"] as string | undefined) : null
   res.setHeader("Vary", "Authorization")
-  res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed
+  res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed && !placeSearch
     ? "public, max-age=0, s-maxage=900, stale-while-revalidate=3600"
     : "private, no-store")
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
   // The deploy is part of it too, so a fix shows up straight away instead of after the cache expires.
-  const key = `${tier}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}`
+  const key = `${tier}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}${homeCity ? `@${homeCity.toLowerCase()}` : ""}`
   // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
   // (A memory hit isn't stored again: that would keep an old answer alive for as long as people ask.)
   const inMemory = cacheGet(key)
@@ -307,14 +328,18 @@ async function search(req: VercelRequest, res: VercelResponse) {
   ]).catch(() => [])
   // Rewritten searches (list_thirteen.sql): what this client searched just before, and what people
   // usually rewrite this search to (shown as related searches).
-  const clientKey = ipHash((req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim())
   noteReformulation(clientKey, typed)
   const rewritesTo = usualRewrites(typed)
   // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
   const nameTypos: string[] = []
-  const searchOpts: any = { lite, places, related, didYouMean: nameTypos }
+  // Spelling runs alongside the search (the word list is small and fast): a misspelt search
+  // ("accouting sofware") usually still finds a few loosely matching sites, so waiting until
+  // nothing was found meant the correction was never offered.
+  const spelling = !isDomainQuery && /[a-z]{5,}/i.test(searchQuery) ? suggestSpelling(searchQuery) : Promise.resolve(null)
+  // homeCity: the searcher's last searched city, else where they are (Vercel's header).
+  const searchOpts: any = { lite, places, related, didYouMean: nameTypos, homeCity }
   const [results, products, events] = await Promise.all([
     searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
@@ -339,14 +364,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
   // when nothing matched at all, search for the suggestion instead and say so.
-  let didYouMean: string | null = nameTypos[0] || null
+  // When the results are thin (fewer than 5), the corrected search is run too, and its results are
+  // shown instead when it finds more ("Showing results for …").
+  let didYouMean: string | null = nameTypos[0] || await spelling
   let searchedFor: string | null = null
-  if (!isDomainQuery && !didYouMean && results.length < 3) {
-    didYouMean = await suggestSpelling(searchQuery)
-    if (didYouMean && !results.length && !products.length) {
-      const again = await searchSites(didYouMean, tier, timing, [], { lite })
-      if (again.length) { results.push(...again); searchedFor = didYouMean }
-    }
+  if (!isDomainQuery && didYouMean && !nameTypos.length && results.length < 5) {
+    const again = await searchSites(didYouMean, tier, timing, [], { lite })
+    if (again.length > results.length) { results.splice(0, results.length, ...again); searchedFor = didYouMean }
   }
   res.setHeader("Server-Timing", [`sites;dur=${sitesMs}`, `products;dur=${productsMs}`, ...Object.entries(timing).map(([k, v]) => `${k};dur=${v}`)].join(", "))
   // Adult and gambling sites are left out unless the query asks for them.
@@ -406,6 +430,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
     ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
+    // A search for places without a city: places near the searcher came first.
+    ...(searchOpts.nearCity ? { near: searchOpts.nearCity } : {}),
     ...(related.length || (await rewritesTo).length ? { related: [...new Set([...(await rewritesTo), ...related])].slice(0, 8) } : {}),
     ...(didYouMean ? { did_you_mean: didYouMean } : {}),
     ...(searchedFor ? { searched_for: searchedFor } : {}),

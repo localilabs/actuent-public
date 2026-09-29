@@ -241,6 +241,12 @@ async function countrySites(what: string, country: string, lang: string | null):
   } catch { return [] }
 }
 
+// Things you go to (barber, restaurant, dentist): the city matters for these.
+const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
+// A search for places that names no city ("cafés", "barber"): the answer depends on where the searcher is.
+export function isPlaceSearch(q: string): boolean {
+  return !splitCity(q) && [...queryCategories(q)].some(c => PLACE_KINDS.has(c))
+}
 const ONLINE_KINDS = new Set(["software", "developer", "ai", "finance", "education"])
 
 // Country endings used by sites everywhere (.io, .ai, .co…): they don't say where a site is.
@@ -433,7 +439,9 @@ const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 // opts.lite: heavy free use from one client (scraper guard, api/search.ts) — index only, no LLM,
 // live crawls or guessing. opts.places receives OpenStreetMap places for local searches.
 // `slow` is set when a database search timed out or failed: the answer is thinner than usual.
-export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[], slow?: boolean }
+// `homeCity`: where the searcher is (their last searched city, or their location); a search for
+// places that names no city ("cafés") then favours that city, and `nearCity` says it did.
+export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[], slow?: boolean, homeCity?: string | null, nearCity?: string }
 
 export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
@@ -612,7 +620,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const searchable = ml.english.length > 0 || /^[\x20-\x7e]+$/.test(query)
     // Local searches ("barber amsterdam"): businesses whose address is in that city come first.
     const place = splitCity(plainQuery)
-    const localSearch = place ? localBusinesses(place.what, place.city) : Promise.resolve([])
+    const homeLocal = !place && opts.homeCity && [...queryCategories(plainQuery)].some(c => PLACE_KINDS.has(c))
+    if (homeLocal) opts.nearCity = opts.homeCity!
+    const localSearch = place ? localBusinesses(place.what, place.city) : homeLocal ? localBusinesses(plainQuery, opts.homeCity!) : Promise.resolve([])
     // A name ("localilabs", "british museum", "louvre tickets"): that site first, found directly.
     const name = nameOf(plainQuery, place?.city)
     const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
@@ -658,7 +668,6 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       : Promise.resolve([])
     // For things you go to (barber, restaurant, dentist) the city helps find the right sites; for
     // things you buy or use online (running shoes, software) it only gets in the way.
-    const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
     const goesThere = place ? [...queryCategories(place.what)].some(c => PLACE_KINDS.has(c)) : true
     // Things you buy in a city ("shoes copenhagen"): also sites that mention the country, so
     // Danish shops are among the candidates, not only the world's biggest shoe sites.
