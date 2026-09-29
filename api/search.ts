@@ -61,8 +61,8 @@ function cacheSet(key: string, body: unknown) {
 }
 
 // Options (all optional): limit & offset (paging, max 50), category, city, lang, open_now=true,
-// sort=relevance|popular|fresh. Applied to the finished result list, so cached searches can use them.
-type Params = { limit?: number, offset: number, category?: string, city?: string, lang?: string, openNow: boolean, sort: "relevance" | "popular" | "fresh" }
+// sort=relevance|popular|fresh|rating. Applied to the finished result list, so cached searches can use them.
+type Params = { limit?: number, offset: number, category?: string, city?: string, lang?: string, openNow: boolean, sort: "relevance" | "popular" | "fresh" | "rating" }
 function readParams(req: VercelRequest): Params {
   const v = (k: string) => { const x = req.method === "GET" ? req.query[k] : req.body?.[k]; return x == null ? undefined : String(x) }
   const n = (x?: string) => x != null && /^\d+$/.test(x) ? parseInt(x) : undefined
@@ -70,7 +70,7 @@ function readParams(req: VercelRequest): Params {
   return {
     limit: n(v("limit")) != null ? Math.min(Math.max(n(v("limit"))!, 1), 50) : undefined, offset: Math.min(n(v("offset")) || 0, 500),
     category: v("category")?.toLowerCase().slice(0, 40), city: v("city")?.toLowerCase().slice(0, 60), lang: v("lang")?.toLowerCase().slice(0, 2),
-    openNow: v("open_now") === "true", sort: sort === "popular" || sort === "fresh" ? sort : "relevance"
+    openNow: v("open_now") === "true", sort: sort === "popular" || sort === "fresh" || sort === "rating" ? sort : "relevance"
   }
 }
 
@@ -81,6 +81,8 @@ function present(body: any, p: Params): any {
   if (p.openNow) list = list.filter(r => r.open_now === true)
   if (p.lang) list = [...list.filter(r => r.language === p.lang), ...list.filter(r => r.language !== p.lang)]
   if (p.sort === "popular") list = [...list].sort((a, b) => (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9))
+  // Best rated first (5-point ratings from the sites' own pages); unrated ones keep their order after.
+  if (p.sort === "rating") list = [...list].sort((a, b) => (Number(b.business?.rating?.value) || 0) - (Number(a.business?.rating?.value) || 0))
   if (p.sort === "fresh") list = [...list].sort((a, b) => Date.parse(b.last_updated || 0) - Date.parse(a.last_updated || 0))
   const filtered = list.length !== (body.results || []).length || p.sort !== "relevance"
   const total = list.length
@@ -293,7 +295,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       query: typed, partial: true, count: quick.length,
       results: quick.map(({ ownerKey, rank, ...r }: any) => ({
         ...r, name: cleanName(r.name, r.domain), snippet: snippet(r, searchQuery), native: !!r.native, executable: isExecutable(r),
-        ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
+        ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours) } : {}),
         visit_url: trackedLink(`https://${r.domain}`, typed)
       }))
     })
@@ -422,7 +424,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       // Freshness: when this LAWP was last updated, so agents know how current it is.
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
-      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country) } : {}),
+      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)

@@ -95,7 +95,7 @@ export async function localBusinesses(what: string, city: string, max = 10): Pro
     // Open right now first, then better rated (schema.org or OpenStreetMap data), then relevance.
     const score = (x: any, i: number) => {
       const b = x.business || {}
-      const open = openNow(b.opening_hours, b.address?.country)
+      const open = openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours)
       const rating = Number(b.rating?.value) || 0
       const reviews = Number(b.rating?.count) || 0
       return (open === true ? 3 : open === false ? -1 : 0) + (reviews >= 5 ? rating / 2.5 : 0) - i * 0.15

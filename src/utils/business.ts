@@ -3,13 +3,17 @@
 // Copied from actuent-crawler/business.ts — keep in sync.
 
 export type OpeningHours = { days: string[], opens: string, closes: string }
+// Holidays and other special days (schema.org OpeningHoursSpecification with validFrom/validThrough):
+// closed, or open at other times, from one date to another (inclusive, the business's own dates).
+export type SpecialHours = { from: string, to: string, closed?: boolean, opens?: string, closes?: string }
 // A service, menu item or product the business lists with a price (e.g. "Skin fade €25").
 export type Offer = { name: string, price?: number, currency?: string, category?: string }
 export type Business = {
   type?: string, name?: string, telephone?: string, email?: string, price_range?: string,
   address?: { street?: string, city?: string, postcode?: string, region?: string, country?: string },
   geo?: { lat: number, lon: number }, opening_hours?: OpeningHours[]
-  rating?: { value: number, count?: number, best?: number }
+  rating?: { value: number, count?: number, best?: number, source?: string }
+  special_hours?: SpecialHours[]
   offers?: Offer[]
   // From OpenStreetMap: "vegan", "vegetarian", "gluten_free", "wheelchair", "outdoor_seating", "wifi", "dogs", "kids"; hotel stars.
   features?: string[]
@@ -106,10 +110,22 @@ export function extractBusiness(html: string): Business | null {
   } : typeof a === "string" ? { street: a } : undefined
 
   let opening: OpeningHours[] = []
-  for (const spec of [].concat(node.openingHoursSpecification || [])) {
+  const special: SpecialHours[] = []
+  const soon = Date.now() + 366 * 86400000, yesterday = Date.now() - 86400000
+  for (const spec of [].concat(node.openingHoursSpecification || [], node.specialOpeningHoursSpecification || [])) {
     const s: any = spec
-    const days = [].concat(s.dayOfWeek || []).map(day).filter(Boolean) as string[]
     const opens = time(s.opens), closes = time(s.closes)
+    // A date range makes it a special day (a holiday); 00:00–00:00 or no times means closed.
+    const from = String(s.validFrom || "").slice(0, 10), to = String(s.validThrough || s.validFrom || "").slice(0, 10)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+      const end = Date.parse(to)
+      if (Number.isFinite(end) && end >= yesterday && Date.parse(from) <= soon && special.length < 20) {
+        const closed = !opens || !closes || (opens === "00:00" && closes === "00:00")
+        special.push({ from, to: /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : from, ...(closed ? { closed: true } : { opens: opens!, closes: closes! }) })
+      }
+      continue
+    }
+    const days = [].concat(s.dayOfWeek || []).map(day).filter(Boolean) as string[]
     if (days.length && opens && closes) opening.push({ days, opens, closes })
   }
   if (!opening.length && node.openingHours) opening = parseOpeningHoursText([].concat(node.openingHours).join("; "))
@@ -117,8 +133,8 @@ export function extractBusiness(html: string): Business | null {
   const r = node.aggregateRating
   const ratingValue = Number(r?.ratingValue), ratingCount = Number(r?.reviewCount ?? r?.ratingCount), best = Number(r?.bestRating)
   const rating = Number.isFinite(ratingValue) && ratingValue > 0
-    ? { value: Math.round(ratingValue * 10) / 10, ...(Number.isFinite(ratingCount) && ratingCount > 0 ? { count: ratingCount } : {}), ...(Number.isFinite(best) && best > 0 && best !== 5 ? { best } : {}) }
-    : undefined
+    ? { value: Math.round(ratingValue * 10) / 10, ...(Number.isFinite(ratingCount) && ratingCount > 0 ? { count: ratingCount } : {}), ...(Number.isFinite(best) && best > 0 && best !== 5 ? { best } : {}), source: "schema.org" }
+    : pageRating(html)
 
   const offers: Offer[] = []
   collectOffers([node.makesOffer, node.hasOfferCatalog, node.hasMenu].filter(Boolean), offers)
@@ -136,11 +152,31 @@ export function extractBusiness(html: string): Business | null {
     address: address && Object.values(address).some(Boolean) ? address : undefined,
     geo: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : undefined,
     opening_hours: opening.length ? opening : undefined,
+    special_hours: special.length ? special : undefined,
     rating,
     offers: priced.length ? priced : undefined
   }
   // Only worth keeping if it says more than a name.
   return business.address || business.telephone || business.opening_hours || business.geo || business.offers || business.rating ? business : null
+}
+
+// A rating shown on the page itself when there's none in JSON-LD: microdata (itemprop="ratingValue"),
+// or text like "Rated 4.8 out of 5 on Trustpilot" / "4.7/5 from 1,203 Google reviews". Only on a
+// 5-point scale, and only with a named source or review count, so a stray "4.8" never counts.
+function pageRating(html: string): Business["rating"] {
+  const micro = html.match(/itemprop=["']ratingValue["'][^>]*?(?:content=["']([\d.,]+)["']|>\s*([\d.,]+))/i)
+  if (micro) {
+    const value = Number(String(micro[1] || micro[2]).replace(",", "."))
+    const count = Number((html.match(/itemprop=["'](?:reviewCount|ratingCount)["'][^>]*?(?:content=["']([\d.,]+)["']|>\s*([\d.,]+))/i) || []).slice(1).find(Boolean)?.replace(/[.,](?=\d{3}\b)/g, ""))
+    if (value > 0 && value <= 5) return { value: Math.round(value * 10) / 10, ...(count > 0 ? { count } : {}), source: "microdata" }
+  }
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").slice(0, 200000)
+  const m = text.match(/\b([1-4](?:[.,]\d)?|5(?:[.,]0)?)\s*(?:\/\s*5|out of 5)(?:\s*stars?)?[^.]{0,60}?\b(trustpilot|google|tripadvisor|yelp|feefo|reviews\.io|trusted shops)\b|\b(trustpilot|google|tripadvisor|yelp|feefo)\b[^.]{0,40}?\b([1-4](?:[.,]\d)?|5(?:[.,]0)?)\s*(?:\/\s*5|out of 5)/i)
+  if (!m) return undefined
+  const value = Number(String(m[1] || m[4]).replace(",", "."))
+  const source = String(m[2] || m[3]).toLowerCase()
+  const count = Number((text.slice(Math.max(0, (m.index || 0) - 80), (m.index || 0) + 160).match(/([\d.,]{1,9})\s*(?:reviews|ratings|anmeldelser|bewertungen|avis)/i) || [])[1]?.replace(/[.,](?=\d{3}\b)/g, ""))
+  return value > 0 && value <= 5 ? { value, ...(count > 0 ? { count } : {}), source } : undefined
 }
 
 // Is it open right now? Uses the business's country for its time zone (null when unknown).
@@ -152,8 +188,9 @@ const TIME_ZONES: Record<string, string> = {
 }
 const COUNTRY_NAMES: Record<string, string> = { denmark: "DK", sweden: "SE", norway: "NO", germany: "DE", netherlands: "NL", france: "FR", spain: "ES", italy: "IT", "united kingdom": "GB", "united states": "US", ireland: "IE" }
 
-export function openNow(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date()): boolean | null {
-  if (!hours?.length || !country) return null
+// Special days (holidays) come first: closed on 25 December means closed, whatever the weekday says.
+export function openNow(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), special?: SpecialHours[]): boolean | null {
+  if ((!hours?.length && !special?.length) || !country) return null
   const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
   const zone = code && TIME_ZONES[code]
   if (!zone) return null
@@ -161,6 +198,10 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
   const today = String(parts.weekday).slice(0, 2)
   const minutes = Number(parts.hour) % 24 * 60 + Number(parts.minute)
   const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const date = new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now)
+  const specialToday = (special || []).find(s => s.from <= date && date <= s.to)
+  if (specialToday) return specialToday.closed ? false : minutes >= toMin(specialToday.opens!) && minutes < toMin(specialToday.closes!)
+  if (!hours?.length) return null
   return hours.some(h => h.days.includes(today) && (
     toMin(h.closes) > toMin(h.opens) ? minutes >= toMin(h.opens) && minutes < toMin(h.closes) : minutes >= toMin(h.opens) || minutes < toMin(h.closes)
   ))
