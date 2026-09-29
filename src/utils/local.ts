@@ -16,7 +16,8 @@ const CITIES = ("copenhagen aarhus odense aalborg stockholm gothenburg malmo mal
   "munich cologne frankfurt stuttgart dusseldorf düsseldorf leipzig dresden vienna salzburg zurich geneva basel paris lyon marseille nice bordeaux toulouse lille nantes " +
   "madrid barcelona valencia seville malaga bilbao lisbon porto rome milan florence venice naples turin bologna prague warsaw krakow budapest athens istanbul " +
   "new-york brooklyn manhattan los-angeles san-francisco chicago boston seattle austin denver portland washington miami atlanta dallas houston philadelphia " +
-  "san-diego las-vegas nashville toronto vancouver montreal sydney melbourne brisbane perth auckland wellington tokyo singapore dubai").split(" ").map(c => c.replace(/-/g, " "))
+  "san-diego las-vegas nashville toronto vancouver montreal sydney melbourne brisbane perth auckland wellington tokyo singapore dubai" +
+  " esbjerg roskilde uppsala trondheim stavanger tampere turku tallinn riga vilnius gdansk wroclaw brno bratislava ljubljana zagreb belgrade bucharest sofia thessaloniki minneapolis ottawa phoenix new-orleans salt-lake-city pittsburgh detroit honolulu calgary adelaide gold-coast christchurch osaka kyoto seoul hong-kong taipei bangkok kuala-lumpur manila jakarta bali ho-chi-minh-city mumbai bangalore delhi abu-dhabi tel-aviv cape-town johannesburg nairobi lagos marrakech cairo mexico-city buenos-aires sao-paulo rio-de-janeiro santiago bogota lima medellin doha riyadh").split(" ").map(c => c.replace(/-/g, " "))
 
 // The country of a city in the list (for product search: shops in the shopper's market first).
 const CITY_COUNTRY: Record<string, string> = {
@@ -28,7 +29,9 @@ const CITY_COUNTRY: Record<string, string> = {
   basel: "ch", paris: "fr", lyon: "fr", marseille: "fr", nice: "fr", bordeaux: "fr", toulouse: "fr", lille: "fr", nantes: "fr", madrid: "es", barcelona: "es",
   valencia: "es", seville: "es", malaga: "es", bilbao: "es", lisbon: "pt", porto: "pt", rome: "it", milan: "it", florence: "it", venice: "it", naples: "it",
   turin: "it", bologna: "it", prague: "cz", warsaw: "pl", krakow: "pl", budapest: "hu", athens: "gr", istanbul: "tr", toronto: "ca", vancouver: "ca",
-  montreal: "ca", sydney: "au", melbourne: "au", brisbane: "au", perth: "au", auckland: "nz", wellington: "nz", tokyo: "jp", singapore: "sg", dubai: "ae"
+  montreal: "ca", sydney: "au", melbourne: "au", brisbane: "au", perth: "au", auckland: "nz", wellington: "nz", tokyo: "jp", singapore: "sg", dubai: "ae",
+  // Cities the OpenStreetMap job covers (2026-09-29).
+  "new york": "us", brooklyn: "us", "los angeles": "us", "san francisco": "us", chicago: "us", boston: "us", seattle: "us", austin: "us", denver: "us", portland: "us", washington: "us", miami: "us", esbjerg: "dk", roskilde: "dk", uppsala: "se", trondheim: "no", stavanger: "no", tampere: "fi", turku: "fi", tallinn: "ee", riga: "lv", vilnius: "lt", gdansk: "pl", wroclaw: "pl", brno: "cz", bratislava: "sk", ljubljana: "si", zagreb: "hr", belgrade: "rs", bucharest: "ro", sofia: "bg", thessaloniki: "gr", philadelphia: "us", "san diego": "us", nashville: "us", atlanta: "us", minneapolis: "us", ottawa: "ca", houston: "us", dallas: "us", phoenix: "us", "las vegas": "us", "new orleans": "us", "salt lake city": "us", pittsburgh: "us", detroit: "us", honolulu: "us", calgary: "ca", adelaide: "au", "gold coast": "au", christchurch: "nz", osaka: "jp", kyoto: "jp", seoul: "kr", "hong kong": "hk", taipei: "tw", bangkok: "th", "kuala lumpur": "my", manila: "ph", jakarta: "id", bali: "id", "ho chi minh city": "vn", mumbai: "in", bangalore: "in", delhi: "in", "abu dhabi": "ae", "tel aviv": "il", "cape town": "za", johannesburg: "za", nairobi: "ke", lagos: "ng", marrakech: "ma", cairo: "eg", "mexico city": "mx", "buenos aires": "ar", "sao paulo": "br", "rio de janeiro": "br", santiago: "cl", bogota: "co", lima: "pe", medellin: "co", doha: "qa", riyadh: "sa"
 }
 // A country's name and main language, for "shoes copenhagen": shops in Denmark and Danish sites.
 export const COUNTRY_INFO: Record<string, { name: string, lang: string | null }> = {
