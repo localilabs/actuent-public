@@ -378,7 +378,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
   if (degraded) res.setHeader("Cache-Control", "no-store")
-  else if (results.length > 0 || products.length > 0) { cacheSet(key, body); await later(sharedCacheSet(key, body)) }
+  else if (results.length > 0 || products.length > 0) {
+    cacheSet(key, body)
+    // Only full answers are shared for 30 minutes: a thin one may be a slow moment in the database.
+    if (results.length >= 3 || isDomainQuery) await later(sharedCacheSet(key, body))
+  }
   res.setHeader("X-Search-Time", String(Date.now() - requestStart))
   return res.status(200).json(present(body, params))
 }
