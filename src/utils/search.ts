@@ -5,6 +5,9 @@ import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFac
 import { later } from "./later"
 import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite } from "./brand"
 import { sites, Site } from "../data/sites"
+// The built-in example sites (a made-up Amsterdam barber, …) answer their own domain for the
+// docs' examples, but are never mixed into keyword results as if they were real businesses.
+const DEMO_SITES = new Set(Object.keys(sites))
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
 import { isRateLimited } from "./limits"
@@ -162,9 +165,25 @@ async function fetchSample(table: string, select: string): Promise<any[]> {
 }
 
 // Candidate sites from Postgres full-text search (scored later in searchIndex).
+// The 20,000 best-known sites that have every word, by a small index (list_thirteen.sql): a few
+// hundred milliseconds even when the full search is slow the first time a search is run (the
+// free database can't keep the whole index in memory). mailchimp.com for "email marketing" then
+// always makes it, even if the full search times out.
+async function topSites(query: string): Promise<any[]> {
+  const words = query.replace(/[^\p{L}\p{N}\s]/gu, " ").trim()
+  if (!words) return []
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank&status=is.null&popularity_rank=lte.20000&search_text=plfts(english).${encodeURIComponent(words)}&order=popularity_rank.asc&limit=40`, { headers: SUPABASE_HEADERS, signal: AbortSignal.timeout(2500) })
+    const rows = r.ok ? await r.json() : []
+    // Ranked like the full search would: every word matched (+1) and how well known the site is.
+    return Array.isArray(rows) ? rows.map((row: any) => ({ ...row, rank: 1 + Math.max(0, 6 - Math.log10(Math.max(row.popularity_rank || 1, 1))) / 12 })) : []
+  } catch { return [] }
+}
+
 async function searchSupabase(query: string, onFail?: () => void): Promise<Site[]> {
-  const rows = await rpc("search_lawp_sites", query, 50, onFail)
-    ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
+  const [full, top] = await Promise.all([rpc("search_lawp_sites", query, 50, onFail), topSites(query)])
+  const found = full ?? await fetchSample("lawp_sites", "domain,name,pages,actions")
+  const rows = [...found, ...top.filter(t => !found.some((f: any) => f.domain === t.domain))]
   return rows.map((row: any) => ({
     domain: row.domain, name: row.name, pages: row.pages || {}, actions: row.actions || [], native: !!row.native,
     updated_at: row.updated_at || undefined, language: row.language || undefined, business: row.business || undefined, category: row.category || undefined, popularity_rank: row.popularity_rank || undefined, rank: row.rank || undefined
@@ -476,7 +495,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       // Businesses in the searched city compete in the same ranking, with a bonus for the city
       // (so a gold dealer in London never beats a running shop just for "buy … London").
       const localDomains = new Set((found.local || []).map(x => x.domain))
-      const ranked = [...Object.values(sites), ...found.sites, ...(found.local || []).filter(x => !found.sites.some(y => y.domain === x.domain))]
+      const ranked = [...Object.values(sites).filter(x => !DEMO_SITES.has(x.domain)), ...found.sites, ...(found.local || []).filter(x => !found.sites.some(y => y.domain === x.domain))]
         .map(site => ({ site, score: score(site) * (localDomains.has(site.domain) ? 1.6 : 1) }))
         .filter(r => r.score > 0)
         .sort((a, b) => b.score - a.score)
