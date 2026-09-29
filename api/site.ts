@@ -206,6 +206,7 @@ function layout(opts: { title: string, description: string, canonical: string, i
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(opts.title)}"><meta property="og:description" content="${esc(opts.description)}">
 <meta property="og:url" content="${esc(opts.canonical)}"><meta property="og:image" content="${esc(opts.image)}"><meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="${BASE}/assets/actuent-logo.png">
+<script src="/assets/lawpy.js" defer></script>
 ${opts.jsonLd ? `<script type="application/ld+json">${JSON.stringify(opts.jsonLd).replace(/</g, "\\u003c")}</script>` : ""}
 <style>${STYLE}:focus-visible{outline:2px solid #8b8bff;outline-offset:2px}.skip{position:absolute;left:-999px;top:8px;background:#fff;color:#000;padding:8px 12px;border-radius:6px}.skip:focus{left:8px}</style></head><body><a class="skip" href="#main">Skip to content</a><main id="main">
 <div class="top"><a href="https://actuent.ai"><img src="${BASE}/assets/actuent-logo.png" alt="Actuent"></a><nav><a href="${BASE}/site">Directory</a><a href="https://humans.actuent.ai">Search</a><a href="https://docs.actuent.ai">Docs</a></nav></div>
@@ -214,6 +215,15 @@ ${opts.body}
 </main></body></html>`
 }
 
+// Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
+function lawpyFor(score: number): string {
+  const [state, loops, title] = score >= 90 ? ["dance", 4, "Agent-ready!"] : score >= 50 ? ["wave", 2, "Nearly there"] : ["think", 0, "Room to improve"]
+  return `<lawpy-mascot state="${state}"${loops ? ` loops="${loops}" then="idle"` : ""} scale="4" title="${title}" style="margin-left:auto"></lawpy-mascot>`
+}
+
+// The current LAWP spec version (github.com/localilabs/lawp).
+const LAWP_VERSION = "0.5"
+
 function starterLawp(site: any, domain: string) {
   const actions = ((site.actions || []) as any[]).map(({ endpoint, ...a }) => a)
   if (!actions.some(a => a.id === "contact")) actions.push({
@@ -221,7 +231,7 @@ function starterLawp(site: any, domain: string) {
     input: { type: "object", required: true, fields: [
       { name: "name", type: "string", required: true }, { name: "email", type: "email", required: true }, { name: "message", type: "string", required: true }] }
   })
-  return { lawp_version: "0.3", domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions }
+  return { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions }
 }
 
 function starterSchema(site: any, domain: string) {
@@ -277,7 +287,7 @@ async function directory(res: VercelResponse) {
     rows("lawp_sites?select=domain,name,native,actions&actions=neq.%5B%5D&status=is.null&order=native.desc,updated_at.desc&limit=120"),
     topCities()
   ])
-  const body = `<div class="eyebrow">Directory</div><h1>Agent-ready websites</h1>
+  const body = `<lawpy-mascot state="wave" loops="2" then="idle" scale="5" style="float:right"></lawpy-mascot><div class="eyebrow">Directory</div><h1>Agent-ready websites</h1>
 <p class="lead">Websites AI agents can understand and act on through Actuent: their pages, and the actions an agent can take for you.</p>
 ${cities}
 <h2>Recently updated</h2>
@@ -294,7 +304,7 @@ function notFound(res: VercelResponse, domain: string) {
   return res.status(404).send(layout({
     title: `${domain} — not on Actuent yet`, description: `${domain} isn't in the Actuent index yet.`, canonical: `${BASE}/site/${domain}`,
     image: ogImage("Not indexed yet", domain, "api.actuent.ai"), noindex: true,
-    body: `<h1>${esc(domain)} isn't on Actuent yet</h1><p class="lead">Search for it on <a href="https://humans.actuent.ai">humans.actuent.ai</a> and Actuent will index it, or <a href="https://docs.actuent.ai/#platforms">publish your own LAWP</a>.</p>`
+    body: `<lawpy-mascot state="think" scale="5" style="margin-bottom:12px"></lawpy-mascot><h1>${esc(domain)} isn't on Actuent yet</h1><p class="lead">Search for it on <a href="https://humans.actuent.ai">humans.actuent.ai</a> and Actuent will index it, or <a href="https://docs.actuent.ai/#platforms">publish your own LAWP</a>.</p>`
   }))
 }
 
@@ -338,7 +348,7 @@ ${posts.length ? `<div class="card list">${posts.map(p => `<a href="${BASE}/stat
   ])
   crumbs.push({ name: weekTitle(week), url: `${BASE}/state/weekly/${week}` })
   const table = (head: string[], list: any[][]) => `<div class="card"><table style="width:100%;border-collapse:collapse"><thead><tr>${head.map((h, i) => `<th scope="col" style="text-align:${i ? "right" : "left"};padding:4px 0" class="muted">${esc(h)}</th>`).join("")}</tr></thead><tbody>${list.map(r => `<tr>${r.map((c, i) => `<td style="text-align:${i ? "right" : "left"};padding:4px 0">${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
-  const body = `${breadcrumbHtml(crumbs)}<h1>${esc(post.title)}</h1>
+  const body = `${breadcrumbHtml(crumbs)}<lawpy-mascot state="talk" loops="3" then="idle" scale="4" style="float:right"></lawpy-mascot><h1>${esc(post.title)}</h1>
 <p class="lead">${esc(post.summary)}</p>
 <h2>The numbers</h2>
 ${table(["", "This week"], [
@@ -377,6 +387,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const [site] = await rows(`lawp_sites?select=*&domain=eq.${encodeURIComponent(domain)}`)
   if (!site) return notFound(res, domain)
+  // ?format=lawp: the site's LAWP as a file, ready to publish at /.well-known/lawp.json.
+  if (req.query.format === "lawp") {
+    res.setHeader("Content-Type", "application/json; charset=utf-8")
+    res.setHeader("Content-Disposition", `attachment; filename="lawp.json"`)
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+    // A site with its own LAWP gets it back as published (endpoints included); others get a starter.
+    const file = site.native ? { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions: site.actions || [] } : starterLawp(site, domain)
+    return res.status(200).send(JSON.stringify(file, null, 2))
+  }
   const [products, vs, checksLog] = await Promise.all([
     rows(`lawp_items?select=name,url,price,currency,image,available&domain=eq.${encodeURIComponent(domain)}&order=updated_at.desc&limit=12`),
     site.status ? Promise.resolve(null) : compare(site, rows).catch(() => null),
@@ -412,7 +431,7 @@ ${site.status === "parked" ? `<div class="card" style="border-color:var(--bad)">
 <p class="lead">${esc(home?.content || `Actuent has indexed ${domain}.`)}</p>
 
 <div class="card score"><div class="num" style="color:${scoreColor}">${score}</div><div><strong>${esc(label)}</strong><div class="muted">Agent-readiness score out of 100</div>
-<ul class="checks" style="margin-top:8px">${checks.map(c => `<li class="${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "○"} ${esc(c.label)}</li>`).join("")}</ul></div></div>
+<ul class="checks" style="margin-top:8px">${checks.map(c => `<li class="${c.ok ? "ok" : "no"}">${c.ok ? "✓" : "○"} ${esc(c.label)}</li>`).join("")}</ul></div>${lawpyFor(score)}</div>
 
 ${improveSection(site, domain, checks)}
 
@@ -433,11 +452,12 @@ ${vs ? `<h2>Compared with similar sites</h2><div class="card"><div>#${vs.rank} o
 ${vs.they_have.length ? `<div class="muted" style="margin-top:10px">What they have that ${esc(name)} doesn't: ${vs.they_have.slice(0, 3).map(t => `${esc(t.label.toLowerCase())} (${t.count} of ${vs.competitors.length})`).join(", ")}.</div>` : ""}</div>` : ""}
 
 <h2>For AI agents</h2><div class="card"><div class="muted">Get this site as structured JSON:</div><code>GET ${BASE}/api/search?q=${esc(domain)}</code>
+<div style="margin-top:10px"><a class="tag hot" href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download lawp.json</a> <span class="muted">${site.native ? "The LAWP this site publishes." : `Ready to publish at https://${esc(domain)}/.well-known/lawp.json, made from what Actuent knows.`}</span></div>
 <div class="muted" style="margin-top:8px">Or connect Actuent to ChatGPT or Claude: <code>https://agents.actuent.ai/api/mcp</code></div>
 <div class="muted" style="margin-top:8px">Last updated ${site.updated_at ? esc(new Date(site.updated_at).toUTCString().slice(5, 16)) : "recently"}${site.language && site.language !== "en" ? ` · original language: ${esc(site.language)}` : ""}</div></div>
 
 <h2>Is this your site?</h2><div class="card cta"><div>Claim ${esc(domain)} to edit what AI agents see, make your actions executable, and show your score:</div>
-<div style="margin-top:10px"><a href="https://analytics.actuent.ai">Claim this site →</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
+<div style="margin-top:10px"><a href="${BASE}/site/${esc(domain)}?format=lawp" download="lawp.json">Download your lawp.json →</a> &nbsp; <a href="https://analytics.actuent.ai">Claim this site →</a> &nbsp; <a href="https://docs.actuent.ai/#platforms">WordPress, Cloudflare &amp; Shopify →</a></div>
 <div class="muted" style="margin-top:10px">Show your score: <code>&lt;script src="${BASE}/badge.js" data-domain="${esc(domain)}" async&gt;&lt;/script&gt;</code> or the image <code>${BASE}/badge.svg?domain=${esc(domain)}&amp;style=card</code></div></div>`
 
   const hours = (b?.opening_hours || []).filter((h: any) => Array.isArray(h.days) && h.opens && h.closes)

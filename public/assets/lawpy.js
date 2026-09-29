@@ -14,7 +14,8 @@
     wave: { file: "wave.svg", w: 14, frames: 6, h: 11, fps: 7 },
     talk: { file: "talk.svg", w: 14, frames: 8, h: 11, fps: 9 },
     think: { file: "think.svg", w: 17, frames: 6, h: 11, fps: 4 },
-    dance: { file: "dance.svg", w: 16, frames: 8, h: 12, fps: 8 }
+    // v=2: the 12-frame dance (September 2026); the version stops browsers using the old 8-frame sheet.
+    dance: { file: "dance.svg?v=2", w: 18, frames: 12, h: 12, fps: 10 }
   }
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
@@ -46,9 +47,9 @@
       var scale = Math.max(1, Number(this.getAttribute("scale")) || 4)
       this.stop()
       this.current = state in STATES ? state : "idle"
-      // The box fits the widest (think, with its dots) and tallest (dance) frames, so Lawpy
-      // doesn't make the page jump when he changes what he's doing.
-      this.style.width = 17 * scale + "px"
+      // The box fits the widest and tallest frames (the dance), so Lawpy doesn't make the page
+      // jump when he changes what he's doing.
+      this.style.width = 18 * scale + "px"
       this.style.height = 12 * scale + "px"
       var sp = this.sprite
       sp.style.width = s.w * scale + "px"
