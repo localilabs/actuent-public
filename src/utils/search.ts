@@ -501,11 +501,13 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
 
     const te = Date.now()
     let expansionUnavailable = false
+    let namedFound = false
     const expanding = expandQuery(query, tier, mayUseLlm).then(x => {
       mark("expand", te)
       if (x.unavailable) expansionUnavailable = true
       // Related searches people could try next ("running shoes" → "trail running shoes", "sneakers").
-      if (opts.related && !opts.related.length) opts.related.push(...x.terms.slice(0, 6))
+      // (Not for a name: "localilabs" isn't "lab services".)
+      if (opts.related && !opts.related.length && !namedFound) opts.related.push(...x.terms.slice(0, 6))
       return x
     })
     // As soon as the expansion arrives, the expanded search starts (overlapping the plain one).
@@ -565,7 +567,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const found = await osmPlaces(place.what, place.city)
       if (found?.length) opts.places.push(...found)
     }
-    const named: Site[] = (await nameSearch).map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: x.matched || "exact name" }))
+    const namedList = await nameSearch
+    if (namedList.length) { namedFound = true; if (opts.related) opts.related.length = 0 }
+    const named: Site[] = namedList.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: x.matched || "exact name" }))
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
     // A name search skips the guessed related terms: they're what put "arkoselabs" and "slack"
