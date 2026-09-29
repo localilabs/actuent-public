@@ -147,8 +147,9 @@ async function rpc(fn: string, query: string, max: number, onFail?: () => void):
       method: "POST",
       headers: SUPABASE_HEADERS,
       body: JSON.stringify({ q: query, max_results: max }),
-      // A slow database call must not hold up the whole search: answer with what we have.
-      signal: AbortSignal.timeout(6000)
+      // A slow database call must not hold up the whole search: answer with what we have (the
+      // best-known sites come from topSites meanwhile, and the database finishes warming up anyway).
+      signal: AbortSignal.timeout(4000)
     })
     if (r.status === 404) return null
     if (!r.ok) return failed()
