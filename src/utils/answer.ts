@@ -38,10 +38,13 @@ export async function questionSite(q: string): Promise<{ site: any, keywords: st
   return { site: found[i], keywords: words.filter(w => w.length >= 3 && !nameWords.has(w) && !["does", "have", "what", "when", "where", "which", "there"].includes(w)) }
 }
 
-// The words of a question worth looking for on a site's pages ("is there parking?" → ["parking"]).
+// The words of a question worth looking for on a site's pages ("is there a free plan?" → ["free",
+// "plan"]). Only question words go: unlike STOP (for spotting the site's name), "free", "plan" and
+// "price" are exactly what to look for.
+const QUESTION_WORDS = new Set("does do is are can could how much many what when where which who why will would should i you they it its the a an of for to in on at with have has had there their your my any some me we us our get".split(" "))
 export function questionKeywords(q: string, siteName = ""): string[] {
   const nameWords = new Set(siteName.toLowerCase().split(/[\s.]+/))
-  return q.toLowerCase().replace(/[?!.,]/g, " ").split(/\s+/).filter(w => w.length >= 3 && !STOP.has(w) && !nameWords.has(w)).slice(0, 8)
+  return q.toLowerCase().replace(/[?!.,]/g, " ").split(/\s+/).filter(w => w.length >= 3 && !QUESTION_WORDS.has(w) && !nameWords.has(w)).slice(0, 8)
 }
 
 export async function answerFromSite(site: any, keywords: string[]): Promise<{ domain: string, sentences: { text: string, url: string }[] } | null> {
