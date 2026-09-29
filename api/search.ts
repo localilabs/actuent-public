@@ -10,6 +10,7 @@ import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
 import { cleanName, snippet, notAResult } from "../src/utils/results"
 import { splitCity, cityCountry } from "../src/utils/local"
+import { comparison, questionSite, answerFromSite } from "../src/utils/answer"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -102,6 +103,49 @@ async function upcomingEvents(q: string): Promise<any[]> {
   } catch { return [] }
 }
 
+// A client searching again within 90 seconds with overlapping words is refining the search.
+const lastSearch = new Map<string, { q: string, at: number }>()
+function noteReformulation(client: string, q: string) {
+  const prev = lastSearch.get(client)
+  lastSearch.set(client, { q, at: Date.now() })
+  if (lastSearch.size > 5000) lastSearch.delete(lastSearch.keys().next().value!)
+  if (!prev || Date.now() - prev.at > 90_000 || prev.q.toLowerCase() === q.toLowerCase()) return
+  const a = new Set(prev.q.toLowerCase().split(/\s+/)), overlap = q.toLowerCase().split(/\s+/).some(w => w.length > 2 && a.has(w))
+  if (!overlap || /[@/:]|\d{4,}/.test(prev.q + q)) return
+  later(fetch(`${SUPABASE_URL}/rest/v1/rpc/add_reformulation`, {
+    method: "POST", headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ a: prev.q, b: q }), signal: AbortSignal.timeout(3000)
+  }))
+}
+async function usualRewrites(q: string): Promise<string[]> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/query_reformulations?select=to_query&from_query=eq.${encodeURIComponent(q.toLowerCase().slice(0, 120))}&times=gte.3&order=times.desc&limit=3`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(500)
+    })
+    return r.ok ? (await r.json()).map((x: any) => x.to_query) : []
+  } catch { return [] }
+}
+
+// Shared cache: popular searches answer from here on every server instance (30 minutes).
+const SHARED_TTL_MS = 30 * 60_000
+async function sharedCacheGet(key: string): Promise<unknown | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/search_cache?select=body&key=eq.${encodeURIComponent(key)}&expires_at=gt.${encodeURIComponent(new Date().toISOString())}`, {
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(400)
+    })
+    const [row] = r.ok ? await r.json() : []
+    return row?.body ?? null
+  } catch { return null }
+}
+async function sharedCacheSet(key: string, body: unknown): Promise<void> {
+  await fetch(`${SUPABASE_URL}/rest/v1/search_cache?on_conflict=key`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ key, body, expires_at: new Date(Date.now() + SHARED_TTL_MS).toISOString() }),
+    signal: AbortSignal.timeout(3000)
+  }).catch(() => {})
+}
+
 async function suggestSpelling(q: string): Promise<string | null> {
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/did_you_mean`, {
@@ -188,8 +232,10 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
   const key = `${tier}:${cacheKey(cleanQueryKeepPrice(localized))}`
-  const cached = cacheGet(key)
+  // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
+  const cached = cacheGet(key) ?? await sharedCacheGet(key)
   if (cached) {
+    cacheSet(key, cached)
     await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
     res.setHeader("X-Search-Time", String(Date.now() - requestStart))
     return res.status(200).json(present({ ...(cached as any), query: typed }, params))
@@ -223,11 +269,28 @@ async function search(req: VercelRequest, res: VercelResponse) {
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
+  // Rewritten searches (list_thirteen.sql): what this client searched just before, and what people
+  // usually rewrite this search to (shown as related searches).
+  const clientKey = ipHash((req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim())
+  noteReformulation(clientKey, typed)
+  const rewritesTo = usualRewrites(typed)
+  // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
+  const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
+  const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
   const [results, products, events] = await Promise.all([
     searchSites(searchQuery, tier, timing, notices, { lite, places, related }).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
     isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
   ])
+  const compared = await comparing
+  const asked = await asking
+  const answer = asked ? await answerFromSite(asked.site, asked.keywords) : null
+  const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
+    .map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: compared ? "compared site" : "the site the question is about" }))
+  if (firstUp.length) {
+    const first = new Set(firstUp.map(x => x.domain))
+    results.splice(0, results.length, ...firstUp, ...results.filter((r: any) => !first.has(r.domain)))
+  }
   // Misspelt searches: suggest the closest well-known words (did_you_mean, list_eleven.sql), and
   // when nothing matched at all, search for the suggestion instead and say so.
   let didYouMean: string | null = null
@@ -293,8 +356,10 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
+    ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
+    ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
-    ...(related.length ? { related } : {}),
+    ...(related.length || (await rewritesTo).length ? { related: [...new Set([...(await rewritesTo), ...related])].slice(0, 8) } : {}),
     ...(didYouMean ? { did_you_mean: didYouMean } : {}),
     ...(searchedFor ? { searched_for: searchedFor } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
@@ -302,7 +367,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
   if (degraded) res.setHeader("Cache-Control", "no-store")
-  else if (results.length > 0 || products.length > 0) cacheSet(key, body)
+  else if (results.length > 0 || products.length > 0) { cacheSet(key, body); await later(sharedCacheSet(key, body)) }
   res.setHeader("X-Search-Time", String(Date.now() - requestStart))
   return res.status(200).json(present(body, params))
 }

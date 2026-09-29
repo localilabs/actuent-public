@@ -1,6 +1,6 @@
 import { translateKeywords, queryLanguage } from "./multilingual"
 import { notice, Notice } from "./notices"
-import { splitCity, localBusinesses, osmPlaces } from "./local"
+import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor } from "./local"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
 import { nameOf, looksLikeName, brandSites, sameOwner, officialWebsite } from "./brand"
@@ -419,7 +419,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       // A city in the search says where, not what: "running shoes london" is scored on "running
       // shoes", and businesses actually in London get the local bonus below.
       const place = splitCity(primaryQuery)
-      const what = place ? place.what : primaryQuery
+      const needs = localNeeds(query)
+      const what = (place ? place.what : primaryQuery).replace(/\b(open (now|late)|late[- ]night|tonight|today|tomorrow|this (evening|morning|weekend)|(on )?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?|friendly)\b/gi, " ").replace(/\s+/g, " ").trim() || primaryQuery
       const cats = queryCategories(what)
       const words = [...new Set(what.toLowerCase().split(/\s+/).filter(w => w.length > 2).map(stem))]
       const weight = (w: string) => WEAK_WORDS.has(w) ? 0.5 : 1
@@ -443,7 +444,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         const clickBoost = clickCount ? 1 + Math.min(0.4, Math.log2(1 + clickCount) / 12) : 1
         // Sites in the searcher's own language (a German search, a German site) rank a little higher.
         const languageBoost = lang && (site as any).language === lang ? 1.15 : 1
-        return base * (0.15 + 0.85 * c * c) * categoryBoost * clickBoost * languageBoost
+        // Local needs: "vegan", "dogs", "open late", "brunch sunday" (OpenStreetMap features and opening hours).
+        const needsBoost = (site as any).business ? needsFactor((site as any).business, needs) : 1
+        return base * (0.15 + 0.85 * c * c) * categoryBoost * clickBoost * languageBoost * needsBoost
           * intentBoost(query, site) * freshnessBoost(query, (site as any).updated_at) * qualityFactor(site)
       }
       // Businesses in the searched city compete in the same ranking, with a bonus for the city

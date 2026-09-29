@@ -105,3 +105,56 @@ export function closedPlace(type: string | undefined, tags: Record<string, strin
   return /^(vacant|disused|abandoned|closed)$/i.test(String(type || "")) || t.shop === "vacant" || t.amenity === "vacant"
     || Object.keys(t).some(k => /^(disused|abandoned|was|demolished|removed):/.test(k)) || t.opening_hours === "closed" || t.opening_hours === "off"
 }
+
+// ----- What the searcher needs from a place, and when -----
+// "vegan brunch copenhagen sunday", "bar open late", "dog friendly cafe", "dinner tonight"
+const FEATURE_WORDS: [RegExp, string][] = [
+  [/\bvegan\b/i, "vegan"], [/\bvegetarian\b/i, "vegetarian"], [/\bgluten[- ]free\b/i, "gluten_free"], [/\bwheelchair|accessible|step[- ]free\b/i, "wheelchair"],
+  [/\boutdoor|terrace|garden seating\b/i, "outdoor_seating"], [/\bwi-?fi\b/i, "wifi"], [/\bkids?|child|family[- ]friendly\b/i, "kids"], [/\bdogs?|dog[- ]friendly|pet[- ]friendly\b/i, "dogs"]
+]
+const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+const DAY_WORDS: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 }
+const MEAL_TIME: [RegExp, number][] = [[/\bbreakfast\b/i, 8 * 60 + 30], [/\bbrunch\b/i, 11 * 60], [/\blunch\b/i, 12 * 60 + 30], [/\bdinner\b/i, 19 * 60 + 30], [/\bopen late|late[- ]night|after midnight\b/i, 23 * 60], [/\btonight|this evening\b/i, 20 * 60]]
+export type LocalNeeds = { features: string[], day: string | null, minutes: number | null }
+
+export function localNeeds(q: string, zone = "Europe/Copenhagen"): LocalNeeds {
+  const features = FEATURE_WORDS.filter(([re]) => re.test(q)).map(([, f]) => f)
+  const nowParts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date()).map(p => [p.type, p.value]))
+  const today = DAYS.indexOf(String(nowParts.weekday).slice(0, 2))
+  let day: number | null = null
+  for (const [w, d] of Object.entries(DAY_WORDS)) if (new RegExp(`\\b${w}\\b`, "i").test(q)) day = d
+  if (/\btomorrow\b/i.test(q)) day = (today + 1) % 7
+  if (/\b(today|tonight|this evening|now|open now)\b/i.test(q)) day = today
+  let minutes: number | null = null
+  for (const [re, m] of MEAL_TIME) if (re.test(q)) minutes = m
+  if (/\b(now|open now)\b/i.test(q)) minutes = Number(nowParts.hour) * 60 + Number(nowParts.minute)
+  if (minutes != null && day == null) day = today
+  return { features, day: day == null ? null : DAYS[day], minutes }
+}
+
+const toMin = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0) }
+// Open on that day at that time, per the place's opening hours (null when the hours are unknown).
+export function openAt(hours: { days: string[], opens: string, closes: string }[] | undefined, day: string, minutes: number): boolean | null {
+  if (!Array.isArray(hours) || !hours.length) return null
+  const prev = DAYS[(DAYS.indexOf(day) + 6) % 7]
+  return hours.some(h => {
+    const o = toMin(h.opens), c = toMin(h.closes)
+    if (c > o) return h.days.includes(day) && minutes >= o && minutes < c
+    // Past midnight: open from o on that day until c the next morning.
+    return (h.days.includes(day) && minutes >= o) || (h.days.includes(prev) && minutes < c)
+  })
+}
+
+// How well a place fits: 1.3× per feature it has, and 1.3× when open at the asked time (0.3× when closed).
+export function needsFactor(business: any, needs: LocalNeeds): number {
+  if (!business || (!needs.features.length && needs.day == null)) return 1
+  let f = 1
+  const has: string[] = Array.isArray(business.features) ? business.features : []
+  for (const want of needs.features) if (has.includes(want)) f *= 1.3
+  if (needs.day && needs.minutes != null) {
+    const open = openAt(business.opening_hours, needs.day, needs.minutes)
+    if (open === true) f *= 1.3
+    if (open === false) f *= 0.3
+  }
+  return f
+}
