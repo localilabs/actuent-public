@@ -13,7 +13,9 @@ import { USER_AGENT } from "./robots"
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const HEADERS = { "apikey": process.env.SUPABASE_SERVICE_KEY!, "Authorization": `Bearer ${process.env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" }
 const FIELDS = "domain,name,pages,actions,native,updated_at,language,business,category,popularity_rank,owner_key"
-const TLDS = ["com", "io", "ai", "co", "app", "dev", "net", "org", "dk", "se", "no", "de", "co.uk", "fr", "nl", "es", "it", "eu"]
+// Endings startups and brands use (notion.so, obsidian.md, linear.app), then country endings.
+const TLDS = ["com", "io", "ai", "co", "app", "dev", "net", "org", "so", "md", "me", "gg", "sh", "tv", "xyz", "tech", "cc", "us", "ca", "com.au",
+  "dk", "se", "no", "fi", "de", "at", "ch", "co.uk", "fr", "nl", "be", "es", "pt", "it", "pl", "eu"]
 
 // Words around a name that say what you want from it, not what it's called.
 const AROUND = /\b(tickets?|opening hours|hours|prices?|pricing|booking|book|reservations?|reserve|visit|website|official( site| website)?|site|menu|login|sign ?in|app|contact|address|near me|online|shop|store|careers|jobs)\b/gi
@@ -50,8 +52,8 @@ export async function brandSites(name: string): Promise<any[]> {
   ])
   const seen = new Set<string>()
   const all = [...byDomain, ...byName].filter(s => !seen.has(s.domain) && seen.add(s.domain))
-  // .com first, then the best-known, then the rest.
-  return all.sort((a, b) => Number(b.domain === `${label}.com`) - Number(a.domain === `${label}.com`) || (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9))
+  // The best-known first (notion.so over an unknown notion.com), then .com, then the rest.
+  return all.sort((a, b) => (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9) || Number(b.domain === `${label}.com`) - Number(a.domain === `${label}.com`))
 }
 
 export async function sameOwner(site: any): Promise<any[]> {
