@@ -5,9 +5,6 @@ import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFac
 import { later } from "./later"
 import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite } from "./brand"
 import { sites, Site } from "../data/sites"
-// The built-in example sites (a made-up Amsterdam barber, …) answer their own domain for the
-// docs' examples, but are never mixed into keyword results as if they were real businesses.
-const DEMO_SITES = new Set(Object.keys(sites))
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
 import { isRateLimited } from "./limits"
@@ -496,7 +493,9 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       // Businesses in the searched city compete in the same ranking, with a bonus for the city
       // (so a gold dealer in London never beats a running shop just for "buy … London").
       const localDomains = new Set((found.local || []).map(x => x.domain))
-      const ranked = [...Object.values(sites).filter(x => !DEMO_SITES.has(x.domain)), ...found.sites, ...(found.local || []).filter(x => !found.sites.some(y => y.domain === x.domain))]
+      // (Sites this server crawled or guessed for earlier searches are kept for domain lookups
+      // only: mixed in here, "password manager" guesses turned up in "car rental".)
+      const ranked = [...found.sites, ...(found.local || []).filter(x => !found.sites.some(y => y.domain === x.domain))]
         .map(site => ({ site, score: score(site) * (localDomains.has(site.domain) ? 1.6 : 1) }))
         .filter(r => r.score > 0)
         .sort((a, b) => b.score - a.score)
