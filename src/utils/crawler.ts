@@ -13,6 +13,7 @@ import crypto from "crypto"
 import { fetchPublic } from "./safe-fetch"
 import { cleanPageText, cleanPages } from "./boilerplate"
 import { fetchLlmsTxt, withLlmsTxt, withLlmsTxtInput } from "./llmstxt"
+import { CATEGORIES } from "./category"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -69,7 +70,7 @@ async function saveSite(site: Site, language: string = "en", hash?: string): Pro
   const base = { domain: site.domain, name: site.name, pages: site.pages, actions: site.actions, language, updated_at: new Date().toISOString() }
   // Newest schema first; older databases lack native (lawp_actions.sql) or content_hash (groq_quota.sql).
   const attempts = [
-    { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}), ...(site.business ? { business: site.business } : {}) },
+    { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}), ...(site.business ? { business: site.business } : {}), ...((site as any).category ? { category: (site as any).category } : {}) },
     { ...base, native: !!site.native, ...(hash ? { content_hash: hash } : {}) },
     { ...base, native: !!site.native },
     base
@@ -222,15 +223,16 @@ async function fetchHtml(domain: string): Promise<string | null> {
 async function enrichLive(domain: string, rules: any, content: string, tier: Tier): Promise<any | null> {
   const actions: any[] = Array.isArray(rules?.actions) ? rules.actions : []
   if (!actions.length) return null
-  const raw = await complete(`Website: ${domain}\nActions found on it: ${actions.map(a => `${a.id} (${a.name})`).join(", ")}\nContent: ${content.slice(0, 1400)}\n\nReply with JSON only, all text in English (translate if needed):\n{"name":"the brand or business name","language":"ISO 639-1 code of the site's own language","summary":"what the site offers and for whom, naming its category (e.g. 'accounting software', 'Italian restaurant in Lyon'), under 50 words","keywords":{"<action id>":["3-5 search words people would use for this action on this site"]}}`, 12000, tier, "crawl")
+  const raw = await complete(`Website: ${domain}\nActions found on it: ${actions.map(a => `${a.id} (${a.name})`).join(", ")}\nContent: ${content.slice(0, 1400)}\n\nReply with JSON only, all text in English (translate if needed):\n{"name":"the brand or business name","language":"ISO 639-1 code of the site's own language","summary":"what the site offers and for whom, naming its category (e.g. 'accounting software', 'Italian restaurant in Lyon'), under 50 words","keywords":{"<action id>":["3-5 search words people would use for this action on this site"]},"category":"one of: ${Object.keys(CATEGORIES).join(", ")}"}`, 12000, tier, "crawl")
   const parsed = safeParseJSON(raw || "")
   if (!parsed || typeof parsed.summary !== "string" || parsed.summary.length < 20) return null
   const language = typeof parsed.language === "string" && /^[a-z]{2}$/i.test(parsed.language) ? parsed.language.toLowerCase() : rules.language
   const name = typeof parsed.name === "string" && parsed.name.trim() && parsed.name.length <= 80 ? parsed.name.trim() : rules.name
   const home = rules.pages?.["/"] || {}
   const keywords = parsed.keywords && typeof parsed.keywords === "object" ? parsed.keywords : {}
+  const category = typeof parsed.category === "string" && CATEGORIES[parsed.category.trim()] ? parsed.category.trim() : undefined
   return {
-    ...rules, name, language,
+    ...rules, name, language, ...(category ? { category } : {}),
     pages: { ...rules.pages, "/": { ...home, title: language && language !== "en" ? name : (home.title || name), content: parsed.summary.trim().slice(0, 500) } },
     actions: actions.map(a => {
       const extra = Array.isArray(keywords[a.id]) ? keywords[a.id].filter((k: unknown) => typeof k === "string" && k.length <= 40).map((k: string) => k.toLowerCase()) : []
