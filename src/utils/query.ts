@@ -16,8 +16,17 @@ export function cleanQuery(raw: string): string {
   const words = q.split(" ")
   // Only long, question-like searches lose filler words; "the north face" stays as it is.
   if (words.length >= 4) q = q.replace(FILLER, " ")
+  // Prices are for the product search ("under 500 dkk"), not words to look for on websites.
+  q = q.replace(/\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than)\s*[€$£]?\s*\d+(?:[.,]\d+)?\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr\.?|kroner|dkk|sek|nok)?\b/gi, " ")
   q = q.replace(/\s+in\s+/gi, " ").replace(/\s+/g, " ").trim()
   return q.length >= 2 ? q : raw.trim()
+}
+
+// For the product search: the same cleaning, but "under 500 dkk" is kept.
+export function cleanQueryKeepPrice(raw: string): string {
+  const price = raw.match(/\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than)\s*[€$£]?\s*\d+(?:[.,]\d+)?\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr\.?|kroner|dkk|sek|nok)?\b/i)?.[0]
+  const rest = cleanQuery(raw)
+  return price ? `${rest} ${price}` : rest
 }
 
 export function cacheKey(q: string): string {

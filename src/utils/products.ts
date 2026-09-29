@@ -133,12 +133,29 @@ const CURRENCY_WORDS: Record<string, string> = {
   "£": "GBP", "gbp": "GBP", "pound": "GBP", "pounds": "GBP", "kr": "DKK", "dkk": "DKK", "sek": "SEK", "nok": "NOK"
 }
 
-export async function parsePriceLimit(query: string): Promise<{ text: string, maxEur: number | null }> {
-  const m = query.match(/\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than)\s*([€$£])?\s*(\d+(?:[.,]\d+)?)\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr|dkk|sek|nok)?\b/i)
-  if (!m) return { text: query, maxEur: null }
+export const PRICE_PHRASE = /\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than|til under|unter|moins de|menos de|sotto i)\s*([€$£])?\s*(\d+(?:[.,]\d+)?)\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr\.?|kroner|dkk|sek|nok)?\b/i
+
+export async function parsePriceLimit(query: string): Promise<{ text: string, maxEur: number | null, currency: string | null }> {
+  const m = query.match(PRICE_PHRASE)
+  if (!m) return { text: query, maxEur: null, currency: null }
   const amount = Number(m[2].replace(",", "."))
-  const currency = CURRENCY_WORDS[(m[1] || m[3] || "€").toLowerCase()] || "EUR"
-  return { text: query.replace(m[0], " ").replace(/\s+/g, " ").trim(), maxEur: await toEur(amount, currency) }
+  const currency = CURRENCY_WORDS[(m[1] || m[3] || "€").toLowerCase().replace(/\.$/, "").replace(/^kroner$/, "kr")] || "EUR"
+  return { text: query.replace(m[0], " ").replace(/\s+/g, " ").trim(), maxEur: await toEur(amount, currency), currency }
+}
+
+// Where the shopper is: the currency they named ("500 dkk") or the country of the city they named.
+// Shops in that market rank first, and shops in far-off markets are dropped when local ones exist.
+const COUNTRY_CURRENCY: Record<string, string> = { dk: "DKK", se: "SEK", no: "NOK", gb: "GBP", uk: "GBP", us: "USD", ch: "CHF", pl: "PLN", cz: "CZK" }
+const EUROZONE = new Set(["de", "fr", "nl", "be", "es", "it", "pt", "at", "ie", "fi", "gr", "lu", "ee", "lv", "lt", "sk", "si", "mt", "cy", "hr"])
+export type Market = { currency: string | null, country: string | null }
+function marketScore(row: any, m: Market): number {
+  const tld = String(row.domain || "").split(".").pop() || ""
+  let s = 0
+  if (m.currency && row.currency === m.currency) s += 3
+  if (m.country && (tld === m.country || (m.country === "gb" && tld === "uk"))) s += 2
+  if (m.country && EUROZONE.has(m.country) && row.currency === "EUR") s += 1
+  if (["EUR", "USD", "GBP"].includes(row.currency)) s += 0.5 // big markets usually ship internationally
+  return s
 }
 
 // Product names can be in any language; results are shown in English.
@@ -176,16 +193,23 @@ async function otherShopsByGtin(gtins: string[]): Promise<any[]> {
   } catch { return [] }
 }
 
-export async function searchProducts(query: string, tier: Tier, max: number): Promise<any[]> {
-  const { text, maxEur } = await parsePriceLimit(query)
+export async function searchProducts(query: string, tier: Tier, max: number, country: string | null = null): Promise<any[]> {
+  const { text, maxEur, currency } = await parsePriceLimit(query)
   if (!text) return []
+  const market: Market = { currency: currency || (country ? COUNTRY_CURRENCY[country] || (EUROZONE.has(country) ? "EUR" : null) : null), country }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/search_lawp_items`, {
-      method: "POST", headers: HEADERS, body: JSON.stringify({ q: text, max_price_eur: maxEur, max_results: max * 2 })
+      method: "POST", headers: HEADERS, body: JSON.stringify({ q: text, max_price_eur: maxEur, max_results: max * 5 }), signal: AbortSignal.timeout(3000)
     })
     if (!r.ok) return []
-    const rows = await r.json()
+    let rows = await r.json()
     if (!Array.isArray(rows) || !rows.length) return []
+    // The shopper's market first; far-off markets only when nothing closer matched.
+    if (market.currency || market.country) {
+      const scored = rows.map((row: any, i: number) => ({ row, s: marketScore(row, market), i }))
+      const near = scored.filter(x => x.s >= 1)
+      rows = (near.length >= Math.min(3, max) ? near : scored).sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.row)
+    }
 
     // Group matches of the same product, keeping search order.
     const groups = new Map<string, any[]>()

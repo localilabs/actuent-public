@@ -7,9 +7,9 @@ import { trackedLink } from "../src/utils/links"
 import { openNow } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
-import { cleanQuery, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
+import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
 import { cleanName, snippet, notAResult } from "../src/utils/results"
-import { splitCity } from "../src/utils/local"
+import { splitCity, cityCountry } from "../src/utils/local"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -186,7 +186,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ? "public, max-age=0, s-maxage=300, stale-while-revalidate=3600"
     : "private, no-store")
 
-  const key = `${tier}:${cacheKey(searchQuery)}`
+  // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
+  const key = `${tier}:${cacheKey(cleanQueryKeepPrice(localized))}`
   const cached = cacheGet(key)
   if (cached) {
     await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), tier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
@@ -213,8 +214,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
     lite = hourly !== null && hourly > FREE_SEARCHES_PER_HOUR
   }
   // Products only for searches that could be shopping, and never holding up the sites for long.
+  // Products: the price stays in ("under 500 dkk"), the city goes, and shops in the shopper's
+  // market (the city's country, or where the searcher is) rank first.
+  const productPlace = splitCity(cleanQueryKeepPrice(localized))
+  const productText = productPlace ? productPlace.what : cleanQueryKeepPrice(localized)
+  const shopperCountry = cityCountry(productPlace?.city) || String(req.headers["x-vercel-ip-country"] || "").toLowerCase().slice(0, 2) || null
   const productSearch = isDomainQuery || !wantsProducts(searchQuery) ? Promise.resolve([]) : Promise.race([
-    searchProducts(searchQuery, tier, tier === "pro" ? 20 : 5),
+    searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
   const [results, products, events] = await Promise.all([

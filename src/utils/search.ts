@@ -3,6 +3,7 @@ import { notice, Notice } from "./notices"
 import { splitCity, localBusinesses, osmPlaces } from "./local"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
+import { nameOf, looksLikeName, brandSites, sameOwner, officialWebsite } from "./brand"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -498,6 +499,20 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // Local searches ("barber amsterdam"): businesses whose address is in that city come first.
     const place = splitCity(plainQuery)
     const localSearch = place ? localBusinesses(place.what, place.city) : Promise.resolve([])
+    // A name ("localilabs", "british museum", "louvre tickets"): that site first, found directly.
+    const name = nameOf(plainQuery, place?.city)
+    const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
+    const nameSearch: Promise<any[]> = name && !oneGenericWord && looksLikeName(name, false)
+      ? brandSites(name).then(async found => {
+          if (found.length) return [...found.slice(0, 2), ...await sameOwner(found[0])]
+          // Not in the index under that name: Wikidata's official website for it, if Actuent has it.
+          const domain = await officialWebsite(name)
+          if (!domain) return []
+          const saved = await getSavedSite(domain)
+          if (!saved) { queueCrawl(domain); return [] }
+          return [{ ...saved, owner_key: undefined }]
+        }).catch(() => [])
+      : Promise.resolve([])
     // For things you go to (barber, restaurant, dentist) the city helps find the right sites; for
     // things you buy or use online (running shoes, software) it only gets in the way.
     const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
@@ -510,9 +525,12 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       const found = await osmPlaces(place.what, place.city)
       if (found?.length) opts.places.push(...found)
     }
+    const named: Site[] = (await nameSearch).map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: "exact name" }))
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
     const tw = Date.now()
-    const finished = await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : plain.sites.length + plain.pages.length ? 5000 : 9000))])
+    // A name search skips the guessed related terms: they're what put "arkoselabs" and "slack"
+    // next to "localilabs". The site itself, its pages and sites that mention it are what's wanted.
+    const finished = named.length ? "late" as const : await Promise.race([expandedSearch, new Promise<"late">(r => setTimeout(() => r("late"), enough ? 1200 : plain.sites.length + plain.pages.length ? 5000 : 9000))])
     mark("wait", tw)
     // Busy: say the results come from a simpler search (only when there are results to qualify).
     const partial = (results: Site[]) => {
@@ -520,8 +538,13 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
       return results
     }
     await clicksReady
-    if (finished === "late" || finished === null) return partial(rank(plain, plainQuery, ""))
-    return partial(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages], local: plain.local }, finished.english, finished.expanded))
+    const withNamed = (results: Site[]) => {
+      if (!named.length) return results
+      const first = new Set(named.map(n => n.domain))
+      return [...named, ...results.filter(r => !first.has(r.domain))]
+    }
+    if (finished === "late" || finished === null) return partial(withNamed(rank(plain, plainQuery, "")))
+    return partial(withNamed(rank({ sites: [...plain.sites, ...finished.found.sites], pages: [...plain.pages, ...finished.found.pages], local: plain.local }, finished.english, finished.expanded)))
   }
 
   // Nothing in the index for a keyword search: guess sites and crawl them (LLM), or explain why not.

@@ -18,6 +18,24 @@ const CITIES = ("copenhagen aarhus odense aalborg stockholm gothenburg malmo mal
   "new-york brooklyn manhattan los-angeles san-francisco chicago boston seattle austin denver portland washington miami atlanta dallas houston philadelphia " +
   "san-diego las-vegas nashville toronto vancouver montreal sydney melbourne brisbane perth auckland wellington tokyo singapore dubai").split(" ").map(c => c.replace(/-/g, " "))
 
+// The country of a city in the list (for product search: shops in the shopper's market first).
+const CITY_COUNTRY: Record<string, string> = {
+  copenhagen: "dk", aarhus: "dk", odense: "dk", aalborg: "dk", stockholm: "se", gothenburg: "se", malmo: "se", "malmö": "se", oslo: "no", bergen: "no",
+  helsinki: "fi", reykjavik: "is", london: "gb", manchester: "gb", birmingham: "gb", leeds: "gb", glasgow: "gb", edinburgh: "gb", bristol: "gb", liverpool: "gb",
+  brighton: "gb", cambridge: "gb", oxford: "gb", cardiff: "gb", belfast: "gb", dublin: "ie", cork: "ie", amsterdam: "nl", rotterdam: "nl", utrecht: "nl",
+  "the hague": "nl", eindhoven: "nl", brussels: "be", antwerp: "be", ghent: "be", bruges: "be", berlin: "de", hamburg: "de", munich: "de", cologne: "de",
+  frankfurt: "de", stuttgart: "de", dusseldorf: "de", "düsseldorf": "de", leipzig: "de", dresden: "de", vienna: "at", salzburg: "at", zurich: "ch", geneva: "ch",
+  basel: "ch", paris: "fr", lyon: "fr", marseille: "fr", nice: "fr", bordeaux: "fr", toulouse: "fr", lille: "fr", nantes: "fr", madrid: "es", barcelona: "es",
+  valencia: "es", seville: "es", malaga: "es", bilbao: "es", lisbon: "pt", porto: "pt", rome: "it", milan: "it", florence: "it", venice: "it", naples: "it",
+  turin: "it", bologna: "it", prague: "cz", warsaw: "pl", krakow: "pl", budapest: "hu", athens: "gr", istanbul: "tr", toronto: "ca", vancouver: "ca",
+  montreal: "ca", sydney: "au", melbourne: "au", brisbane: "au", perth: "au", auckland: "nz", wellington: "nz", tokyo: "jp", singapore: "sg", dubai: "ae"
+}
+export function cityCountry(city: string | null | undefined): string | null {
+  if (!city) return null
+  const c = city.toLowerCase()
+  return CITY_COUNTRY[c] || (/new york|brooklyn|manhattan|los angeles|san francisco|chicago|boston|seattle|austin|denver|portland|washington|miami|atlanta|dallas|houston|philadelphia|san diego|las vegas|nashville/.test(c) ? "us" : null)
+}
+
 // Everyday words → the words OpenStreetMap's search knows (same list as the MCP nearby tool).
 const OSM_WORDS: Record<string, string> = {
   coffee: "cafe", "coffee shop": "cafe", "coffee roastery": "cafe", espresso: "cafe", brunch: "cafe", breakfast: "cafe", drinks: "bar", cocktails: "bar",
@@ -70,7 +88,8 @@ export async function osmPlaces(what: string, city: string): Promise<any[] | nul
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${word} in ${city}`)}&format=jsonv2&limit=8&extratags=1&addressdetails=1`, { headers: OSM_HEADERS, signal: AbortSignal.timeout(5000) })
     const list = r.ok ? await r.json() : []
-    return (Array.isArray(list) ? list : []).filter((p: any) => p.name).map((p: any) => ({
+    // Closed places stay in OpenStreetMap as "vacant" or "disused" for a while: never list them.
+    return (Array.isArray(list) ? list : []).filter((p: any) => p.name && !closedPlace(p.type, p.extratags)).map((p: any) => ({
       name: p.name, type: String(p.type || "").replace(/_/g, " "),
       address: String(p.display_name || "").split(",").slice(1, 4).join(",").trim(),
       website: p.extratags?.website || p.extratags?.["contact:website"] || null,
@@ -79,4 +98,10 @@ export async function osmPlaces(what: string, city: string): Promise<any[] | nul
       map: `https://www.openstreetmap.org/${p.osm_type}/${p.osm_id}`
     }))
   } catch { return null }
+}
+
+export function closedPlace(type: string | undefined, tags: Record<string, string> | null | undefined): boolean {
+  const t = tags || {}
+  return /^(vacant|disused|abandoned|closed)$/i.test(String(type || "")) || t.shop === "vacant" || t.amenity === "vacant"
+    || Object.keys(t).some(k => /^(disused|abandoned|was|demolished|removed):/.test(k)) || t.opening_hours === "closed" || t.opening_hours === "off"
 }
