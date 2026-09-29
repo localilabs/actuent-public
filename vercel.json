@@ -73,6 +73,10 @@
     {
       "src": "public/ask.js",
       "use": "@vercel/static"
+    },
+    {
+      "src": "public/actuent.postman_collection.json",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -255,6 +259,15 @@
         "Content-Type": "application/javascript; charset=utf-8",
         "Access-Control-Allow-Origin": "*",
         "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "src": "/actuent.postman_collection.json",
+      "dest": "/public/actuent.postman_collection.json",
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Content-Disposition": "attachment; filename=\"actuent.postman_collection.json\""
       }
     },
     {

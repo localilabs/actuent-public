@@ -1,0 +1,631 @@
+{
+  "info": {
+    "name": "Actuent API",
+    "description": "Actuent is a search engine for AI agents. Search any topic or domain and get websites back as LAWP: structured JSON with each site's pages and the actions a visitor can take. Free without a key (20 requests/min); Pro API keys from actuent.ai give full results and 60 requests/min.\n\nGenerated from https://api.actuent.ai/openapi.json. Set actuent_api_key for Pro.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.actuent.ai"
+    },
+    {
+      "key": "actuent_api_key",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Search websites and products as structured LAWP",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/search?q=running shoes under €100",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "search"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "running shoes under €100",
+              "description": "Topic, name, domain, domain/path, 'A vs B' comparison, or a product search with a price ('running shoes under 800 dkk')",
+              "disabled": false
+            },
+            {
+              "key": "limit",
+              "value": "",
+              "description": "Results per page",
+              "disabled": true
+            },
+            {
+              "key": "offset",
+              "value": "",
+              "description": "Paging offset",
+              "disabled": true
+            },
+            {
+              "key": "category",
+              "value": "",
+              "description": "Only this kind of site: restaurant, cafe, software, shop_fashion…",
+              "disabled": true
+            },
+            {
+              "key": "city",
+              "value": "",
+              "description": "Only businesses in this city",
+              "disabled": true
+            },
+            {
+              "key": "open_now",
+              "value": "",
+              "description": "Only places open right now (holiday hours respected)",
+              "disabled": true
+            },
+            {
+              "key": "lang",
+              "value": "",
+              "description": "Sites in this language first (ISO 639-1)",
+              "disabled": true
+            },
+            {
+              "key": "sort",
+              "value": "",
+              "description": "",
+              "disabled": true
+            },
+            {
+              "key": "fast",
+              "value": "",
+              "description": "A quick first answer (best-known sites, exact name, local businesses) in well under a second",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link."
+      }
+    },
+    {
+      "name": "Search (POST form)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/search",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "search"
+          ],
+          "query": []
+        },
+        "description": "Search (POST form)",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"barber amsterdam\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Ownership status and current LAWP for a domain (Pro)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/register?domain=notion.so",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "register"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "notion.so",
+              "description": "",
+              "disabled": false
+            }
+          ]
+        },
+        "description": "Ownership status and current LAWP for a domain (Pro)"
+      }
+    },
+    {
+      "name": "List or update your site's LAWP (Pro, verified owners)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/register",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "register"
+          ],
+          "query": []
+        },
+        "description": "List or update your site's LAWP (Pro, verified owners)",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Live counts of indexed sites and searches",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/stats",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "stats"
+          ],
+          "query": []
+        },
+        "description": "Live counts of indexed sites and searches"
+      }
+    },
+    {
+      "name": "State of the AI web: readability, native LAWP, products, languages and trends",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/state",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "state"
+          ],
+          "query": []
+        },
+        "description": "State of the AI web: readability, native LAWP, products, languages and trends"
+      }
+    },
+    {
+      "name": "Latest detected change to a site's LAWP",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/diff?domain=notion.so",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "diff"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "notion.so",
+              "description": "",
+              "disabled": false
+            }
+          ]
+        },
+        "description": "Latest detected change to a site's LAWP"
+      }
+    },
+    {
+      "name": "Suggest a site for the index",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/suggest",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "suggest"
+          ],
+          "query": []
+        },
+        "description": "Suggest a site for the index",
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        }
+      }
+    },
+    {
+      "name": "Actuent's own LAWP (reference example with an executable action)",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/.well-known/lawp.json",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            ".well-known",
+            "lawp.json"
+          ],
+          "query": []
+        },
+        "description": "Actuent's own LAWP (reference example with an executable action)"
+      }
+    },
+    {
+      "name": "Get agent readiness score",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/badge.json?domain=notion.so",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "badge.json"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "notion.so",
+              "description": "e.g. nike.com",
+              "disabled": false
+            }
+          ]
+        },
+        "description": "A site's agent-readiness score (0–100), label, category and each check."
+      }
+    },
+    {
+      "name": "Get badge image",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/badge.svg?",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "badge.svg"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "notion.so",
+              "description": "e.g. nike.com",
+              "disabled": true
+            },
+            {
+              "key": "style",
+              "value": "",
+              "description": "compact (default) or card",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Live score badge. style=card for a larger card with the checks."
+      }
+    },
+    {
+      "name": "Get leaderboard",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/leaderboard",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "leaderboard"
+          ],
+          "query": []
+        },
+        "description": "The 100 sites agents found most often in the last 7 days."
+      }
+    },
+    {
+      "name": "Site page",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/site/{{domain}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "site",
+            "{{domain}}"
+          ],
+          "query": []
+        },
+        "description": "Human-readable page: what AI agents see on a site, its score, how to improve it and similar sites."
+      }
+    },
+    {
+      "name": "City events calendar",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/site/in/{{city}}/whats-on.ics",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "site",
+            "in",
+            "{{city}}",
+            "whats-on.ics"
+          ],
+          "query": []
+        },
+        "description": "Upcoming events in a city as an iCalendar feed."
+      }
+    },
+    {
+      "name": "Get llms.txt",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/llms.txt",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "llms.txt"
+          ],
+          "query": []
+        },
+        "description": "Actuent's llms.txt."
+      }
+    },
+    {
+      "name": "Answer a question from one site's own pages",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/ask?domain=basecamp.com&q=is there a free plan",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "ask"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "basecamp.com",
+              "description": "",
+              "disabled": false
+            },
+            {
+              "key": "q",
+              "value": "is there a free plan",
+              "description": "",
+              "disabled": false
+            }
+          ]
+        },
+        "description": "Sentences from the site's pages that match the question, each with its page. No AI. 30 questions a minute."
+      }
+    },
+    {
+      "name": "Sites like a given one",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/similar?domain=notion.so",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "similar"
+          ],
+          "query": [
+            {
+              "key": "domain",
+              "value": "notion.so",
+              "description": "",
+              "disabled": false
+            },
+            {
+              "key": "limit",
+              "value": "",
+              "description": "",
+              "disabled": true
+            }
+          ]
+        },
+        "description": "Sites like a given one"
+      }
+    },
+    {
+      "name": "Sites and searches that start with what's typed",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{actuent_api_key}}",
+            "description": "Optional: your Pro API key",
+            "disabled": true
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/autocomplete?q=not",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "autocomplete"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "not",
+              "description": "",
+              "disabled": false
+            }
+          ]
+        },
+        "description": "Sites and searches that start with what's typed"
+      }
+    }
+  ]
+}

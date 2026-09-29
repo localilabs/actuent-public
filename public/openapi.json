@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Actuent API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "Actuent is a search engine for AI agents. Search any topic or domain and get websites back as LAWP: structured JSON with each site's pages and the actions a visitor can take. Free without a key (20 requests/min); Pro API keys from actuent.ai give full results and 60 requests/min.",
     "contact": {
       "name": "localilabs",
@@ -30,7 +30,7 @@
       "get": {
         "operationId": "searchWeb",
         "summary": "Search websites and products as structured LAWP",
-        "description": "Search by topic (\"barber amsterdam\", \"running shoes under \u20ac100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link.",
+        "description": "Search by topic (\"barber amsterdam\", \"running shoes under €100\"), domain (\"nike.com\") or page (\"stripe.com/pricing\"). Queries in any language are answered in English. Each result and product has a visit_url: use it when giving the user a link.",
         "parameters": [
           {
             "name": "q",
@@ -39,7 +39,80 @@
             "schema": {
               "type": "string"
             },
-            "description": "Topic, domain or domain/path"
+            "description": "Topic, name, domain, domain/path, 'A vs B' comparison, or a product search with a price ('running shoes under 800 dkk')"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 50
+            },
+            "description": "Results per page"
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Paging offset"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only this kind of site: restaurant, cafe, software, shop_fashion…"
+          },
+          {
+            "name": "city",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Only businesses in this city"
+          },
+          {
+            "name": "open_now",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Only places open right now (holiday hours respected)"
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Sites in this language first (ISO 639-1)"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "relevance",
+                "popular",
+                "fresh",
+                "rating"
+              ]
+            }
+          },
+          {
+            "name": "fast",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1"
+              ]
+            },
+            "description": "A quick first answer (best-known sites, exact name, local businesses) in well under a second"
           }
         ],
         "responses": {
@@ -312,7 +385,7 @@
     "/badge.json": {
       "get": {
         "summary": "Get agent readiness score",
-        "description": "A site's agent-readiness score (0\u2013100), label, category and each check.",
+        "description": "A site's agent-readiness score (0–100), label, category and each check.",
         "operationId": "get_agent_readiness_score",
         "parameters": [
           {
@@ -431,6 +504,199 @@
         "responses": {
           "200": {
             "description": "Markdown"
+          }
+        }
+      }
+    },
+    "/api/ask": {
+      "get": {
+        "operationId": "askSite",
+        "summary": "Answer a question from one site's own pages",
+        "description": "Sentences from the site's pages that match the question, each with its page. No AI. 30 questions a minute.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "basecamp.com"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "is there a free plan"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "question": {
+                      "type": "string"
+                    },
+                    "sentences": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "text": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "note": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The site isn't on Actuent yet"
+          },
+          "429": {
+            "description": "Too many questions"
+          },
+          "503": {
+            "description": "Busy: try again shortly"
+          }
+        }
+      }
+    },
+    "/api/similar": {
+      "get": {
+        "operationId": "similarSites",
+        "summary": "Sites like a given one",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "notion.so"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "maximum": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Similar sites",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "domain": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "sites": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "domain": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "category": {
+                            "type": "string"
+                          },
+                          "why": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/autocomplete": {
+      "get": {
+        "operationId": "autocomplete",
+        "summary": "Sites and searches that start with what's typed",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "not"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suggestions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sites": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "searches": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -599,6 +865,24 @@
               "boolean",
               "null"
             ]
+          },
+          "price_history": {
+            "type": "array",
+            "description": "Up to 12 prices over 90 days, oldest first",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "price_eur": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "lowest_90_days": {
+            "type": "boolean"
           }
         }
       },
@@ -677,6 +961,95 @@
                 }
               }
             }
+          },
+          "comparison": {
+            "type": "object",
+            "description": "For 'A vs B' searches",
+            "properties": {
+              "sites": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tip": {
+                "type": "string"
+              }
+            }
+          },
+          "answer": {
+            "type": "object",
+            "description": "For questions about one site: sentences from its own pages",
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "sentences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "summary": {
+            "type": "object",
+            "description": "Pro, question searches: a short answer written only from the top results, with numbered sources",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "n": {
+                      "type": "integer"
+                    },
+                    "domain": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "near": {
+            "type": "string",
+            "description": "For place searches without a city: the city whose places came first"
+          },
+          "did_you_mean": {
+            "type": "string"
+          },
+          "searched_for": {
+            "type": "string"
+          },
+          "related": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "interpreted_as": {
+            "type": "string"
           }
         }
       },
