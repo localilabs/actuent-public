@@ -102,6 +102,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ]
   const counted = checks.filter(c => !c.optional || c.ok)
   const score = Math.round(100 * counted.filter(c => c.ok).reduce((n, c) => n + c.points, 0) / counted.reduce((n, c) => n + c.points, 0))
+  // Remember that this site was checked, with its first score (list_twentyfive.sql), for "recently fixed".
+  await later((async () => {
+    const [had] = await fetch(`${SUPABASE_URL}/rest/v1/checkups?select=domain&domain=eq.${encodeURIComponent(domain)}`, { headers: HEADERS }).then(r => r.ok ? r.json() : [null]).catch(() => [null])
+    await fetch(`${SUPABASE_URL}/rest/v1/checkups?on_conflict=domain`, { method: "POST", headers: { ...HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(had ? { domain, last_checked_at: new Date().toISOString() } : { domain, first_score: score }) }).catch(() => {})
+  })())
   // A fresh crawl, so the Actuent page and badge show the fixes too.
   await later(fetch(`${SUPABASE_URL}/rest/v1/rpc/queue_crawl`, { method: "POST", headers: HEADERS, body: JSON.stringify({ d: domain }), signal: AbortSignal.timeout(3000) }))
   return res.status(200).json({ domain, reachable: true, checked_at: new Date().toISOString(), score, checks, page: `https://api.actuent.ai/site/${domain}` })

@@ -1,5 +1,9 @@
 [
  {
+  "src": "/api/recently-fixed",
+  "dest": "/api/data.ts?op=recently_fixed"
+ },
+ {
   "src": "/api/events",
   "dest": "/api/data.ts?op=events"
  },
