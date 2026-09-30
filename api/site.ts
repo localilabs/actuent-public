@@ -96,7 +96,7 @@ ${[...byDay.entries()].map(([day, list]) => `<h2>${esc(day)}</h2><div class="car
 }
 
 // /site/in/<city>[/<category>]: businesses in a city from their own websites' schema.org address.
-async function cityPage(res: VercelResponse, citySlug: string, category: string | null) {
+async function cityPage(res: VercelResponse, citySlug: string, category: string | null, best = false) {
   const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
   const city = known || cityName(citySlug)
   const pattern = encodeURIComponent(city.replace(/[*,()]/g, "").replace(/ /g, "*"))
@@ -106,7 +106,10 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
   // table, so it's only a fallback until that function exists.
   let sites = await rpcRows("sites_in_city", { c: city, cat: category })
   if (sites === null) sites = await rows(`lawp_sites?select=domain,name,category,native,actions,business&business->address->>city=ilike.${pattern}${filter}&status=is.null&order=native.desc,updated_at.desc&limit=300`)
-  const listed = sites.filter(s => !HIDDEN_CATEGORIES.has(s.category))
+  let listed = sites.filter(s => !HIDDEN_CATEGORIES.has(s.category))
+  // "Best of" (/site/in/<city>/<category>/best): rating first, then published opening hours and agent-readiness.
+  const bestScore = (x: any) => (x.business?.rating?.value ? Number(x.business.rating.value) / Number(x.business.rating.best || 5) : 0.6) * 0.55 + (x.business?.opening_hours?.length ? 0.15 : 0) + readiness(x).score / 100 * 0.3
+  if (best) listed = [...listed].sort((a, b) => bestScore(b) - bestScore(a)).slice(0, 20)
   if (!listed.length) {
     res.setHeader("Cache-Control", "public, max-age=0, s-maxage=600")
     return res.status(404).send(layout({ title: `${city} — Actuent`, description: `No agent-ready businesses in ${city} yet.`, canonical: `${BASE}/site/in/${citySlug}`, image: ogImage(city, "Agent-ready businesses", "api.actuent.ai"), noindex: true,
@@ -114,10 +117,11 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
   }
   const byCategory = new Map<string, any[]>()
   for (const s of listed) { const c = s.category || "other"; if (!byCategory.has(c)) byCategory.set(c, []); byCategory.get(c)!.push(s) }
-  const label = category ? (CATEGORIES[category] || category) : "Agent-ready businesses"
+  const label = (best ? "Best " : "") + (category ? (best ? (CATEGORIES[category] || category).toLowerCase() : (CATEGORIES[category] || category)) : "Agent-ready businesses")
   const card = (s: any) => { const r = readiness(s); return `<a href="${BASE}/site/${esc(s.domain)}"><span>${esc(s.name || s.domain)} <span class="muted">${esc([s.business?.address?.street, s.domain].filter(Boolean).join(" · "))}</span></span><span>${s.business?.rating ? `<span class="tag">★ ${esc(s.business.rating.value)}</span>` : ""}<span class="tag${r.score >= 80 ? " hot" : ""}">${r.score}/100</span></span></a>` }
   const sections = [...byCategory.entries()].sort((a, b) => b[1].length - a[1].length)
     .map(([c, list]) => `${category ? "" : `<h2><a href="${BASE}/site/in/${esc(citySlug)}/${esc(c)}" style="color:inherit;text-decoration:none">${esc(CATEGORIES[c] || "Other")} (${list.length})</a></h2>`}<div class="card list">${list.slice(0, category ? 300 : 12).map(card).join("")}</div>`).join("")
+  const bestLink = category && !best && listed.length >= 5 ? ` <a href="${BASE}/site/in/${esc(citySlug)}/${esc(category)}/best">The best ${esc((CATEGORIES[category] || category).toLowerCase())} →</a>` : ""
   const crumbs: Crumb[] = [{ name: "Directory", url: `${BASE}/site` }, { name: city, url: `${BASE}/site/in/${citySlug}` }]
   if (category) crumbs.push({ name: label, url: `${BASE}/site/in/${citySlug}/${category}` })
   const jsonLd = {
@@ -129,12 +133,12 @@ async function cityPage(res: VercelResponse, citySlug: string, category: string 
   }
   const body = `${breadcrumbHtml(crumbs)}
 <h1>${esc(label)} in ${esc(city)}</h1>
-<p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see. <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on in ${esc(city)} →</a></p>
+<p class="lead">${listed.length} ${category ? esc(label.toLowerCase()) : "businesses"} in ${esc(city)} whose websites AI agents can read and act on, with their agent-readiness score. Ask your AI assistant with Actuent connected, or open one to see what agents see. <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on in ${esc(city)} →</a>${bestLink}${best ? ` Ranked by rating, published opening hours and agent-readiness.` : ""}</p>
 ${sections}`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
     title: `${label} in ${city} — Actuent`, description: `${listed.length} ${label.toLowerCase()} in ${city} that AI agents can read and act on.`,
-    canonical: `${BASE}/site/in/${citySlug}${category ? `/${category}` : ""}`, image: ogImage(`${label} in ${city}`, "Agent-ready businesses, by Actuent", `api.actuent.ai/site/in/${citySlug}`),
+    canonical: `${BASE}/site/in/${citySlug}${category ? `/${category}` : ""}${best ? "/best" : ""}`, image: ogImage(`${label} in ${city}`, "Agent-ready businesses, by Actuent", `api.actuent.ai/site/in/${citySlug}`),
     noindex: listed.length < 3, jsonLd, body
   }))
 }
@@ -559,7 +563,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.query.city) {
     const category = String(req.query.category || "")
-    return cityPage(res, slug(String(req.query.city)), category && CATEGORIES[category] ? category : null)
+    return cityPage(res, slug(String(req.query.city)), category && CATEGORIES[category] ? category : null, req.query.best === "1")
   }
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/[^a-z0-9.-]/g, "")
   if (!domain) return directory(res)

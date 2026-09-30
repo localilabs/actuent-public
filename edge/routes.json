@@ -112,6 +112,10 @@
   "dest": "/api/site.ts?city=$1&events=page"
  },
  {
+  "src": "/site/in/([^/?]+)/([^/?]+)/best/?",
+  "dest": "/api/site.ts?city=$1&category=$2&best=1"
+ },
+ {
   "src": "/site/in/([^/?]+)/([^/?]+)/?",
   "dest": "/api/site.ts?city=$1&category=$2"
  },
