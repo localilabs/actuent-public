@@ -25,7 +25,7 @@ begin
         and (s2.popularity_rank is null or s2.popularity_rank > 20000)
         and coalesce(s2.first_seen_at, s2.updated_at) < now() - interval '30 days'
         and not exists (select 1 from lawp_items i where i.domain = s2.domain)
-        and s2.domain not in (select unnest(q.domains) from searches q where q.created_at > now() - interval '30 days' and q.domains is not null)
+        and s2.domain not in (select d from searches q, unnest(q.domains) d where q.created_at > now() - interval '30 days' and d is not null)
       limit least(max_rows, 5000)
     )
     returning s.domain
