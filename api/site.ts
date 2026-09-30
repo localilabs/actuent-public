@@ -391,7 +391,7 @@ async function smarterPage(res: VercelResponse) {
     fetch("https://docs.actuent.ai/changelog.xml", { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.text() : "").catch(() => "")
   ])
   const items = [...feed.matchAll(/<item>[\s\S]*?<title>([^<]+)<\/title>[\s\S]*?<pubDate>([^<]+)<\/pubDate>/g)]
-    .filter(m => Date.parse(m[2]) > Date.now() - 7 * 86400000).map(m => m[1].replace(/&amp;/g, "&")).slice(0, 8)
+    .filter(m => Date.parse(m[2]) > Date.now() - 7 * 86400000).map(m => m[1].replace(/&amp;/g, "&").replace(/&#0?39;|&apos;/g, "'").replace(/&quot;/g, '"')).slice(0, 8)
   const n = (x: number) => x.toLocaleString("en")
   const facts = [
     newSites ? `<li><strong>${n(newSites)}</strong> new websites your AI can read</li>` : "",
