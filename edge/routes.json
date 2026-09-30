@@ -1,5 +1,9 @@
 [
  {
+  "src": "/api/player",
+  "dest": "/api/data.ts?op=player"
+ },
+ {
   "src": "/api/recently-fixed",
   "dest": "/api/data.ts?op=recently_fixed"
  },
