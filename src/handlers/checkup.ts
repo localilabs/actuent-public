@@ -57,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0].replace(/[^a-z0-9.-]/g, "")
   if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) return res.status(400).json({ error: "Add ?domain=yoursite.com" })
   const ip = String(req.headers["x-forwarded-for"] || "unknown").split(",")[0].trim()
-  if ((await rateLimit(`checkup:${ipHash(ip)}`, 6)).limited) return res.status(429).json({ error: "Please wait a minute before checking again." })
+  if ((await rateLimit(`checkup:${ipHash(ip)}`, 12)).limited) return res.status(429).json({ error: "Please wait a minute before checking again." })
 
   const [home, robots, sitemap, llms, lawp, claimed] = await Promise.all([
     get(`https://${domain}/`, 10000),
