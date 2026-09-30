@@ -17,10 +17,14 @@ const CITIES = ("copenhagen aarhus odense aalborg stockholm gothenburg malmo mal
   "madrid barcelona valencia seville malaga bilbao lisbon porto rome milan florence venice naples turin bologna prague warsaw krakow budapest athens istanbul " +
   "new-york brooklyn manhattan los-angeles san-francisco chicago boston seattle austin denver portland washington miami atlanta dallas houston philadelphia " +
   "san-diego las-vegas nashville toronto vancouver montreal sydney melbourne brisbane perth auckland wellington tokyo singapore dubai" +
-  " esbjerg roskilde uppsala trondheim stavanger tampere turku tallinn riga vilnius gdansk wroclaw brno bratislava ljubljana zagreb belgrade bucharest sofia thessaloniki minneapolis ottawa phoenix new-orleans salt-lake-city pittsburgh detroit honolulu calgary adelaide gold-coast christchurch osaka kyoto seoul hong-kong taipei bangkok kuala-lumpur manila jakarta bali ho-chi-minh-city mumbai bangalore delhi abu-dhabi tel-aviv cape-town johannesburg nairobi lagos marrakech cairo mexico-city buenos-aires sao-paulo rio-de-janeiro santiago bogota lima medellin doha riyadh").split(" ").map(c => c.replace(/-/g, " "))
+  " esbjerg roskilde uppsala trondheim stavanger tampere turku tallinn riga vilnius gdansk wroclaw brno bratislava ljubljana zagreb belgrade bucharest sofia thessaloniki minneapolis ottawa phoenix new-orleans salt-lake-city pittsburgh detroit honolulu calgary adelaide gold-coast christchurch osaka kyoto seoul hong-kong taipei bangkok kuala-lumpur manila jakarta bali ho-chi-minh-city mumbai bangalore delhi abu-dhabi tel-aviv cape-town johannesburg nairobi lagos marrakech cairo mexico-city buenos-aires sao-paulo rio-de-janeiro santiago bogota lima medellin doha riyadh" +
+  " kolding vejle horsens randers herning silkeborg næstved naestved fredericia viborg helsingør helsingor hillerød hillerod svendborg holbæk holbaek slagelse" +
+  " västerås vasteras örebro orebro linköping linkoping helsingborg jönköping jonkoping norrköping norrkoping lund umeå umea gävle gavle" +
+  " bremen hanover hannover nuremberg nürnberg essen dortmund bonn münster munster mannheim karlsruhe freiburg kiel lübeck lubeck augsburg heidelberg").split(" ").map(c => c.replace(/-/g, " "))
 
 // The country of a city in the list (for product search: shops in the shopper's market first).
 const CITY_COUNTRY: Record<string, string> = {
+  "kolding": "dk", "vejle": "dk", "horsens": "dk", "randers": "dk", "herning": "dk", "silkeborg": "dk", "næstved": "dk", "naestved": "dk", "fredericia": "dk", "viborg": "dk", "helsingør": "dk", "helsingor": "dk", "hillerød": "dk", "hillerod": "dk", "svendborg": "dk", "holbæk": "dk", "holbaek": "dk", "slagelse": "dk", "västerås": "se", "vasteras": "se", "örebro": "se", "orebro": "se", "linköping": "se", "linkoping": "se", "helsingborg": "se", "jönköping": "se", "jonkoping": "se", "norrköping": "se", "norrkoping": "se", "lund": "se", "umeå": "se", "umea": "se", "gävle": "se", "gavle": "se", "bremen": "de", "hanover": "de", "hannover": "de", "nuremberg": "de", "nürnberg": "de", "essen": "de", "dortmund": "de", "bonn": "de", "münster": "de", "munster": "de", "mannheim": "de", "karlsruhe": "de", "freiburg": "de", "kiel": "de", "lübeck": "de", "lubeck": "de", "augsburg": "de", "heidelberg": "de",
   copenhagen: "dk", aarhus: "dk", odense: "dk", aalborg: "dk", stockholm: "se", gothenburg: "se", malmo: "se", "malmö": "se", oslo: "no", bergen: "no",
   helsinki: "fi", reykjavik: "is", london: "gb", manchester: "gb", birmingham: "gb", leeds: "gb", glasgow: "gb", edinburgh: "gb", bristol: "gb", liverpool: "gb",
   brighton: "gb", cambridge: "gb", oxford: "gb", cardiff: "gb", belfast: "gb", dublin: "ie", cork: "ie", amsterdam: "nl", rotterdam: "nl", utrecht: "nl",
@@ -133,7 +137,7 @@ export function closedPlace(type: string | undefined, tags: Record<string, strin
 // ----- What the searcher needs from a place, and when -----
 // "vegan brunch copenhagen sunday", "bar open late", "dog friendly cafe", "dinner tonight"
 const FEATURE_WORDS: [RegExp, string][] = [
-  [/\bvegan\b/i, "vegan"], [/\bvegetarian\b/i, "vegetarian"], [/\bgluten[- ]free\b/i, "gluten_free"], [/\bwheelchair|accessible|step[- ]free\b/i, "wheelchair"],
+  [/\bvegan|plant[- ]based\b/i, "vegan"], [/\bvegetarian|veggie\b/i, "vegetarian"], [/\bgluten[- ]free|coeliac|celiac\b/i, "gluten_free"], [/\bwheelchair|accessible|step[- ]free\b/i, "wheelchair"],
   [/\boutdoor|terrace|garden seating\b/i, "outdoor_seating"], [/\bwi-?fi\b/i, "wifi"], [/\bkids?|child|family[- ]friendly\b/i, "kids"], [/\bdogs?|dog[- ]friendly|pet[- ]friendly\b/i, "dogs"]
 ]
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
@@ -174,11 +178,18 @@ export function needsFactor(business: any, needs: LocalNeeds): number {
   if (!business || (!needs.features.length && needs.day == null)) return 1
   let f = 1
   const has: string[] = Array.isArray(business.features) ? business.features : []
-  for (const want of needs.features) if (has.includes(want)) f *= 1.3
+  // A feature counts when OpenStreetMap lists it, or when the place's own menu mentions it
+  // ("vegan burger", "gluten-free pizza": schema.org menus and offers from its website).
+  const menu = (Array.isArray(business.offers) ? business.offers : []).map((o: any) => `${o.name || ""} ${o.category || ""}`).join(" ").toLowerCase()
+  const MENU_WORDS: Record<string, RegExp> = { vegan: /\bvegan|plant[- ]based\b/, vegetarian: /\bvegetarian|veggie\b/, gluten_free: /\bgluten[- ]free\b/ }
+  for (const want of needs.features) if (has.includes(want) || (MENU_WORDS[want] && MENU_WORDS[want].test(menu))) f *= 1.3
   if (needs.day && needs.minutes != null) {
     const open = openAt(business.opening_hours, needs.day, needs.minutes)
     if (open === true) f *= 1.3
     if (open === false) f *= 0.3
+  } else if (needs.day && Array.isArray(business.opening_hours) && business.opening_hours.length) {
+    // "open sunday" (a day, no time): open at some point that day, or not at all.
+    f *= business.opening_hours.some((h: any) => Array.isArray(h.days) && h.days.includes(needs.day)) ? 1.3 : 0.3
   }
   return f
 }
