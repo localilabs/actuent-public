@@ -283,6 +283,24 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       if (!groups.has(key)) groups.set(key, [])
       if (!groups.get(key)!.some(x => x.url === row.url)) groups.get(key)!.push(row)
     }
+    // Same product without a barcode: names with nearly the same words (in any order, ignoring
+    // "men's", sizes and the like) at a similar price (within 35%) are one product in several shops.
+    const tokens = (n: string) => new Set(nameKey(n).split(" ").filter(w => w.length > 1 && !/^(mens?|womens?|unisex|the|and|new|sale|\d+(\.\d+)?)$/.test(w)))
+    const keys = [...groups.keys()]
+    for (let i = 0; i < keys.length; i++) {
+      const gi = groups.get(keys[i]); if (!gi) continue
+      const ti = tokens(gi[0].name), pi = Number(gi[0].price_eur)
+      for (let j = i + 1; j < keys.length; j++) {
+        const gj = groups.get(keys[j]); if (!gj || keys[j].startsWith("gtin:") && keys[i].startsWith("gtin:")) continue
+        const tj = tokens(gj[0].name), pj = Number(gj[0].price_eur)
+        const shared = [...ti].filter(w => tj.has(w)).length, union = new Set([...ti, ...tj]).size
+        const similarPrice = !pi || !pj || Math.abs(pi - pj) / Math.max(pi, pj) <= 0.35
+        if (union >= 3 && shared / union >= 0.8 && similarPrice && gi.every(x => gj.every(y => x.domain !== y.domain))) {
+          for (const x of gj) if (!gi.some(y => y.url === x.url)) gi.push(x)
+          groups.delete(keys[j])
+        }
+      }
+    }
     // Barcodes also find the product in shops the text search didn't rank.
     const byGtin = await otherShopsByGtin([...groups.keys()].filter(k => k.startsWith("gtin:")).slice(0, 20).map(k => k.slice(5)))
     for (const o of byGtin) {
