@@ -326,6 +326,18 @@ function placesHtml(places) {
   }).join("") + '<div class="muted small" style="margin-top:6px">© OpenStreetMap contributors</div></div>'
 }
 
+// "Why Actuent picked this": the ranking reasons, in plain words.
+var lastNear = null
+function whyThis(site) {
+  var b = site.business || {}, why = []
+  if (site.matched) why.push(site.matched)
+  if (lastNear && b.address && b.address.city && String(b.address.city).toLowerCase() === String(lastNear).toLowerCase()) why.push("near you")
+  if (site.open_now === true) why.push("open now")
+  if (b.rating && b.rating.value >= 4.3) why.push("rated " + b.rating.value + "★")
+  if (site.popularity_rank && site.popularity_rank <= 5000) why.push("one of the best-known sites")
+  if (site.native) why.push("publishes its own LAWP")
+  return why.length ? 'Why: ' + why.map(esc).join(", ") : ''
+}
 function siteHtml(site, i, first) {
   var s = scoreLAWP(site)
   var col = s.score >= 80 ? "#4ade80" : s.score >= 50 ? "#ff8a3d" : "#a8a8b6"
@@ -351,7 +363,7 @@ function siteHtml(site, i, first) {
     site.open_now === true ? '<span class="open">Open now</span>' : site.open_now === false ? 'Closed now' : '',
     addr ? esc(addr) : '',
     b.stars ? esc(b.stars) + '★' : '',
-    site.matched ? 'Why: ' + esc(site.matched) : '',
+    whyThis(site),
     site.regional_sites && site.regional_sites.length ? 'Also: ' + site.regional_sites.map(esc).join(", ") : '',
     site.age_hours != null ? 'Updated ' + (site.age_hours < 48 ? esc(site.age_hours) + 'h' : Math.round(site.age_hours / 24) + 'd') + ' ago' : ''
   ].filter(Boolean).join(" · ")
@@ -444,6 +456,7 @@ function doSearch() {
     loading(false)
     btn.disabled = false
     btn.textContent = t("Search")
+    lastNear = data.near || null
     var sites = data.results || []
     var extras = productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
     var parts = [sites.length ? countOf(sites.length, "site", "sites") : "",
