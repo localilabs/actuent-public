@@ -5,8 +5,8 @@
 // Attributes: state, scale (pixels per Lawpy pixel, default 4), loops (play the state this many
 // times, then switch to `then`, default idle). From JS: el.play("dance", { loops: 2, then: "idle" }).
 // People who prefer reduced motion get a still Lawpy.
-// Seasonal outfits: a witch hat in October, a Santa hat 1–26 December (hat="none" turns it off,
-// hat="witch" / hat="santa" forces one).
+// Seasonal outfits: a witch hat in October, a Santa hat 1–26 December, a party hat on launch day
+// (14 October 2026). hat="none" turns it off; hat="witch" / "santa" / "party" forces one.
 (function () {
   if (customElements.get("lawpy-mascot")) return
   var BASE = "https://api.actuent.ai/assets/lawpy/"
@@ -25,9 +25,10 @@
   // Hats as pixel rows: k = purple, o = orange, r = red, w = white.
   var HATS = {
     witch: ["....k....", "...kk....", "...kkk...", "..kkkkk..", "..ooooo..", "kkkkkkkkk"],
-    santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"]
+    santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"],
+    party: ["...yy...", "...pp...", "..pbpp..", "..ppyp..", ".pbppbp.", ".pppppp."]
   }
-  var HAT_COLOURS = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5" }
+  var HAT_COLOURS = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5", p: "#ff4f9a", y: "#ffd23f", b: "#3fa7ff" }
   function hatSvg(rows) {
     var rects = ""
     rows.forEach(function (row, y) { for (var x = 0; x < row.length; x++) if (HAT_COLOURS[row[x]]) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + HAT_COLOURS[row[x]] + '"/>' })
@@ -35,6 +36,8 @@
   }
   function seasonHat() {
     var d = new Date(), m = d.getMonth(), day = d.getDate()
+    // Launch day (14 October 2026): a party hat.
+    if (d.getFullYear() === 2026 && m === 9 && day === 14) return "party"
     return m === 9 ? "witch" : m === 11 && day <= 26 ? "santa" : null
   }
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches

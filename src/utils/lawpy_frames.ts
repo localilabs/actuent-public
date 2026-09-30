@@ -35,11 +35,14 @@ export function lawpySvg(state: string, x: number, y: number, scale: number, fps
 // Seasonal hats (the same as public/assets/lawpy.js): a witch hat in October, Santa 1–26 December.
 const HATS: Record<string, string[]> = {
   witch: ["....k....", "...kk....", "...kkk...", "..kkkkk..", "..ooooo..", "kkkkkkkkk"],
-  santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"]
+  santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"],
+  party: ["...yy...", "...pp...", "..pbpp..", "..ppyp..", ".pbppbp.", ".pppppp."]
 }
-const HAT_COLOURS: Record<string, string> = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5" }
+const HAT_COLOURS: Record<string, string> = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5", p: "#ff4f9a", y: "#ffd23f", b: "#3fa7ff" }
 export function seasonHat(now = new Date()): string | null {
   const m = now.getUTCMonth(), d = now.getUTCDate()
+  // Launch day (14 October 2026): a party hat.
+  if (now.getUTCFullYear() === 2026 && m === 9 && d === 14) return "party"
   return m === 9 ? "witch" : m === 11 && d <= 26 ? "santa" : null
 }
 export const HAT_HEIGHT = 6
