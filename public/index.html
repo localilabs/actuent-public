@@ -193,6 +193,7 @@ function countOf(n, one, many) { return n + " " + t(n === 1 ? one : many) }
   <button class="chip" type="button">nike.com</button>
 </div>
 
+<div style="font-size:12px;color:#8e8e9c;margin:-4px 0 10px"><label for="currency">Prices in</label> <select id="currency" style="background:#17171f;color:#dcdce3;border:1px solid #34343f;border-radius:6px;padding:2px 6px;font-size:12px"><option value="">the shop's currency</option><option>DKK</option><option>EUR</option><option>SEK</option><option>NOK</option><option>GBP</option><option>USD</option><option>CHF</option><option>PLN</option></select></div>
 <div id="walk" aria-hidden="true"><span></span></div>
 <div id="status" role="status" aria-live="polite"></div>
 <div class="results" id="results"></div>
@@ -220,6 +221,18 @@ function scoreLAWP(site) {
   return { score: Math.min(score, 100), lines: lines }
 }
 
+// Prices in the visitor's chosen currency ("Prices in" menu, remembered on this device). Products
+// carry price_eur; the rates come from api.actuent.ai/api/rates (European Central Bank).
+var showIn = ""; try { showIn = localStorage.getItem("actuent-currency") || "" } catch (e) {}
+var rates = null
+function loadRates(then) {
+  if (rates || !showIn) return then && then()
+  fetch("https://api.actuent.ai/api/rates").then(function(r) { return r.json() }).then(function(d) { rates = d.rates || null; then && then() }).catch(function() { then && then() })
+}
+function priceOf(p) {
+  if (showIn && rates && rates[showIn] && p.price_eur != null && showIn !== p.currency) return '≈ ' + money(Number(p.price_eur) * rates[showIn], showIn)
+  return money(p.price, p.currency)
+}
 function money(amount, currency) {
   if (amount == null) return ""
   try { return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "EUR", maximumFractionDigits: amount % 1 ? 2 : 0 }).format(amount) }
@@ -302,7 +315,7 @@ function productsHtml(items) {
     var trend = spark(p.price_history) + (p.lowest_90_days ? '<span class="low">Lowest in 90 days</span>' : "")
     return '<a class="product" href="' + safeUrl(p.visit_url || p.url) + '" target="_blank" rel="noopener">' +
       (p.image ? '<img src="' + safeUrl(p.image) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=\'<div class=noimg></div>\'">' : '<div class="noimg"></div>') +
-      '<div class="body">' + esc(p.name) + '<div class="price">' + money(p.price, p.currency) + drop + '</div>' +
+      '<div class="body">' + esc(p.name) + '<div class="price">' + priceOf(p) + drop + '</div>' +
       trend + '<div class="muted">' + esc(p.domain) + (p.available === false ? ' · sold out' : '') + '</div>' + others + '</div></a>'
   }).join("") + '</div></div>'
 }
@@ -580,6 +593,19 @@ function meetLawpy() {
   document.querySelectorAll("[data-i18n]").forEach(function(el) { el.textContent = t(el.getAttribute("data-i18n")) })
   document.getElementById("query").placeholder = t("Search anything… (press / to focus)")
   document.getElementById("btn").textContent = t("Search")
+})()
+</script>
+<script>
+// "Prices in": re-run the search so prices show in the chosen currency.
+(function() {
+  var sel = document.getElementById("currency")
+  sel.value = showIn
+  sel.addEventListener("change", function() {
+    showIn = sel.value
+    try { localStorage.setItem("actuent-currency", showIn) } catch (e) {}
+    loadRates(function() { if (document.getElementById("query").value.trim()) doSearch() })
+  })
+  loadRates()
 })()
 </script>
 <script>
