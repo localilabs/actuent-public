@@ -488,6 +488,8 @@ function doSearch() {
       data.products && data.products.length ? countOf(data.products.length, "product", "products") : "",
       data.events && data.events.length ? countOf(data.events.length, "event", "events") : ""].filter(Boolean)
     status.textContent = parts.length ? parts.join(" · ") + " · " + ((Date.now() - started) / 1000).toFixed(1) + "s" : ""
+    // Share this search: a link with a Lawpy card for X, LinkedIn, Slack…
+    if (parts.length) { status.insertAdjacentHTML("beforeend", ' · <a href="#" id="share">Share ↗</a>'); document.getElementById("share").onclick = function(e) { e.preventDefault(); shareSearch(query, this) } }
     // Lawpy: explains an answer, dances when something was found, calms down when nothing was.
     lawpy(data.answer || data.comparison ? "talk" : sites.length || extras ? "dance" : "idle", 2)
 
@@ -614,6 +616,12 @@ function gameLater(on) {
   clearTimeout(game.timer)
   if (on) { game.timer = setTimeout(startGame, 3000); return }
   if (game.running) { game.running = false; cancelAnimationFrame(game.raf); game.stop && game.stop(); document.getElementById("game").style.display = "none" }
+}
+
+function shareSearch(query, link) {
+  var url = "https://api.actuent.ai/share?q=" + encodeURIComponent(query)
+  if (navigator.share) { navigator.share({ title: query + " — found with Actuent", text: "My AI found this with Actuent. Lawpy takes full credit.", url: url }).catch(function() {}); return }
+  (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function() { link.textContent = "Link copied ✓"; lawpy("dance", 2) }, function() { prompt("Copy this link:", url) })
 }
 
 // The easter egg: search "lawpy".

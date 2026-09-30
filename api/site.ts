@@ -365,6 +365,18 @@ ${top.length ? `<div class="card"><ul class="checks">${top.map((d: any) => `<li>
   return res.status(200).send(layout({ title: "Price drops this week — Actuent", description: "The biggest product price drops this week, from shops Actuent checks daily.", canonical: `${BASE}/deals`, image: ogImage("Price drops this week", "From shops Actuent checks daily", "api.actuent.ai/deals", "dance"), noindex: top.length < 3, body }))
 }
 
+// /share?q=… — a link to share a search: link previews show a Lawpy card with the search, and people
+// who open it land on that search on humans.actuent.ai.
+function sharePage(res: VercelResponse, q: string) {
+  const query = q.replace(/\s+/g, " ").trim().slice(0, 80)
+  const target = `https://humans.actuent.ai/${query ? `?q=${encodeURIComponent(query)}` : ""}`
+  const image = ogImage(query || "The internet — for AI", "My AI found this with Actuent. Lawpy takes full credit.", "actuent.ai", "dance")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400")
+  return res.status(200).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${esc(query || "Actuent")} — found with Actuent</title>
+<meta name="robots" content="noindex"><meta property="og:title" content="${esc(query ? `“${query}” — found with Actuent` : "Actuent: the internet for AI")}"><meta property="og:description" content="My AI found this with Actuent. Lawpy takes full credit."><meta property="og:image" content="${esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta http-equiv="refresh" content="0;url=${esc(target)}"></head>
+<body style="background:#0a0a0a;color:#f5f5f7;font-family:sans-serif"><p><a href="${esc(target)}" style="color:#ff8a3d">See the search →</a></p></body></html>`)
+}
+
 // Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
 function lawpyFor(score: number): string {
   const [state, loops, title] = score >= 90 ? ["dance", 4, "Agent-ready!"] : score >= 50 ? ["wave", 2, "Nearly there"] : ["think", 0, "Room to improve"]
@@ -554,6 +566,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.changes === "rss" && !req.query.domain) return changesFeed(res, null)
   if (req.query.trends) return trendsPage(res, req.query.trends === "json")
   if (req.query.status === "page") return statusPage(res)
+  if (req.query.share != null) return sharePage(res, String(req.query.q || ""))
   if (req.query.deals) return dealsPage(res, req.query.deals === "rss")
   if (req.query.brand) return brandPage(res, String(req.query.brand))
   if (req.query.city && req.query.new) return newInCity(res, slug(String(req.query.city)), req.query.new === "rss")

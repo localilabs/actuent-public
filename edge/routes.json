@@ -1,5 +1,9 @@
 [
  {
+  "src": "/share/?",
+  "dest": "/api/site.ts?share=1"
+ },
+ {
   "src": "/api/player",
   "dest": "/api/data.ts?op=player"
  },
