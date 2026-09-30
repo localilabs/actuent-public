@@ -343,7 +343,7 @@ ${top.map((d: any) => `<item><title>${x(`−${d.drop}%: ${decode(d.name)} (${d.d
 </channel></rss>`)
   }
   const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Price drops this week</h1>
-<p class="lead">The biggest price drops in the ${domains.length.toLocaleString("en")} shops Actuent checks daily. <a href="${BASE}/deals.rss">RSS</a></p></div>
+<p class="lead">The biggest price drops this week in the shops Actuent checks every day. <a href="${BASE}/deals.rss">RSS</a></p></div>
 <lawpy-mascot state="${top.length ? "dance" : "think"}" ${top.length ? 'loops="2" then="idle"' : ""} scale="4" style="margin-left:auto"></lawpy-mascot></div>
 ${top.length ? `<div class="card"><ul class="checks">${top.map((d: any) => `<li><strong>−${d.drop}%</strong> <a href="${esc(d.url)}" rel="nofollow">${esc(decode(d.name))}</a> <span class="muted">· now ${esc(d.price)} ${esc(d.currency || "")} · ${esc(d.domain)}</span></li>`).join("")}</ul></div>` : `<div class="card">No big price drops this week yet.</div>`}
 <p class="muted">Watch a product's price with an AI assistant: ask it to use Actuent's price watch.</p>`
