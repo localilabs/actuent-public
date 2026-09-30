@@ -320,6 +320,13 @@ function productsHtml(items) {
   }).join("") + '</div></div>'
 }
 
+// Dishes and services with prices, from local businesses' own menus.
+function dishesHtml(items) {
+  if (!items || !items.length) return ""
+  return '<div class="box"><div class="section">On the menu</div>' + items.map(function(d) {
+    return '<div class="row"><div class="date">' + (d.price != null ? money(d.price, d.currency) : "") + '</div><div>' + esc(d.name) + '<div class="muted small">' + esc(d.place) + ' · ' + esc(d.domain) + '</div></div></div>'
+  }).join("") + '</div>'
+}
 function eventsHtml(items) {
   if (!items || !items.length) return ""
   return '<div class="box"><div class="section">' + esc(t('Upcoming events')) + '</div>' + items.map(function(e) {
@@ -472,7 +479,7 @@ function doSearch() {
     btn.textContent = t("Search")
     lastNear = data.near || null
     var sites = data.results || []
-    var extras = productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
+    var extras = productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + dishesHtml(data.dishes) + placesHtml(data.places)
     var parts = [sites.length ? countOf(sites.length, "site", "sites") : "",
       data.products && data.products.length ? countOf(data.products.length, "product", "products") : "",
       data.events && data.events.length ? countOf(data.events.length, "event", "events") : ""].filter(Boolean)

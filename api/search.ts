@@ -1,4 +1,5 @@
 import { translateKeywords } from "../src/utils/multilingual"
+import { searchDishes } from "../src/utils/dishes"
 import { alternativeSearches } from "../src/utils/product_match"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { withoutHidden, searchSites, quickSearch, isPlaceSearch } from "../src/utils/search"
@@ -355,10 +356,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const spelling = !isDomainQuery && /[a-z]{5,}/i.test(searchQuery) ? suggestSpelling(searchQuery) : Promise.resolve(null)
   // homeCity: the searcher's last searched city, else where they are (Vercel's header).
   const searchOpts: any = { lite, places, related, didYouMean: nameTypos, homeCity }
-  const [results, products, events] = await Promise.all([
+  const [results, products, events, dishes] = await Promise.all([
     searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
-    isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
+    isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery),
+    // Dishes and services with prices from local businesses' own menus.
+    isDomainQuery ? Promise.resolve([]) : searchDishes(cleanQueryKeepPrice(localized)).catch(() => [])
   ])
   const compared = await comparing
   const pair = await comparingProducts
@@ -457,6 +460,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
     ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
+    ...(dishes.length ? { dishes } : {}),
     // A search for places without a city: places near the searcher came first.
     ...(searchOpts.nearCity ? { near: searchOpts.nearCity } : {}),
     ...(related.length || (await rewritesTo).length ? { related: [...new Set([...(await rewritesTo), ...related])].slice(0, 8) } : {}),
