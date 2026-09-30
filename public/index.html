@@ -410,7 +410,8 @@ function spark(points) {
 function askSite(form) {
   var q = form.q.value.trim(), out = form.parentNode.querySelector(".asked")
   if (!q) return
-  out.innerHTML = '<span class="muted small">Looking through ' + esc(form.getAttribute("data-domain")) + '’s pages…</span>'
+  // Lawpy reads the pages with you while the answer is found.
+  out.innerHTML = '<span class="muted small"><lawpy-mascot state="talk" scale="2" style="vertical-align:middle;margin-right:6px"></lawpy-mascot>Lawpy is reading ' + esc(form.getAttribute("data-domain")) + '’s pages…</span>'
   lawpy("think")
   fetch("https://api.actuent.ai/api/ask?domain=" + encodeURIComponent(form.getAttribute("data-domain")) + "&q=" + encodeURIComponent(q)).then(function(r) { return r.json() }).then(function(d) {
     var found = (d.sentences || []).length
