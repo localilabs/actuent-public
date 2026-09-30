@@ -104,7 +104,7 @@
       "continue": true
     },
     {
-      "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state)|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
+      "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state|warm)|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
       "dest": "https://bcmwypjrahtxogytsvuc.supabase.co/functions/v1/api/$1",
       "headers": {
         "x-vercel-enable-rewrite-caching": "1"
