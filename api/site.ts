@@ -220,12 +220,14 @@ ${opts.body}
 
 // /trends and /trends.json: what people searched most this week (src/utils/trends.ts).
 async function trendsPage(res: VercelResponse, json: boolean) {
-  const t = await searchTrends()
+  const [t, [latest]] = await Promise.all([searchTrends(), rows(`weekly_reports?select=week,data&order=week.desc&limit=1`)])
+  // Top movers: sites whose agent-readiness score rose most since the week before (weekly_report.ts).
+  const movers: { domain: string, from: number, to: number }[] = Array.isArray(latest?.data?.movers) ? latest.data.movers : []
   res.setHeader("Cache-Control", t.available ? "public, max-age=0, s-maxage=3600, stale-while-revalidate=21600" : "no-store")
   if (json) {
     res.setHeader("Content-Type", "application/json; charset=utf-8")
     res.setHeader("Access-Control-Allow-Origin", "*")
-    return res.status(200).json({ period: `since ${t.since.slice(0, 10)} (up to 7 days)`, rule: "Plain searches made at least 3 times; no personal details", top: t.top, categories: t.categories, cities: t.cities })
+    return res.status(200).json({ period: `since ${t.since.slice(0, 10)} (up to 7 days)`, rule: "Plain searches made at least 3 times; no personal details", top: t.top, categories: t.categories, cities: t.cities, top_movers: movers, movers_week: latest?.week || null })
   }
   const link = (q: string) => `<a href="https://humans.actuent.ai/?q=${encodeURIComponent(q)}">${esc(q)}</a>`
   const list = (items: { query: string, searches: number }[]) => `<ol class="checks" style="padding-left:20px">${items.map(x => `<li>${link(x.query)} <span class="muted">· ${x.searches}</span></li>`).join("")}</ol>`
@@ -237,7 +239,8 @@ async function trendsPage(res: VercelResponse, json: boolean) {
 ${empty ? `<div class="card"><p>Not enough searches yet this week for trends. Lawpy is counting. Try <a href="https://humans.actuent.ai">a search</a> of your own.</p></div>` : `
 <h2>Top searches</h2><div class="card">${list(t.top)}</div>
 ${t.categories.length ? `<h2>By category</h2>${cards(t.categories.map(c => ({ name: c.label, searches: c.searches, queries: c.queries })))}` : ""}
-${t.cities.length ? `<h2>By city</h2>${cards(t.cities.map(c => ({ name: c.city, searches: c.searches, queries: c.queries })))}` : ""}`}`
+${t.cities.length ? `<h2>By city</h2>${cards(t.cities.map(c => ({ name: c.city, searches: c.searches, queries: c.queries })))}` : ""}`}
+${movers.length ? `<h2>Top movers</h2><p class="muted">Sites whose agent-readiness score rose most in the week to ${esc(latest.week)}.</p><div class="card"><ol class="checks" style="padding-left:20px">${movers.slice(0, 15).map(m => `<li><a href="${BASE}/site/${esc(m.domain)}">${esc(m.domain)}</a> <span class="muted">· ${m.from} → <strong>${m.to}</strong></span></li>`).join("")}</ol></div>` : ""}`
   return res.status(200).send(layout({
     title: "Search trends — Actuent", description: "What people and AI agents searched for most on Actuent this week, by category and city.",
     canonical: `${BASE}/trends`, image: ogImage("Search trends", "What people and AI agents searched for this week", "api.actuent.ai/trends", "talk"), noindex: empty, body
@@ -599,7 +602,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   crumbs.push({ name: domain, url: `${BASE}/site/${domain}` })
   const body = `${breadcrumbHtml(crumbs)}
 ${site.status === "parked" ? `<div class="card" style="border-color:var(--bad)">This domain looks parked or for sale, so it's left out of Actuent search.</div>` : ""}${site.status === "duplicate" && site.duplicate_of ? `<div class="card">This domain redirects to <a href="${BASE}/site/${esc(site.duplicate_of)}">${esc(site.duplicate_of)}</a>, which is shown in search instead.</div>` : ""}
-<h1>${esc(name)}</h1>
+<h1>${esc(name)}${open !== null ? ` <span style="font-size:13px;font-weight:700;vertical-align:middle;padding:2px 9px;border-radius:12px;${open ? "background:#12301f;color:#4ade80" : "background:#301414;color:#f87171"}">${open ? "Open now" : "Closed now"}</span>` : ""}</h1>
 <p class="lead">${esc(home?.content || `Actuent has indexed ${domain}.`)}</p>
 
 <div class="card score"><div class="num" style="color:${scoreColor}">${score}</div><div><strong>${esc(label)}</strong><div class="muted">Agent-readiness score out of 100</div>
