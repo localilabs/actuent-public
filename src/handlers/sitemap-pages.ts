@@ -9,7 +9,12 @@ import { rateLimit, ipHash } from "../utils/limits"
 // (pricing, services, booking, contact, about…), each with its title and description, ready to
 // become LAWP pages. Browsers can't read other sites' sitemaps themselves (CORS), so this does it.
 
-const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim()
+const NAMED: Record<string, string> = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ", mdash: "—", ndash: "–", hellip: "…", rsquo: "’", lsquo: "‘", ldquo: "“", rdquo: "”", middot: "·", bull: "•", copy: "©", reg: "®", trade: "™", euro: "€", pound: "£" }
+const decode = (s: string) => s
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+  .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+  .replace(/&([a-z]+);/gi, (m, n) => NAMED[n.toLowerCase()] ?? m)
+  .replace(/\s+/g, " ").trim()
 
 async function describe(url: string): Promise<{ title: string, content: string } | null> {
   try {
