@@ -62,6 +62,36 @@ export function importantWords(query: string): string[] {
   return [...new Set(words(query).filter(w => !FILLER.has(w) && !/^\d+$/.test(w) && w.length > 1))]
 }
 
+// Kids' and pet products only when the search asks for them: "shoes" means shoes for the person
+// asking, not "Little Kids" trainers or paw-print slippers.
+const KIDS = /\b(kids?|little kids|big kids|toddlers?|baby|babies|infants?|junior|jr|youth|boys?|girls?|children|child|b[øo]rn|kinder|enfants?|niños?|bambin[io]|peuter|småbørn)\b|\b\d{1,2}\s?(?:-\s?\d{1,2}\s?)?(?:y|yrs|years?|år|jahre|ans)\b/i
+const PETS = /\b(dogs?|cats?|pets?|puppy|puppies|kitten|paw|hund|kat|katze|chien|chat|perro|gato|cane|gatto)\b/i
+
+// How well a matching product fits: lower for kids'/pet items the search didn't ask for, for
+// sold-out ones and ones without a picture.
+export function productFit(query: string, row: { name: string, available?: boolean | null, image?: string | null }): number {
+  let fit = 1
+  if (KIDS.test(row.name) && !KIDS.test(query)) fit *= 0.2
+  if (PETS.test(row.name) && !PETS.test(query)) fit *= 0.1
+  if (row.available === false) fit *= 0.3
+  if (!row.image) fit *= 0.7
+  return fit
+}
+
+// Best fit first, keeping the search order within a fit, and at most `perShop` from one shop until
+// every shop has had its turn (so one shop's catalogue doesn't fill the list).
+export function rankProducts<T extends { name: string, domain: string, available?: boolean | null, image?: string | null }>(query: string, rows: T[], perShop = 2): T[] {
+  const scored = rows.map((row, i) => ({ row, fit: productFit(query, row), i })).filter(x => x.fit >= 0.05)
+  scored.sort((a, b) => b.fit - a.fit || a.i - b.i)
+  const count = new Map<string, number>(), first: T[] = [], rest: T[] = []
+  for (const { row } of scored) {
+    const n = count.get(row.domain) || 0
+    ;(n < perShop ? first : rest).push(row)
+    count.set(row.domain, n + 1)
+  }
+  return [...first, ...rest]
+}
+
 export function productMatches(query: string, productName: string): boolean {
   const need = importantWords(query)
   if (!need.length) return false

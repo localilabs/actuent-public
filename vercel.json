@@ -100,6 +100,10 @@
       "continue": true
     },
     {
+      "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|tonight|status|state)|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
+      "dest": "https://bcmwypjrahtxogytsvuc.supabase.co/functions/v1/api/$1"
+    },
+    {
       "src": "/api/search",
       "dest": "/api/search.ts"
     },

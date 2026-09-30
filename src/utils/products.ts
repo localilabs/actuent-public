@@ -2,7 +2,7 @@ import { complete, Tier } from "./llm"
 import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
 import { fetchPublic } from "./safe-fetch"
-import { productMatches } from "./product_match"
+import { productMatches, rankProducts } from "./product_match"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
 //   • Shopify stores publish /products.json and /meta.json (currency) publicly.
@@ -251,6 +251,10 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       rows = (near.length >= Math.min(3, max) ? near : scored).sort((a: any, b: any) => b.s - a.s || a.i - b.i).map((x: any) => x.row)
       if (!rows.length) return []
     }
+    // Adult, in-stock products with pictures first; kids'/pet items only if asked for; at most two
+    // per shop before other shops get a turn.
+    rows = rankProducts(text, rows)
+    if (!rows.length) return []
 
     // Group matches of the same product, keeping search order.
     const groups = new Map<string, any[]>()

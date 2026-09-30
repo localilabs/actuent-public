@@ -1,13 +1,5 @@
 [
  {
-  "src": "/api/search",
-  "dest": "/api/search.ts"
- },
- {
-  "src": "/api/register",
-  "dest": "/api/register.ts"
- },
- {
   "src": "/api/stats",
   "dest": "/api/data.ts?op=stats"
  },
@@ -20,20 +12,8 @@
   "dest": "/api/data.ts?op=leaderboard"
  },
  {
-  "src": "/api/suggest",
-  "dest": "/api/suggest.ts"
- },
- {
-  "src": "/api/webhook-register",
-  "dest": "/api/data.ts?op=webhooks"
- },
- {
   "src": "/api/autocomplete",
   "dest": "/api/data.ts?op=autocomplete"
- },
- {
-  "src": "/api/ask",
-  "dest": "/api/data.ts?op=ask"
  },
  {
   "src": "/api/similar",
@@ -50,18 +30,6 @@
  {
   "src": "/api/state",
   "dest": "/api/data.ts?op=state"
- },
- {
-  "src": "/api/unsubscribe",
-  "dest": "/api/data.ts?op=unsubscribe"
- },
- {
-  "src": "/go",
-  "dest": "/api/data.ts?op=go"
- },
- {
-  "src": "/indexnow\\.txt",
-  "dest": "/api/data.ts?op=indexnow"
  },
  {
   "src": "/trends\\.json",
@@ -130,10 +98,6 @@
  {
   "src": "/leaderboard",
   "dest": "/api/data.ts?op=leaderboard"
- },
- {
-  "src": "/suggest",
-  "dest": "/api/suggest.ts"
  },
  {
   "src": "/.well-known/lawp.json",
