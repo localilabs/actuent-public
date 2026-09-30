@@ -251,7 +251,7 @@ ${movers.length ? `<h2>Top movers</h2><p class="muted">Sites whose agent-readine
 async function statusPage(res: VercelResponse) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString()
   const [checks, speed] = await Promise.all([
-    rows(`uptime_checks?select=checked_at,ok,ms&checked_at=gte.${encodeURIComponent(since)}&order=checked_at.asc&limit=1000`),
+    rows(`uptime_checks?select=*&checked_at=gte.${encodeURIComponent(since)}&order=checked_at.asc&limit=1000`),
     rpcRows("search_speed_daily", { days: 30 })
   ])
   const byDay = new Map<string, { ok: number, total: number }>()
@@ -265,6 +265,14 @@ async function statusPage(res: VercelResponse) {
 <p class="lead">${last ? (last.ok ? "✓ Search is answering." : "Search didn't answer at the last check.") + ` Last checked ${new Date(last.checked_at).toUTCString().slice(17, 22)} UTC.` : "Checks start within the hour."} Checked every hour.</p></div>
 <lawpy-mascot state="${!last || last.ok ? "dance" : "think"}" ${!last || last.ok ? 'loops="2" then="idle"' : ""} scale="4" style="margin-left:auto"></lawpy-mascot></div>
 <h2>Search answering, last 30 days${up != null ? ` · ${up}%` : ""}</h2><div class="card"><div>${days.map(bar).join("")}</div><div class="muted" style="margin-top:6px">Each bar is a day: green all checks answered, orange most, red some failed, grey no data.</div></div>
+${(() => {
+  // The last 24 hours, per part of Actuent (hourly checks): typical and slowest answer times.
+  const day = checks.filter((c: any) => Date.parse(c.checked_at) > Date.now() - 86400000)
+  const parts: [string, string][] = [["Search", "ms"], ["Site pages", "site_ms"], ["Autocomplete", "autocomplete_ms"], ["Badges", "badge_ms"]]
+  const stat = (k: string) => { const v = day.map((c: any) => c[k]).filter((x: any) => typeof x === "number").sort((a: number, b: number) => a - b); return v.length ? { med: v[Math.floor(v.length / 2)], max: v[v.length - 1] } : null }
+  const rowsHtml = parts.map(([label, k]) => { const x = stat(k); return x ? `<tr><td>${label}</td><td style="text-align:right">${(x.med / 1000).toFixed(2)} s</td><td style="text-align:right">${(x.max / 1000).toFixed(2)} s</td></tr>` : "" }).join("")
+  return rowsHtml ? `<h2>Speed, last 24 hours</h2><div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th style="text-align:left">Part</th><th style="text-align:right">Typical</th><th style="text-align:right">Slowest</th></tr>${rowsHtml}</table><div class="muted" style="margin-top:6px">Measured every hour from outside, like a visitor would.</div></div>` : ""
+})()}
 ${speedRows.length ? `<h2>Search speed per day</h2><div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th style="text-align:left">Day</th><th style="text-align:right">Searches</th><th style="text-align:right">Typical</th><th style="text-align:right">Slowest 5%</th></tr>${speedRows.slice().reverse().slice(0, 14).map((r: any) => `<tr><td>${esc(r.day)}</td><td style="text-align:right">${Number(r.searches).toLocaleString("en")}</td><td style="text-align:right">${(Number(r.median_ms) / 1000).toFixed(1)} s</td><td style="text-align:right">${(Number(r.p95_ms) / 1000).toFixed(1)} s</td></tr>`).join("")}</table></div>` : ""}
 <p class="muted">Busy right now? The live answer is <a href="${BASE}/api/status">api.actuent.ai/api/status</a>.</p>`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300, stale-while-revalidate=600")
