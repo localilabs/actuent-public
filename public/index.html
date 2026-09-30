@@ -195,6 +195,7 @@ function countOf(n, one, many) { return n + " " + t(n === 1 ? one : many) }
 
 <div style="font-size:12px;color:#8e8e9c;margin:-4px 0 10px"><label for="currency">Prices in</label> <select id="currency" style="background:#17171f;color:#dcdce3;border:1px solid #34343f;border-radius:6px;padding:2px 6px;font-size:12px"><option value="">the shop's currency</option><option>DKK</option><option>EUR</option><option>SEK</option><option>NOK</option><option>GBP</option><option>USD</option><option>CHF</option><option>PLN</option></select></div>
 <div id="walk" aria-hidden="true"><span></span></div>
+<div id="game" style="display:none;width:100%;max-width:600px;margin:0 0 8px;text-align:center"><canvas id="game-canvas" width="600" height="140" style="width:100%;height:auto;background:#101017;border:1px solid #2a2a34;border-radius:10px;touch-action:none" aria-label="Mini game while you wait: move Lawpy to catch the falling LAWP files"></canvas><div class="muted small">While you wait: catch the LAWP files with Lawpy (← → or drag) · <span id="game-score">0</span> caught</div></div>
 <div id="status" role="status" aria-live="polite"></div>
 <div class="results" id="results"></div>
 
@@ -529,6 +530,7 @@ var tabIcon = { timer: null, walkTimer: null, frames: null, still: document.quer
 function loading(on) {
   var icon = document.querySelector('link[rel="icon"]'), walk = document.getElementById("walk")
   clearInterval(tabIcon.timer); clearTimeout(tabIcon.walkTimer)
+  gameLater(on)
   if (!on) { icon.href = tabIcon.still; walk.className = ""; return }
   tabIcon.walkTimer = setTimeout(function() { walk.className = "on" }, 1000)
   thinkingFrames(function(frames) {
@@ -574,6 +576,44 @@ function showTonight() {
         '<div class="muted small">' + [where, e.price != null ? money(e.price, e.currency) : "", esc(e.domain)].filter(Boolean).join(" · ") + '</div></div></div>'
     }).join("") + '</div>'
   }).catch(function() { status.textContent = ""; results.innerHTML = '<div class="empty">Couldn\'t reach Actuent. Try again.</div>'; lawpy("idle") })
+}
+
+// A mini game for slow searches (after 3 seconds): move Lawpy to catch falling LAWP files.
+var game = { timer: null, raf: null, running: false }
+function startGame() {
+  if (game.running || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) return
+  var box = document.getElementById("game"), c = document.getElementById("game-canvas"), g = c.getContext("2d"), out = document.getElementById("game-score")
+  var img = new Image(); img.src = "/assets/lawpy/idle.svg"
+  var x = 280, files = [], caught = 0, last = performance.now(), left = false, right = false
+  game.running = true; box.style.display = ""; out.textContent = "0"
+  function key(e) { if (e.key === "ArrowLeft") left = e.type === "keydown"; if (e.key === "ArrowRight") right = e.type === "keydown" }
+  function move(e) { var r = c.getBoundingClientRect(); x = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) / r.width * 600 - 28 }
+  document.addEventListener("keydown", key); document.addEventListener("keyup", key); c.addEventListener("pointermove", move); c.addEventListener("touchmove", move)
+  game.stop = function() { document.removeEventListener("keydown", key); document.removeEventListener("keyup", key); c.removeEventListener("pointermove", move); c.removeEventListener("touchmove", move) }
+  function frame(now) {
+    if (!game.running) return
+    var dt = Math.min(50, now - last); last = now
+    if (left) x -= dt * 0.4; if (right) x += dt * 0.4
+    x = Math.max(0, Math.min(544, x))
+    if (Math.random() < dt / 500) files.push({ x: 10 + Math.random() * 570, y: -16, v: 0.08 + Math.random() * 0.08 })
+    g.clearRect(0, 0, 600, 140)
+    g.imageSmoothingEnabled = false
+    files = files.filter(function(f) {
+      f.y += f.v * dt
+      if (f.y > 104 && f.y < 132 && f.x > x - 6 && f.x < x + 60) { caught++; out.textContent = caught; return false }
+      if (f.y > 150) return false
+      g.fillStyle = "#ff8a3d"; g.fillRect(f.x, f.y, 12, 15); g.fillStyle = "#0a0a0a"; g.font = "bold 8px monospace"; g.fillText("{}", f.x + 2, f.y + 10)
+      return true
+    })
+    if (img.complete) g.drawImage(img, x, 104, 56, 44)
+    game.raf = requestAnimationFrame(frame)
+  }
+  game.raf = requestAnimationFrame(frame)
+}
+function gameLater(on) {
+  clearTimeout(game.timer)
+  if (on) { game.timer = setTimeout(startGame, 3000); return }
+  if (game.running) { game.running = false; cancelAnimationFrame(game.raf); game.stop && game.stop(); document.getElementById("game").style.display = "none" }
 }
 
 // The easter egg: search "lawpy".
