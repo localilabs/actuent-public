@@ -155,6 +155,10 @@
       "dest": "/api/data.ts?op=sitemap_pages"
     },
     {
+      "src": "/api/checkup",
+      "dest": "/api/data.ts?op=checkup"
+    },
+    {
       "src": "/api/status",
       "dest": "/api/data.ts?op=status"
     },
