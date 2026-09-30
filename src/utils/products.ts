@@ -227,8 +227,18 @@ async function priceHistory(urls: string[]): Promise<Map<string, { date: string,
   return out
 }
 
+// "size 44", "str. 42", "EU 38", "size M": the size asked for, and the search without it.
+const SIZE_PHRASE = /\b(?:size|sz|str\.?|størrelse|größe|grösse|gr\.?|taille|talla|storlek|koko|maat|taglia|eu|us|uk)\s*(\d{1,2}(?:[.,]5)?|xxs|xs|s|m|l|xl|xxl|xxxl)\b/i
+export function sizeFrom(query: string): { size: string | null, rest: string } {
+  const m = query.match(SIZE_PHRASE)
+  return m ? { size: m[1].replace(",", ".").toUpperCase(), rest: query.replace(m[0], " ").replace(/\s+/g, " ").trim() } : { size: null, rest: query }
+}
+// Sizes like "EU 44" or "44 EU" or "44" count as 44.
+const sizeValue = (v: string) => (String(v).toUpperCase().match(/\d{1,2}(?:[.,]5)?|XXXL|XXL|XL|XXS|XS|\b[SML]\b/) || [""])[0].replace(",", ".")
+
 export async function searchProducts(query: string, tier: Tier, max: number, country: string | null = null): Promise<any[]> {
-  const { text, maxEur, currency } = await parsePriceLimit(query)
+  const asked = sizeFrom(query)
+  const { text, maxEur, currency } = await parsePriceLimit(asked.rest)
   if (!text) return []
   const market: Market = { currency: currency || (country ? COUNTRY_CURRENCY[country] || (EUROZONE.has(country) ? "EUR" : null) : null), country }
   try {
@@ -256,6 +266,15 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
     // per shop before other shops get a turn.
     rows = rankProducts(text, rows)
     if (!rows.length) return []
+    // A size was asked for: only products in stock in that size (sizes from list_nineteen.sql).
+    const sizes = new Map<string, string[]>()
+    if (asked.size) {
+      const urls = rows.slice(0, 80).map((r: any) => r.url)
+      const o = await fetch(`${SUPABASE_URL}/rest/v1/lawp_items?select=url,options&url=in.(${encodeURIComponent(urls.map((u: string) => `"${u.replace(/"/g, "")}"`).join(","))})`, { headers: HEADERS, signal: AbortSignal.timeout(2000) }).then(r => r.ok ? r.json() : []).catch(() => [])
+      for (const x of Array.isArray(o) ? o : []) if (x.options?.size?.length) sizes.set(x.url, x.options.size)
+      rows = rows.filter((r: any) => (sizes.get(r.url) || []).some(v => sizeValue(v) === asked.size))
+      if (!rows.length) return []
+    }
 
     // Group matches of the same product, keeping search order.
     const groups = new Map<string, any[]>()
@@ -288,6 +307,7 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         name: names[i], original_name: names[i] !== row.name ? row.name : undefined,
         price: row.price, currency: row.currency, price_eur: row.price_eur,
         url: row.url, domain: row.domain, image: row.image, available: row.available,
+        ...(sizes.has(row.url) ? { sizes_in_stock: sizes.get(row.url) } : {}),
         // Shopify: a link that opens the shop's cart with this product in it.
         ...(row.variant_id ? { cart_url: `https://${row.domain}/cart/${row.variant_id}:1` } : {}),
         // Price history: e.g. -20 means 20% cheaper than before the last change.
