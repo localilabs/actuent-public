@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { readiness } from "../src/utils/score"
 import { ogImage } from "../src/utils/og"
 import { lawpySvg, seasonHat, HAT_HEIGHT } from "../src/utils/lawpy_frames"
+import { LOGO_PNG_DATA_URI } from "../src/utils/logo_data"
 
 // Badge for READMEs and websites.
 //   /badge.svg                                → "Listed on Actuent"
@@ -14,8 +15,8 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
 
 function esc(s: string) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)) }
 
-// The Actuent mark as vector, so the badge works where external images are blocked (e.g. GitHub).
-const MARK = `<rect x="10" y="10" width="36" height="36" rx="8" fill="#ff8a3d"/><text x="28" y="36" text-anchor="middle" font-family="Georgia,serif" font-size="24" font-weight="700" fill="#fff">A</text>`
+// The Actuent logo, embedded, so the badge works where external images are blocked (e.g. GitHub).
+const MARK = `<image href="${LOGO_PNG_DATA_URI}" x="10" y="10" width="34" height="36"/>`
 
 // Lawpy for a score: [pose, frames per second (0 = still)].
 function mood(score: number): [string, number] {
@@ -23,7 +24,7 @@ function mood(score: number): [string, number] {
 }
 
 function badge(top: string, bottom: string, color: string, width: number, lawpy?: [string, number]) {
-  if (lawpy) width += 62
+  if (lawpy) width += 74
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="56" role="img" aria-label="${esc(top)} ${esc(bottom)}">
   <rect width="${width}" height="56" rx="8" fill="#0a0a0a" stroke="#2a2a34"/>
   ${MARK}
@@ -82,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!domain) {
     res.setHeader("Cache-Control", "public, max-age=86400")
-    return res.status(200).send(badge("Listed on", "Actuent", "#f5f5f7", 160))
+    return res.status(200).send(badge("Listed on", "Actuent", "#f5f5f7", 160, withLawpy ? ["wave", 7] : undefined))
   }
 
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
