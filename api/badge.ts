@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { readiness } from "../src/utils/score"
 import { ogImage } from "../src/utils/og"
-import { lawpySvg } from "../src/utils/lawpy_frames"
+import { lawpySvg, seasonHat, HAT_HEIGHT } from "../src/utils/lawpy_frames"
 
 // Badge for READMEs and websites.
 //   /badge.svg                                → "Listed on Actuent"
@@ -29,7 +29,7 @@ function badge(top: string, bottom: string, color: string, width: number, lawpy?
   ${MARK}
   <text x="56" y="23" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" fill="#a8a8b6">${esc(top)}</text>
   <text x="56" y="41" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="15" font-weight="700" fill="${color}">${esc(bottom)}</text>
-  ${lawpy ? lawpySvg(lawpy[0], width - 64, 10, 3, lawpy[1]) : ""}
+  ${lawpy ? lawpySvg(lawpy[0], width - 64, seasonHat() ? 10 + HAT_HEIGHT * 1.5 : 10, seasonHat() ? 2.5 : 3, lawpy[1]) : ""}
 </svg>`
 }
 

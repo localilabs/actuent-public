@@ -21,13 +21,39 @@ export function lawpyRects(state: string, frame = 0): { x: number, y: number, w:
 
 /** Lawpy as SVG markup at (x, y), `scale` px per Lawpy pixel. Animated states cycle through their
  *  frames with CSS (works in <img> SVGs too); reduced-motion users get the first frame. */
-export function lawpySvg(state: string, x: number, y: number, scale: number, fps = 10): string {
+export function lawpySvg(state: string, x: number, y: number, scale: number, fps = 10, hat: string | null = seasonHat()): string {
   // fps 0: a still Lawpy (first frame).
   const frames = LAWPY_FRAMES[state] || LAWPY_FRAMES.idle
-  const draw = (f: number) => lawpyRects(state, f).map(r => `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="1" fill="${r.fill}"/>`).join("")
+  const draw = (f: number) => [...lawpyRects(state, f), ...hatRects(state, f, hat)].map(r => `<rect x="${r.x}" y="${r.y}" width="${r.w}" height="1" fill="${r.fill}"/>`).join("")
   const box = `transform="translate(${x} ${y}) scale(${scale})" shape-rendering="crispEdges"`
   if (frames.length === 1 || !fps) return `<g ${box}>${draw(0)}</g>`
   const n = frames.length, dur = (n / fps).toFixed(2), id = `lp${state}`
   const style = `<style>.${id}{opacity:0;animation:${id} ${dur}s step-end infinite}@keyframes ${id}{0%{opacity:1}${(100 / n).toFixed(3)}%{opacity:0}}${frames.map((_, i) => `.${id}.f${i}{animation-delay:${(i / fps).toFixed(2)}s}`).join("")}@media (prefers-reduced-motion:reduce){.${id}{animation:none}.${id}.f0{opacity:1}}</style>`
   return `${style}<g ${box}>${frames.map((_, i) => `<g class="${id} f${i}">${draw(i)}</g>`).join("")}</g>`
+}
+
+// Seasonal hats (the same as public/assets/lawpy.js): a witch hat in October, Santa 1–26 December.
+const HATS: Record<string, string[]> = {
+  witch: ["....k....", "...kk....", "...kkk...", "..kkkkk..", "..ooooo..", "kkkkkkkkk"],
+  santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"]
+}
+const HAT_COLOURS: Record<string, string> = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5" }
+export function seasonHat(now = new Date()): string | null {
+  const m = now.getUTCMonth(), d = now.getUTCDate()
+  return m === 9 ? "witch" : m === 11 && d <= 26 ? "santa" : null
+}
+export const HAT_HEIGHT = 6
+/** The hat's pixels for one frame, sitting on Lawpy's head (y can be negative: above his box). */
+export function hatRects(state: string, frame: number, hat: string | null): { x: number, y: number, w: number, fill: string }[] {
+  const rows = hat ? HATS[hat] : null
+  if (!rows) return []
+  const frames = LAWPY_FRAMES[state] || LAWPY_FRAMES.idle
+  // While thinking, the dots sit at the top of the frame: the head is where it is in frame 0.
+  const grid = frames[state === "think" ? 0 : frame % frames.length]
+  const top = grid.findIndex(r => /[^.]/.test(r))
+  const xs = [...grid[top]].map((c, x) => c !== "." ? x : -1).filter(x => x >= 0)
+  const centre = (Math.min(...xs) + Math.max(...xs) + 1) / 2
+  const out: { x: number, y: number, w: number, fill: string }[] = []
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (HAT_COLOURS[row[x]]) out.push({ x: centre - row.length / 2 + x, y: top - rows.length + 1 + y, w: 1, fill: HAT_COLOURS[row[x]] }) })
+  return out
 }

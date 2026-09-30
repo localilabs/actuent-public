@@ -5,6 +5,8 @@
 // Attributes: state, scale (pixels per Lawpy pixel, default 4), loops (play the state this many
 // times, then switch to `then`, default idle). From JS: el.play("dance", { loops: 2, then: "idle" }).
 // People who prefer reduced motion get a still Lawpy.
+// Seasonal outfits: a witch hat in October, a Santa hat 1–26 December (hat="none" turns it off,
+// hat="witch" / hat="santa" forces one).
 (function () {
   if (customElements.get("lawpy-mascot")) return
   var BASE = "https://api.actuent.ai/assets/lawpy/"
@@ -16,6 +18,24 @@
     think: { file: "think.svg", w: 17, frames: 6, h: 11, fps: 4 },
     // v=2: the 12-frame dance (September 2026); the version stops browsers using the old 8-frame sheet.
     dance: { file: "dance.svg?v=2", w: 18, frames: 12, h: 12, fps: 10 }
+  }
+  // Top of Lawpy's head in each frame of each sheet: [row, centre column], in sheet pixels.
+  var HEADS = { idle: [[0, 8]], wave: [[0, 8]], talk: [[0, 8]], think: [[0, 8]],
+    dance: [[1, 10], [2, 10], [1, 12], [0, 12], [2, 10], [1, 8], [0, 8], [2, 10], [1, 11], [0, 10], [1, 9], [2, 11]] }
+  // Hats as pixel rows: k = purple, o = orange, r = red, w = white.
+  var HATS = {
+    witch: ["....k....", "...kk....", "...kkk...", "..kkkkk..", "..ooooo..", "kkkkkkkkk"],
+    santa: [".......ww", ".....rrw.", "...rrrr..", "..rrrrrr.", ".wwwwwwww"]
+  }
+  var HAT_COLOURS = { k: "#6b3fa0", o: "#ff8a3d", r: "#d7263d", w: "#f5f5f5" }
+  function hatSvg(rows) {
+    var rects = ""
+    rows.forEach(function (row, y) { for (var x = 0; x < row.length; x++) if (HAT_COLOURS[row[x]]) rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + HAT_COLOURS[row[x]] + '"/>' })
+    return "url(\"data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + rows[0].length + ' ' + rows.length + '" shape-rendering="crispEdges">' + rects + '</svg>') + "\")"
+  }
+  function seasonHat() {
+    var d = new Date(), m = d.getMonth(), day = d.getDate()
+    return m === 9 ? "witch" : m === 11 && day <= 26 ? "santa" : null
   }
   var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
@@ -30,6 +50,24 @@
       this.style.lineHeight = "0"
       if (!this.hasAttribute("role")) this.setAttribute("role", "img")
       if (!this.hasAttribute("aria-label")) this.setAttribute("aria-label", "Lawpy, the Actuent mascot")
+      var hat = this.getAttribute("hat") || "auto"
+      this.hatName = hat === "none" ? null : HATS[hat] ? hat : seasonHat()
+      if (this.hatName) {
+        this.style.position = this.style.position || "relative"
+        this.hat = document.createElement("span")
+        this.hat.setAttribute("aria-hidden", "true")
+        this.hat.style.cssText = "position:absolute;pointer-events:none;background-repeat:no-repeat;background-size:100% 100%;image-rendering:pixelated;background-image:" + hatSvg(HATS[this.hatName])
+        this.appendChild(this.hat)
+      }
+    }
+    // The hat sits on top of Lawpy's head, following it as he moves.
+    placeHat(state, frame, s, scale) {
+      if (!this.hat) return
+      var rows = HATS[this.hatName], heads = HEADS[state] || HEADS.idle, head = heads[frame % heads.length]
+      this.hat.style.width = rows[0].length * scale + "px"
+      this.hat.style.height = rows.length * scale + "px"
+      this.hat.style.left = (head[1] - rows[0].length / 2) * scale + "px"
+      this.hat.style.top = (12 - s.h + head[0] - rows.length + 1) * scale + "px"
     }
     connectedCallback() {
       this.ensure()
@@ -57,6 +95,7 @@
       sp.style.backgroundImage = "url(" + BASE + s.file + ")"
       sp.style.backgroundSize = s.w * s.frames * scale + "px " + s.h * scale + "px"
       sp.style.backgroundPositionX = "0px"
+      this.placeHat(this.current, 0, s, scale)
       var self = this, frame = 0, loopsLeft = opts.loops || 0
       if (this.current === "idle") { if (!still) this.blinkLater(scale); return }
       if (still) {
@@ -66,6 +105,7 @@
       var tick = function () {
         frame = (frame + 1) % s.frames
         sp.style.backgroundPositionX = -frame * s.w * scale + "px"
+        self.placeHat(self.current, frame, s, scale)
         if (frame === 0 && loopsLeft && --loopsLeft === 0) { self.play(opts.then || "idle"); return }
         self.timer = setTimeout(tick, 1000 / s.fps)
       }

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { lawpyRects, LAWPY_FRAMES } from "./lawpy_frames"
+import { lawpyRects, LAWPY_FRAMES, hatRects, seasonHat } from "./lawpy_frames"
 
 // Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…&lawpy=wave
 // Lawpy stands in the corner; `lawpy` picks his pose (idle, wave, talk, think, dance; site pages
@@ -13,7 +13,7 @@ const h = (type: string, style: Record<string, unknown>, children?: unknown) => 
 const POSE: Record<string, number> = { wave: 2, dance: 4, think: 3, talk: 2, idle: 0 }
 
 function lawpy(state: string, scale: number) {
-  const pixels = lawpyRects(state, POSE[state] || 0)
+  const pixels = [...lawpyRects(state, POSE[state] || 0), ...hatRects(state, POSE[state] || 0, seasonHat())]
   return h("div", { position: "absolute", right: "72px", bottom: "112px", width: `${18 * scale}px`, height: `${12 * scale}px`, display: "flex" },
     pixels.map(p => h("div", { position: "absolute", left: `${p.x * scale}px`, top: `${p.y * scale}px`, width: `${p.w * scale}px`, height: `${scale}px`, background: p.fill })))
 }
