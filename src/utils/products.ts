@@ -262,6 +262,16 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       rows = (near.length >= Math.min(3, max) ? near : scored).sort((a: any, b: any) => b.s - a.s || a.i - b.i).map((x: any) => x.row)
       if (!rows.length) return []
     }
+    // Delivery: shops that say they ship to the shopper's country first, and shops that clearly
+    // don't ship there last (lawp_sites.ships_to from shipping policies, list_twentyone.sql).
+    if (market.country) {
+      const domains = [...new Set(rows.map((r: any) => r.domain))].slice(0, 60)
+      const ships = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,ships_to&ships_to=not.is.null&domain=in.(${encodeURIComponent(domains.map(d => `"${d}"`).join(","))})`, { headers: HEADERS, signal: AbortSignal.timeout(1500) }).then(r => r.ok ? r.json() : []).catch(() => [])
+      const to = new Map<string, string[]>((Array.isArray(ships) ? ships : []).map((x: any) => [x.domain, x.ships_to]))
+      const cc = market.country.toLowerCase()
+      const rank = (d: string) => { const list = to.get(d); return !list ? 1 : list.includes("*") || list.includes(cc) ? 0 : 2 }
+      rows = rows.map((r: any, i: number) => ({ r, i })).sort((a: any, b: any) => rank(a.r.domain) - rank(b.r.domain) || a.i - b.i).map((x: any) => ({ ...x.r, ships_to_you: rank(x.r.domain) === 0 ? true : rank(x.r.domain) === 2 ? false : undefined }))
+    }
     // Adult, in-stock products with pictures first; kids'/pet items only if asked for; at most two
     // per shop before other shops get a turn.
     rows = rankProducts(text, rows)
@@ -326,6 +336,7 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         price: row.price, currency: row.currency, price_eur: row.price_eur,
         url: row.url, domain: row.domain, image: row.image, available: row.available,
         ...(sizes.has(row.url) ? { sizes_in_stock: sizes.get(row.url) } : {}),
+        ...(row.ships_to_you != null ? { ships_to_you: row.ships_to_you } : {}),
         // Shopify: a link that opens the shop's cart with this product in it.
         ...(row.variant_id ? { cart_url: `https://${row.domain}/cart/${row.variant_id}:1` } : {}),
         // Price history: e.g. -20 means 20% cheaper than before the last change.
