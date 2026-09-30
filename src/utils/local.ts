@@ -22,6 +22,9 @@ const CITIES = ("copenhagen aarhus odense aalborg stockholm gothenburg malmo mal
   " västerås vasteras örebro orebro linköping linkoping helsingborg jönköping jonkoping norrköping norrkoping lund umeå umea gävle gavle" +
   " bremen hanover hannover nuremberg nürnberg dortmund bonn münster munster mannheim karlsruhe freiburg kiel lübeck lubeck augsburg heidelberg").split(" ").map(c => c.replace(/-/g, " "))
 
+// The cities search recognises, for autocomplete ("cafés in cop…" → Copenhagen).
+export const CITY_NAMES: string[] = CITIES
+
 // The country of a city in the list (for product search: shops in the shopper's market first).
 const CITY_COUNTRY: Record<string, string> = {
   "kolding": "dk", "vejle": "dk", "horsens": "dk", "randers": "dk", "herning": "dk", "silkeborg": "dk", "næstved": "dk", "naestved": "dk", "fredericia": "dk", "viborg": "dk", "helsingør": "dk", "helsingor": "dk", "hillerød": "dk", "hillerod": "dk", "svendborg": "dk", "holbæk": "dk", "holbaek": "dk", "slagelse": "dk", "västerås": "se", "vasteras": "se", "örebro": "se", "orebro": "se", "linköping": "se", "linkoping": "se", "helsingborg": "se", "jönköping": "se", "jonkoping": "se", "norrköping": "se", "norrkoping": "se", "lund": "se", "umeå": "se", "umea": "se", "gävle": "se", "gavle": "se", "bremen": "de", "hanover": "de", "hannover": "de", "nuremberg": "de", "nürnberg": "de", "essen": "de", "dortmund": "de", "bonn": "de", "münster": "de", "munster": "de", "mannheim": "de", "karlsruhe": "de", "freiburg": "de", "kiel": "de", "lübeck": "de", "lubeck": "de", "augsburg": "de", "heidelberg": "de",
