@@ -179,14 +179,32 @@ export async function sitesFor(domains: string[]): Promise<any[]> {
 
 // "spotfy" → Spotify: the closest name among well-known sites (list_fourteen.sql), when it's close
 // enough to be a typo. null without that function, or when nothing is close.
+// Typing mistakes between two words (a swapped pair of letters counts as one: "zalanod" → "zalando").
+export function typos(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+  }
+  return d[a.length][b.length]
+}
+
 export async function closestName(name: string): Promise<any | null> {
   // One- or two-word names only: longer searches aren't a misspelt name.
   if (name.length < 4 || name.split(" ").length > 2) return null
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: name }), signal: AbortSignal.timeout(1200) })
-    const found = r.ok ? await r.json() : []
-    const best = Array.isArray(found) ? found[0] : null
-    if (!best || best.similarity < 0.45 || String(best.name).toLowerCase() === name.toLowerCase()) return null
+    const q = name.toLowerCase()
+    // Also with doubled letters made single ("ikeaa" → "ikea", "adiddas" → "adidas").
+    const variants = [...new Set([q, q.replace(/(\p{L})\1+/gu, "$1")])]
+    const lists = await Promise.all(variants.map(v => fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: v }), signal: AbortSignal.timeout(1200) }).then(r => r.ok ? r.json() : []).catch(() => [])))
+    const seen = new Set<string>()
+    const found = lists.flat().filter((x: any) => x?.name && !seen.has(x.domain) && seen.add(x.domain))
+    // Fewest typing mistakes first (then the database's similarity); at most 2 mistakes, fewer for short names.
+    const scored = found.map((x: any) => ({ ...x, typos: typos(q, String(x.name).toLowerCase()) })).filter((x: any) => x.typos <= (q.length <= 5 ? 1 : 2))
+      .sort((a: any, b: any) => a.typos - b.typos || b.similarity - a.similarity)
+    const best = scored[0] || (Array.isArray(found) ? found.find((x: any) => x.similarity >= 0.45) : null)
+    if (!best || String(best.name).toLowerCase() === name.toLowerCase()) return null
     const [site] = await sitesFor([best.domain])
     return site ? { ...site, suggested_name: best.name } : null
   } catch { return null }

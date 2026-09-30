@@ -655,7 +655,15 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
             return [{ ...close, matched: `closest name to "${name}"` }]
           }
           const saved = await getSavedSite(domain)
-          if (!saved) { queueCrawl(domain); return [] }
+          if (!saved) {
+            queueCrawl(domain)
+            // Wikidata knew the word but Actuent doesn't have that site: it may still be a typo of a
+            // well-known name ("ikeaa" → IKEA).
+            const close = await closestName(name)
+            if (!close) return []
+            opts.didYouMean?.push(close.suggested_name)
+            return [{ ...close, matched: `closest name to "${name}"` }]
+          }
           return [{ ...saved, owner_key: undefined }]
         }).catch(() => [])
       : Promise.resolve([])
