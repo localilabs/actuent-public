@@ -471,7 +471,7 @@ function doSearch() {
   .then(function(r) {
     // Busy or rate-limited answers carry a plain-English message: show it.
     return r.json().catch(function() { return {} }).then(function(data) {
-      if (!r.ok) throw new Error(data.message || "Sorry — too many people are using Actuent right now. Please try again later.")
+      if (!r.ok) throw new Error(data.message || "Too many people are exploring with Lawpy right now! Give him a minute to catch his breath.")
       return data
     })
   })
@@ -627,12 +627,12 @@ function meetLawpy() {
   document.body.appendChild(parade)
   setTimeout(function() { parade.remove() }, 7200)
   document.getElementById("results").innerHTML = '<div class="profile"><lawpy-mascot state="wave" loops="3" then="idle" scale="8"></lawpy-mascot><div>' +
-    '<h2>Lawpy</h2><div class="muted small">Actuent’s mascot · on duty since September 2026</div><dl>' +
-    '<dt>Job</dt><dd>Reads websites so AI agents don’t have to squint</dd>' +
-    '<dt>Loves</dt><dd>Tidy lawp.json files, opening hours in schema.org, fast pages</dd>' +
-    '<dt>Can’t stand</dt><dd>Cookie walls, parked domains, “click here”</dd>' +
-    '<dt>Moves</dt><dd>Waving, thinking, talking, and a 12-step dance (for scores of 90+)</dd>' +
-    '<dt>Find him</dt><dd>Site pages, badges, the docs, and your terminal (<code>npx @actuent/lawp</code>)</dd>' +
+    '<h2>Lawpy</h2><div class="muted small">Actuent’s mascot · chaotic, cheeky explorer · on the loose since September 2026</div><dl>' +
+    '<dt>Job</dt><dd>Runs all over the internet fetching things for your AI. Mostly on purpose.</dd>' +
+    '<dt>Loves</dt><dd>Tidy lawp.json files, opening hours that are actually right, and dancing (a lot)</dd>' +
+    '<dt>Can’t stand</dt><dd>Cookie walls, parked domains, and websites that hide their prices</dd>' +
+    '<dt>Moves</dt><dd>Waving, thinking, talking, and a 12-step dance he saves for scores of 90+</dd>' +
+    '<dt>Find him</dt><dd>Site pages, badges, the docs, your terminal (<code>npx @actuent/lawp</code>), and sometimes in your AI’s answers</dd>' +
     '</dl></div></div>'
 }
 </script>

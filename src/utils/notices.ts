@@ -12,7 +12,8 @@ export type NoticeCode =
 export type Notice = { code: NoticeCode, message: string, retry_after_seconds?: number }
 
 const SUPPORT = "If this keeps happening, email support@localilabs.com."
-const BUSY = "Sorry — too many people are using Actuent right now."
+// In the voice of Lawpy, Actuent's mascot (a chaotic, cheeky explorer).
+const BUSY = "Too many people are exploring with Lawpy right now! Give him a minute to catch his breath."
 
 export function notice(code: NoticeCode, v: { query?: string, domain?: string, updated?: string | null, retryAfter?: number } = {}): Notice {
   const retry = Math.min(Math.max(Math.ceil(v.retryAfter || 60), 30), 3600)
@@ -26,8 +27,8 @@ export function notice(code: NoticeCode, v: { query?: string, domain?: string, u
     busy: `${BUSY} We couldn't finish this request. Please try again ${later}. ${SUPPORT}`,
     site_unreachable: `We couldn't reach ${v.domain || "that site"} just now — it may be down, slow or blocking automated visits. Try again later, or visit it directly.`,
     robots_blocked: `${v.domain || "This site"} asks automated visitors not to read it (robots.txt), and Actuent respects that.`,
-    no_results: `Nothing in the Actuent index matched "${v.query || ""}". Try fewer or broader words, a brand name, or a website address like example.com.`,
-    temporarily_unavailable: `Sorry — Actuent search is temporarily unavailable. Please try again ${later}. ${SUPPORT}`
+    no_results: `Lawpy ran all over the index and came back empty-handed for "${v.query || ""}". Rude of it, honestly. Try fewer or broader words, a brand name, or a website address like example.com.`,
+    temporarily_unavailable: `Lawpy has tripped over a cable: Actuent search is unavailable for a moment. Please try again ${later}. ${SUPPORT}`
   }
   const retryable = !["no_results", "robots_blocked", "site_unreachable", "heavy_use"].includes(code)
   return { code, message: messages[code], ...(retryable ? { retry_after_seconds: retry } : {}) }

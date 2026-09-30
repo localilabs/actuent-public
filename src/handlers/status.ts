@@ -12,7 +12,7 @@ export default async function status(_req: VercelRequest, res: VercelResponse) {
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=30, stale-while-revalidate=60")
   return res.status(200).json({
     busy,
-    message: busy ? "Lots of people are using Actuent right now, so some searches may be simpler or slower than usual. Actuent Pro requests get priority." : null,
+    message: busy ? "Lawpy is showing a LOT of people around right now, so some searches may be simpler or slower than usual. Actuent Pro requests jump the queue." : null,
     checked_at: new Date().toISOString()
   })
 }

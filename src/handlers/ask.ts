@@ -21,7 +21,7 @@ export default async function ask(req: VercelRequest, res: VercelResponse) {
 
   const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,pages,actions&domain=in.(${encodeURIComponent(`"${domain}","www.${domain}"`)})&limit=1`, { headers: HEADERS, signal: AbortSignal.timeout(4000) }).catch(() => null)
   // A slow or failing lookup isn't "not on Actuent": say it's busy, so people try again.
-  if (!r?.ok) return res.status(503).json({ domain, question: q, sentences: [], message: "Sorry — too many people are using Actuent right now. Please try again in a minute.", retry_after_seconds: 30 })
+  if (!r?.ok) return res.status(503).json({ domain, question: q, sentences: [], message: "Too many people are exploring with Lawpy right now! Give him a minute to catch his breath.", retry_after_seconds: 30 })
   const site = (await r.json())[0]
   if (!site) return res.status(404).json({ domain, question: q, sentences: [], message: `${domain} isn't on Actuent yet. Search for it at humans.actuent.ai and it will be added.` })
 

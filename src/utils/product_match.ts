@@ -65,16 +65,23 @@ export function importantWords(query: string): string[] {
 // Kids' and pet products only when the search asks for them: "shoes" means shoes for the person
 // asking, not "Little Kids" trainers or paw-print slippers.
 const KIDS = /\b(kids?|little kids|big kids|toddlers?|baby|babies|infants?|junior|jr|youth|boys?|girls?|children|child|b[øo]rn|kinder|enfants?|niños?|bambin[io]|peuter|småbørn)\b|\b\d{1,2}\s?(?:-\s?\d{1,2}\s?)?(?:y|yrs|years?|år|jahre|ans)\b/i
+// Kids-only brands and shops: their products are for children even when the name doesn't say so
+// (Reima's "Hallava" is a kids' winter boot).
+const KIDS_BRANDS = /\b(reima|polarn o\.? pyret|molo|name it|mini rodini|liewood|konges sl[oø]jd|joha|en fant|hust (and|&) claire|petit bateau|bobo choses|kavat|bundgaard|viking kids|pomp(d|de)elux|lindberg sweden|didriksons kids|tretorn kids|melton|smallstuff|sebra|carter'?s|oshkosh|gap kids|h&m kids)\b/i
+const KIDS_SHOPS = /(^|\.)(reima\.(com|dk|se|fi)|polarnopyret\.(com|dk|se|no)|molo\.(com|dk)|minirodini\.com|liewood\.com|kongesslojd\.(com|dk)|babysam\.dk|jollyroom\.(dk|se|no)|kidsbrandstore\.(com|dk|se)|kidsworld\.dk|br\.dk|pompdelux\.(com|dk)|smallable\.com|bundgaard\.dk|kavat\.(com|se)|carters\.com|oshkosh\.com)$/i
+export function isKids(row: { name: string, domain?: string }): boolean {
+  return KIDS.test(row.name) || KIDS_BRANDS.test(row.name) || (!!row.domain && KIDS_SHOPS.test(row.domain))
+}
 const PETS = /\b(dogs?|cats?|pets?|puppy|puppies|kitten|paw|hund|kat|katze|chien|chat|perro|gato|cane|gatto)\b/i
 
 // How well a matching product fits: lower for kids'/pet items the search didn't ask for, for
 // sold-out ones and ones without a picture.
-export function productFit(query: string, row: { name: string, available?: boolean | null, image?: string | null, price_eur?: number | string | null }): number {
+export function productFit(query: string, row: { name: string, domain?: string, available?: boolean | null, image?: string | null, price_eur?: number | string | null }): number {
   let fit = 1
   // Shop quality: a price agents can compare, and a sensible name (not a keyword-stuffed one).
   if (row.price_eur == null) fit *= 0.6
   if (row.name.length > 120) fit *= 0.8
-  if (KIDS.test(row.name) && !KIDS.test(query)) fit *= 0.2
+  if (isKids(row) && !KIDS.test(query)) fit *= 0.2
   if (PETS.test(row.name) && !PETS.test(query)) fit *= 0.1
   if (row.available === false) fit *= 0.3
   if (!row.image) fit *= 0.7
@@ -123,4 +130,27 @@ export function alternativeSearches(query: string): string[] {
   if (swapped !== ws.join(" ")) out.push(swapped)
   if (ws.length > 2) out.push(ws.slice(0, -1).join(" "))
   return [...new Set(out)].filter(x => x && x !== query.toLowerCase().trim())
+}
+
+// A broad one-word search ("shoes"): the first results cover different kinds (running, everyday,
+// boots…) instead of five of one kind, so the user (or their AI) can say which they meant.
+const KINDS: Record<string, [string, RegExp][]> = {
+  shoe: [["running", /\b(run|running|løbe|lauf|trail|marathon)/i], ["everyday", /\b(sneaker|trainer|street|casual|canvas|low top|high top|air force|stan smith)/i], ["boots", /\b(boot|støvle|stiefel|chelsea)/i],
+    ["smart", /\b(oxford|loafer|derby|brogue|dress shoe|pump|heel)/i], ["sport", /\b(padel|tennis|court|football|basketball|golf|indoor)/i], ["outdoor", /\b(hiking|hike|walking|trek|outdoor)/i], ["sandals", /\b(sandal|slide|flip)/i]],
+  jacket: [["rain", /\b(rain|regn|waterproof|shell)/i], ["warm", /\b(puffer|down|parka|winter|dun)/i], ["leather", /\b(leather|læder)/i], ["denim", /\b(denim|jean)/i], ["light", /\b(bomber|overshirt|windbreaker|light)/i]],
+  headphone: [["over-ear", /\b(over-ear|over ear|headphones?)\b/i], ["earbuds", /\b(earbud|in-ear|in ear|airpods?|buds)/i], ["sport", /\b(sport|running|open-ear|bone)/i]],
+  bag: [["backpack", /\b(backpack|rucksack|rygsæk)/i], ["tote", /\b(tote|shopper)/i], ["crossbody", /\b(crossbody|shoulder|sling)/i], ["travel", /\b(travel|duffel|weekend|suitcase)/i]]
+}
+export function spreadKinds<T extends { name: string }>(query: string, rows: T[]): T[] {
+  const w = importantWords(query)
+  if (w.length !== 1) return rows
+  const kinds = KINDS[stem(w[0])]
+  if (!kinds) return rows
+  const buckets = new Map<string, T[]>(), rest: T[] = []
+  for (const r of rows) { const k = kinds.find(([, re]) => re.test(r.name)); if (k) { if (!buckets.has(k[0])) buckets.set(k[0], []); buckets.get(k[0])!.push(r) } else rest.push(r) }
+  const out: T[] = []
+  // One of each kind (in the order they first appear), then the rest in their original order.
+  for (const list of buckets.values()) out.push(list.shift()!)
+  const seen = new Set(out)
+  return [...out, ...rows.filter(r => !seen.has(r))]
 }

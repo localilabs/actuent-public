@@ -2,7 +2,7 @@ import { complete, Tier } from "./llm"
 import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
 import { fetchPublic } from "./safe-fetch"
-import { productMatches, rankProducts, importantWords, WANTS_CHEAPEST } from "./product_match"
+import { productMatches, rankProducts, importantWords, WANTS_CHEAPEST, spreadKinds } from "./product_match"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
 //   • Shopify stores publish /products.json and /meta.json (currency) publicly.
@@ -274,7 +274,7 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
     }
     // Adult, in-stock products with pictures first; kids'/pet items only if asked for; at most two
     // per shop before other shops get a turn.
-    rows = rankProducts(text, rows)
+    rows = spreadKinds(text, rankProducts(text, rows))
     if (!rows.length) return []
     // A size was asked for: only products in stock in that size (sizes from list_nineteen.sql).
     const sizes = new Map<string, string[]>()

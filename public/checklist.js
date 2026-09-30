@@ -44,7 +44,7 @@
         if (!res.reachable) { lawpy.className = "lawpy"; out.appendChild(el("p", { "class": "small" }, res.message || res.error || "Couldn't check that site.")); return }
         var todo = res.checks.filter(function (c) { return !c.ok && !c.optional })
         lawpy.className = "lawpy" + (todo.length ? "" : " dance")
-        var s = el("p", {}); s.appendChild(el("span", { "class": "score" }, String(res.score))); s.appendChild(document.createTextNode("/100 · " + (todo.length ? todo.length + " to fix" : "all done"))); out.appendChild(s)
+        var s = el("p", {}); s.appendChild(el("span", { "class": "score" }, String(res.score))); s.appendChild(document.createTextNode("/100 · " + (todo.length ? todo.length + " to fix" : "all done! Lawpy: “This website is SO tidy. I’d live here. I won’t. But I could.”"))); out.appendChild(s)
         var ul = el("ul", {})
         res.checks.filter(function (c) { return !c.optional || c.ok }).forEach(function (c) { var li = el("li", { "class": c.ok ? "ok" : "no" }, (c.ok ? "✓ " : "○ ") + c.label); ul.appendChild(li) })
         out.appendChild(ul)
