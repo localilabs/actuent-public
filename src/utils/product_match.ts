@@ -81,7 +81,8 @@ export function productFit(query: string, row: { name: string, available?: boole
 // Best fit first, keeping the search order within a fit, and at most `perShop` from one shop until
 // every shop has had its turn (so one shop's catalogue doesn't fill the list).
 export function rankProducts<T extends { name: string, domain: string, available?: boolean | null, image?: string | null }>(query: string, rows: T[], perShop = 2): T[] {
-  const scored = rows.map((row, i) => ({ row, fit: productFit(query, row), i })).filter(x => x.fit >= 0.05)
+  // Kids'/pet items the search didn't ask for are dropped (fit 0.2 / 0.1), not just moved down.
+  const scored = rows.map((row, i) => ({ row, fit: productFit(query, row), i })).filter(x => x.fit >= 0.25)
   scored.sort((a, b) => b.fit - a.fit || a.i - b.i)
   const count = new Map<string, number>(), first: T[] = [], rest: T[] = []
   for (const { row } of scored) {

@@ -2,7 +2,7 @@ import { complete, Tier } from "./llm"
 import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
 import { fetchPublic } from "./safe-fetch"
-import { productMatches, rankProducts } from "./product_match"
+import { productMatches, rankProducts, importantWords } from "./product_match"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
 //   • Shopify stores publish /products.json and /meta.json (currency) publicly.
@@ -233,8 +233,9 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
   const market: Market = { currency: currency || (country ? COUNTRY_CURRENCY[country] || (EUROZONE.has(country) ? "EUR" : null) : null), country }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/search_lawp_items`, {
-      // Extra candidates: many share only one word with the search and are dropped below.
-      method: "POST", headers: HEADERS, body: JSON.stringify({ q: text, max_price_eur: maxEur, max_results: Math.min(max * 12, 120) }), signal: AbortSignal.timeout(3000)
+      // Extra candidates: many share only one word with the search and are dropped below; one-word
+      // searches ("shoes") get a much bigger pool, since most of their matches are kids'/niche items.
+      method: "POST", headers: HEADERS, body: JSON.stringify({ q: text, max_price_eur: maxEur, max_results: importantWords(text).length <= 1 ? 250 : Math.min(max * 12, 120) }), signal: AbortSignal.timeout(3000)
     })
     if (!r.ok) return []
     let rows = await r.json()
