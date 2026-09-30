@@ -20,10 +20,6 @@
   "dest": "/api/data.ts?op=similar"
  },
  {
-  "src": "/api/tonight",
-  "dest": "/api/data.ts?op=tonight"
- },
- {
   "src": "/api/status",
   "dest": "/api/data.ts?op=status"
  },
