@@ -1,5 +1,13 @@
 [
  {
+  "src": "/deals\\.rss",
+  "dest": "/api/site.ts?deals=rss"
+ },
+ {
+  "src": "/deals/?",
+  "dest": "/api/site.ts?deals=page"
+ },
+ {
   "src": "/api/stats",
   "dest": "/api/data.ts?op=stats"
  },

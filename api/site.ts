@@ -316,6 +316,40 @@ ${found.length ? `<div class="card"><ul class="checks">${found.map((s: any) => `
   return res.status(200).send(layout({ title: `New in ${city} this week — Actuent`, description: `Businesses and places in ${city} Actuent found this week.`, canonical: `${BASE}/site/in/${citySlug}/new`, image: ogImage(`New in ${city}`, "Found this week", `api.actuent.ai/site/in/${citySlug}/new`, "wave"), noindex: found.length < 3, body }))
 }
 
+// /deals (and /deals.rss): the biggest product price drops this week across the index.
+async function dealsPage(res: VercelResponse, rss: boolean) {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString()
+  const items = await rows(`lawp_items?select=name,url,domain,price,currency,price_eur,previous_price_eur,image,price_changed_at&price_changed_at=gte.${encodeURIComponent(since)}&previous_price_eur=not.is.null&price_eur=not.is.null&available=is.true&limit=2000`)
+  const drops = items.map((i: any) => ({ ...i, drop: Math.round(100 * (1 - Number(i.price_eur) / Number(i.previous_price_eur))) }))
+    .filter((i: any) => i.drop >= 10 && i.drop <= 90)
+  const domains = [...new Set(drops.map((d: any) => d.domain))]
+  const hidden = new Set<string>()
+  for (let k = 0; k < domains.length; k += 150) {
+    const list = encodeURIComponent(domains.slice(k, k + 150).map(d => `"${d}"`).join(","))
+    for (const r of await rows(`lawp_sites?select=domain&category=in.(adult,gambling)&domain=in.(${list})`)) hidden.add(r.domain)
+  }
+  // The biggest drops first; at most three from one shop.
+  const perShop = new Map<string, number>()
+  const top = drops.filter((d: any) => !hidden.has(d.domain)).sort((a: any, b: any) => b.drop - a.drop)
+    .filter((d: any) => { const n = (perShop.get(d.domain) || 0) + 1; perShop.set(d.domain, n); return n <= 3 }).slice(0, 40)
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=21600")
+  const decode = (t: string) => String(t).replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+  if (rss) {
+    const x = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]!))
+    res.setHeader("Content-Type", "application/rss+xml; charset=utf-8")
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Price drops this week — Actuent</title><link>${BASE}/deals</link><description>The biggest price drops in shops Actuent knows, this week.</description>
+${top.map((d: any) => `<item><title>${x(`−${d.drop}%: ${decode(d.name)} (${d.domain})`)}</title><link>${x(d.url)}</link><guid isPermaLink="false">${x(`${d.url}#${d.price_changed_at}`)}</guid><pubDate>${new Date(d.price_changed_at).toUTCString()}</pubDate><description>${x(`Now ${d.price} ${d.currency || ""} (was about €${Number(d.previous_price_eur).toFixed(2)})`)}</description></item>`).join("\n")}
+</channel></rss>`)
+  }
+  const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Price drops this week</h1>
+<p class="lead">The biggest price drops in the ${domains.length.toLocaleString("en")} shops Actuent checks daily. <a href="${BASE}/deals.rss">RSS</a></p></div>
+<lawpy-mascot state="${top.length ? "dance" : "think"}" ${top.length ? 'loops="2" then="idle"' : ""} scale="4" style="margin-left:auto"></lawpy-mascot></div>
+${top.length ? `<div class="card"><ul class="checks">${top.map((d: any) => `<li><strong>−${d.drop}%</strong> <a href="${esc(d.url)}" rel="nofollow">${esc(decode(d.name))}</a> <span class="muted">· now ${esc(d.price)} ${esc(d.currency || "")} · ${esc(d.domain)}</span></li>`).join("")}</ul></div>` : `<div class="card">No big price drops this week yet.</div>`}
+<p class="muted">Watch a product's price with an AI assistant: ask it to use Actuent's price watch.</p>`
+  return res.status(200).send(layout({ title: "Price drops this week — Actuent", description: "The biggest product price drops this week, from shops Actuent checks daily.", canonical: `${BASE}/deals`, image: ogImage("Price drops this week", "From shops Actuent checks daily", "api.actuent.ai/deals", "dance"), noindex: top.length < 3, body }))
+}
+
 // Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
 function lawpyFor(score: number): string {
   const [state, loops, title] = score >= 90 ? ["dance", 4, "Agent-ready!"] : score >= 50 ? ["wave", 2, "Nearly there"] : ["think", 0, "Room to improve"]
@@ -501,6 +535,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.changes === "rss" && !req.query.domain) return changesFeed(res, null)
   if (req.query.trends) return trendsPage(res, req.query.trends === "json")
   if (req.query.status === "page") return statusPage(res)
+  if (req.query.deals) return dealsPage(res, req.query.deals === "rss")
   if (req.query.brand) return brandPage(res, String(req.query.brand))
   if (req.query.city && req.query.new) return newInCity(res, slug(String(req.query.city)), req.query.new === "rss")
   if (req.query.city && req.query.events) {
