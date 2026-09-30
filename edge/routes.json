@@ -64,6 +64,22 @@
   "dest": "/api/sitemap.ts?part=$1"
  },
  {
+  "src": "/status/?",
+  "dest": "/api/site.ts?status=page"
+ },
+ {
+  "src": "/brand/([^/?]+)/?",
+  "dest": "/api/site.ts?brand=$1"
+ },
+ {
+  "src": "/site/in/([^/?]+)/new\\.rss",
+  "dest": "/api/site.ts?city=$1&new=rss"
+ },
+ {
+  "src": "/site/in/([^/?]+)/new/?",
+  "dest": "/api/site.ts?city=$1&new=page"
+ },
+ {
   "src": "/site/in/([^/?]+)/whats-on\\.ics",
   "dest": "/api/site.ts?city=$1&events=ics"
  },

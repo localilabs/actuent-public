@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { changesFeed } from "../src/utils/feeds"
 import { searchTrends } from "../src/utils/trends"
+import { productMatches, rankProducts } from "../src/utils/product_match"
 import { readiness, ScoreBreakdown } from "../src/utils/score"
 import { openNow } from "../src/utils/business"
 import { CATEGORIES, HIDDEN_CATEGORIES } from "../src/utils/category"
@@ -243,6 +244,78 @@ ${t.cities.length ? `<h2>By city</h2>${cards(t.cities.map(c => ({ name: c.city, 
   }))
 }
 
+// /status: 30 days of "does search answer" (hourly checks, uptime_checks) and search speed per day.
+async function statusPage(res: VercelResponse) {
+  const since = new Date(Date.now() - 30 * 86400000).toISOString()
+  const [checks, speed] = await Promise.all([
+    rows(`uptime_checks?select=checked_at,ok,ms&checked_at=gte.${encodeURIComponent(since)}&order=checked_at.asc&limit=1000`),
+    rpcRows("search_speed_daily", { days: 30 })
+  ])
+  const byDay = new Map<string, { ok: number, total: number }>()
+  for (const c of checks) { const d = String(c.checked_at).slice(0, 10); const x = byDay.get(d) || { ok: 0, total: 0 }; x.total++; if (c.ok) x.ok++; byDay.set(d, x) }
+  const days = Array.from({ length: 30 }, (_, i) => new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10))
+  const up = checks.length ? Math.round(1000 * checks.filter((c: any) => c.ok).length / checks.length) / 10 : null
+  const last = checks[checks.length - 1]
+  const bar = (d: string) => { const x = byDay.get(d); const color = !x ? "#2a2a34" : x.ok === x.total ? "#4ade80" : x.ok / x.total >= 0.9 ? "#ff8a3d" : "#f87171"; return `<span title="${d}: ${x ? `${x.ok}/${x.total} checks answered` : "no data"}" style="display:inline-block;width:2.6%;height:28px;margin-right:0.6%;border-radius:3px;background:${color}"></span>` }
+  const speedRows = (speed || []).slice(-30)
+  const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Actuent status</h1>
+<p class="lead">${last ? (last.ok ? "✓ Search is answering." : "Search didn't answer at the last check.") + ` Last checked ${new Date(last.checked_at).toUTCString().slice(17, 22)} UTC.` : "Checks start within the hour."} Checked every hour.</p></div>
+<lawpy-mascot state="${!last || last.ok ? "dance" : "think"}" ${!last || last.ok ? 'loops="2" then="idle"' : ""} scale="4" style="margin-left:auto"></lawpy-mascot></div>
+<h2>Search answering, last 30 days${up != null ? ` · ${up}%` : ""}</h2><div class="card"><div>${days.map(bar).join("")}</div><div class="muted" style="margin-top:6px">Each bar is a day: green all checks answered, orange most, red some failed, grey no data.</div></div>
+${speedRows.length ? `<h2>Search speed per day</h2><div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th style="text-align:left">Day</th><th style="text-align:right">Searches</th><th style="text-align:right">Typical</th><th style="text-align:right">Slowest 5%</th></tr>${speedRows.slice().reverse().slice(0, 14).map((r: any) => `<tr><td>${esc(r.day)}</td><td style="text-align:right">${Number(r.searches).toLocaleString("en")}</td><td style="text-align:right">${(Number(r.median_ms) / 1000).toFixed(1)} s</td><td style="text-align:right">${(Number(r.p95_ms) / 1000).toFixed(1)} s</td></tr>`).join("")}</table></div>` : ""}
+<p class="muted">Busy right now? The live answer is <a href="${BASE}/api/status">api.actuent.ai/api/status</a>.</p>`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300, stale-while-revalidate=600")
+  return res.status(200).send(layout({ title: "Status — Actuent", description: "Is Actuent search answering, and how fast, over the last 30 days.", canonical: `${BASE}/status`, image: ogImage("Actuent status", "Uptime and search speed, last 30 days", "api.actuent.ai/status", "dance"), body }))
+}
+
+// /brand/<name>: the brand's official site, the shops that sell it, and its products (cheapest first).
+async function brandPage(res: VercelResponse, brandSlug: string) {
+  const brand = brandSlug.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/-/g, " ").trim().slice(0, 40)
+  if (!brand) return notFound(res, brandSlug)
+  const [named, items] = await Promise.all([
+    rpcRows("sites_named", { n: brand }),
+    fetch(`${SUPABASE_URL}/rest/v1/rpc/search_lawp_items`, { method: "POST", headers: { ...HEADERS, "Content-Type": "application/json" }, body: JSON.stringify({ q: brand, max_results: 250 }), signal: AbortSignal.timeout(6000) }).then(r => r.ok ? r.json() : []).catch(() => [])
+  ])
+  const official = (named || [])[0]
+  const products = rankProducts(brand, (Array.isArray(items) ? items : []).filter((p: any) => productMatches(brand, p.name)), 3)
+  const shops = new Map<string, { n: number, cheapest: number | null }>()
+  for (const p of products) { const x = shops.get(p.domain) || { n: 0, cheapest: null }; x.n++; const e = p.price_eur == null ? null : Number(p.price_eur); if (e != null && (x.cheapest == null || e < x.cheapest)) x.cheapest = e; shops.set(p.domain, x) }
+  const title = brand.replace(/\b\w/g, c => c.toUpperCase())
+  if (!official && !products.length) {
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+    return res.status(404).send(layout({ title: `${title} — Actuent`, description: `Actuent doesn't know ${title} yet.`, canonical: `${BASE}/brand/${brandSlug}`, image: ogImage(title, "Not on Actuent yet", "api.actuent.ai", "think"), noindex: true, body: `<h1>${esc(title)}</h1><p class="lead">Actuent doesn't know this brand yet. <a href="https://humans.actuent.ai/?q=${encodeURIComponent(brand)}">Search for it →</a></p>` }))
+  }
+  const cheapest = [...products].filter((p: any) => p.price_eur != null).sort((a: any, b: any) => Number(a.price_eur) - Number(b.price_eur)).slice(0, 12)
+  const body = `<h1>${esc(title)}</h1>
+<p class="lead">${official ? `Official site: <a href="${BASE}/site/${esc(official.domain)}">${esc(official.name || official.domain)}</a> (${esc(official.domain)}).` : ""} ${shops.size ? `${shops.size} shop${shops.size === 1 ? "" : "s"} Actuent knows sell ${esc(title)} products.` : ""}</p>
+${shops.size ? `<h2>Where to buy</h2><div class="card"><ul class="checks">${[...shops.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 15).map(([d, x]) => `<li><a href="${BASE}/site/${esc(d)}">${esc(d)}</a> <span class="muted">· ${x.n} product${x.n === 1 ? "" : "s"}${x.cheapest != null ? ` · from €${x.cheapest.toFixed(0)}` : ""}</span></li>`).join("")}</ul></div>` : ""}
+${cheapest.length ? `<h2>Products, cheapest first</h2><div class="card"><ul class="checks">${cheapest.map((p: any) => `<li><a href="${esc(p.url)}" rel="nofollow">${esc(p.name)}</a> <span class="muted">· ${esc(p.price)} ${esc(p.currency || "")} · ${esc(p.domain)}</span></li>`).join("")}</ul></div>` : ""}
+<p class="muted">Ask an AI assistant with Actuent connected: “cheapest ${esc(brand)} …”.</p>`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
+  return res.status(200).send(layout({ title: `${title}: official site, shops and prices — Actuent`, description: `${title}'s official site, the shops that sell it and prices, from Actuent's index.`, canonical: `${BASE}/brand/${brandSlug}`, image: ogImage(title, "Official site, shops and prices", `api.actuent.ai/brand/${brandSlug}`, "talk"), noindex: !official && products.length < 3, body }))
+}
+
+// /site/in/<city>/new (and /new.rss): sites Actuent found in the city in the last 7 days.
+async function newInCity(res: VercelResponse, citySlug: string, rss: boolean) {
+  const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
+  const city = known || cityName(citySlug)
+  const since = new Date(Date.now() - 7 * 86400000).toISOString()
+  const found = (await rpcRows("new_in_city", { c: city, since, max_results: 60 })) || []
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600, stale-while-revalidate=21600")
+  if (rss) {
+    const x = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" }[c]!))
+    res.setHeader("Content-Type", "application/rss+xml; charset=utf-8")
+    return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>${x(`New in ${city} — Actuent`)}</title><link>${BASE}/site/in/${citySlug}/new</link><description>${x(`Businesses and places in ${city} Actuent found this week.`)}</description>
+${found.map((s: any) => `<item><title>${x(s.name || s.domain)}</title><link>${BASE}/site/${x(s.domain)}</link><guid isPermaLink="false">${x(s.domain)}</guid><pubDate>${new Date(s.first_seen_at).toUTCString()}</pubDate><description>${x([CATEGORIES[s.category] || "", s.business?.address?.street || ""].filter(Boolean).join(" · "))}</description></item>`).join("\n")}
+</channel></rss>`)
+  }
+  const body = `<h1>New in ${esc(city)}</h1>
+<p class="lead">Businesses and places in ${esc(city)} that Actuent found in the last 7 days. <a href="${BASE}/site/in/${esc(citySlug)}/new.rss">RSS</a> · <a href="${BASE}/site/in/${esc(citySlug)}">All of ${esc(city)}</a> · <a href="${BASE}/site/in/${esc(citySlug)}/whats-on">What's on</a></p>
+${found.length ? `<div class="card"><ul class="checks">${found.map((s: any) => `<li><a href="${BASE}/site/${esc(s.domain)}">${esc(s.name || s.domain)}</a> <span class="muted">· ${esc(CATEGORIES[s.category] || s.category || "")} · ${new Date(s.first_seen_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</span></li>`).join("")}</ul></div>` : `<div class="card">Nothing new in ${esc(city)} this week yet.</div>`}`
+  return res.status(200).send(layout({ title: `New in ${city} this week — Actuent`, description: `Businesses and places in ${city} Actuent found this week.`, canonical: `${BASE}/site/in/${citySlug}/new`, image: ogImage(`New in ${city}`, "Found this week", `api.actuent.ai/site/in/${citySlug}/new`, "wave"), noindex: found.length < 3, body }))
+}
+
 // Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
 function lawpyFor(score: number): string {
   const [state, loops, title] = score >= 90 ? ["dance", 4, "Agent-ready!"] : score >= 50 ? ["wave", 2, "Nearly there"] : ["think", 0, "Room to improve"]
@@ -427,6 +500,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.weekly) return weeklyPage(res, String(req.query.weekly))
   if (req.query.changes === "rss" && !req.query.domain) return changesFeed(res, null)
   if (req.query.trends) return trendsPage(res, req.query.trends === "json")
+  if (req.query.status === "page") return statusPage(res)
+  if (req.query.brand) return brandPage(res, String(req.query.brand))
+  if (req.query.city && req.query.new) return newInCity(res, slug(String(req.query.city)), req.query.new === "rss")
   if (req.query.city && req.query.events) {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     return eventsPage(res, slug(String(req.query.city)), req.query.events === "ics" ? "ics" : "page")

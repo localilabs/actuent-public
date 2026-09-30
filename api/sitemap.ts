@@ -54,7 +54,7 @@ ${Array.from({ length: files }, (_, i) => `  <sitemap><loc>${BASE}/sitemap-sites
 </sitemapindex>`)
   }
 
-  const urls: string[] = [`  <url><loc>${BASE}/site</loc><changefreq>daily</changefreq></url>`, `  <url><loc>${BASE}/trends</loc><changefreq>daily</changefreq></url>`]
+  const urls: string[] = [`  <url><loc>${BASE}/site</loc><changefreq>daily</changefreq></url>`, `  <url><loc>${BASE}/trends</loc><changefreq>daily</changefreq></url>`, `  <url><loc>${BASE}/status</loc><changefreq>daily</changefreq></url>`]
   const start = (part - 1) * PER_FILE
   for (let offset = start; offset < start + PER_FILE; offset += 1000) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,updated_at&${FILTER}&order=domain.asc&offset=${offset}&limit=1000`, { headers: HEADERS })
