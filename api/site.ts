@@ -377,6 +377,37 @@ function sharePage(res: VercelResponse, q: string) {
 <body style="background:#0a0a0a;color:#f5f5f7;font-family:sans-serif"><p><a href="${esc(target)}" style="color:#ff8a3d">See the search →</a></p></body></html>`)
 }
 
+// /smarter — "Your AI got smarter this week": what Actuent (and so every AI using it) learned in the
+// last 7 days, from the index and the changelog, in Lawpy's voice. Linked from the weekly email.
+async function smarterPage(res: VercelResponse) {
+  const week = encodeURIComponent(new Date(Date.now() - 7 * 86400000).toISOString())
+  const now = encodeURIComponent(new Date().toISOString())
+  const count = async (path: string) => { try { const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method: "HEAD", headers: { ...HEADERS, "Prefer": "count=exact", "Range": "0-0" }, signal: AbortSignal.timeout(8000) }); return Number(r.headers.get("content-range")?.split("/")[1] || 0) } catch { return 0 } }
+  const [newSites, events, priceChanges, products, feed] = await Promise.all([
+    count(`lawp_sites?select=domain&first_seen_at=gte.${week}&status=is.null`),
+    count(`lawp_events?select=id&start_date=gte.${now}`),
+    count(`lawp_items?select=url&price_changed_at=gte.${week}`),
+    count(`lawp_items?select=url`),
+    fetch("https://docs.actuent.ai/changelog.xml", { signal: AbortSignal.timeout(5000) }).then(r => r.ok ? r.text() : "").catch(() => "")
+  ])
+  const items = [...feed.matchAll(/<item>[\s\S]*?<title>([^<]+)<\/title>[\s\S]*?<pubDate>([^<]+)<\/pubDate>/g)]
+    .filter(m => Date.parse(m[2]) > Date.now() - 7 * 86400000).map(m => m[1].replace(/&amp;/g, "&")).slice(0, 8)
+  const n = (x: number) => x.toLocaleString("en")
+  const facts = [
+    newSites ? `<li><strong>${n(newSites)}</strong> new websites your AI can read</li>` : "",
+    events ? `<li><strong>${n(events)}</strong> upcoming events it knows about</li>` : "",
+    products ? `<li><strong>${n(products)}</strong> products with prices${priceChanges ? `, <strong>${n(priceChanges)}</strong> of them changed price this week` : ""}</li>` : ""
+  ].join("")
+  const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Your AI got smarter this week</h1>
+<p class="lead">Lawpy has been running all over the internet again. Here's what every AI using Actuent can do now that it couldn't last week.</p></div>
+<lawpy-mascot state="dance" loops="3" then="idle" scale="4" style="margin-left:auto"></lawpy-mascot></div>
+${facts ? `<h2>New things it knows</h2><div class="card"><ul class="checks">${facts}</ul></div>` : ""}
+${items.length ? `<h2>New tricks</h2><div class="card"><ul class="checks">${items.map(t => `<li>${esc(t)}</li>`).join("")}</ul><p class="muted" style="margin-top:8px"><a href="https://docs.actuent.ai/changelog">Everything in the changelog →</a></p></div>` : ""}
+<h2>Not connected yet?</h2><div class="card"><p>Give your AI the internet in about a minute: <a href="https://docs.actuent.ai/connect">docs.actuent.ai/connect</a>. Lawpy walks you through it.</p></div>`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
+  return res.status(200).send(layout({ title: "Your AI got smarter this week — Actuent", description: "What every AI using Actuent learned this week: new websites, events, prices and tricks.", canonical: `${BASE}/smarter`, image: ogImage("Your AI got smarter this week", "New websites, events, prices and tricks", "api.actuent.ai/smarter", "dance"), body }))
+}
+
 // Lawpy next to the score: dancing for 90+, waving for 50–89, thinking below 50 (public/assets/lawpy.js).
 function lawpyFor(score: number): string {
   const [state, loops, title] = score >= 90 ? ["dance", 4, "Agent-ready!"] : score >= 50 ? ["wave", 2, "Nearly there"] : ["think", 0, "Room to improve"]
@@ -567,6 +598,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.trends) return trendsPage(res, req.query.trends === "json")
   if (req.query.status === "page") return statusPage(res)
   if (req.query.share != null) return sharePage(res, String(req.query.q || ""))
+  if (req.query.smarter != null) return smarterPage(res)
   if (req.query.deals) return dealsPage(res, req.query.deals === "rss")
   if (req.query.brand) return brandPage(res, String(req.query.brand))
   if (req.query.city && req.query.new) return newInCity(res, slug(String(req.query.city)), req.query.new === "rss")

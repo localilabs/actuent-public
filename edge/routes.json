@@ -1,5 +1,9 @@
 [
  {
+  "src": "/smarter/?",
+  "dest": "/api/site.ts?smarter=1"
+ },
+ {
   "src": "/share/?",
   "dest": "/api/site.ts?share=1"
  },
