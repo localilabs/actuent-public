@@ -1,0 +1,29 @@
+name: Deploy to Supabase Edge Functions
+# Every push to main rebuilds the function (edge/, api/, src/) and deploys it, like Vercel did.
+# Needs the SUPABASE_ACCESS_TOKEN secret (supabase.com/dashboard/account/tokens).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: edge-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci || npm install
+      - run: node scripts/build-edge.mjs
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      # Until the SUPABASE_ACCESS_TOKEN secret exists, the build is checked but nothing is deployed.
+      - if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: supabase functions deploy api --project-ref bcmwypjrahtxogytsvuc --no-verify-jwt --use-api

@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { from, to } = tonightWindow(zone)
   const pattern = encodeURIComponent(`*${city.replace(/ /g, "*")}*`)
   const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency,online&or=(city.ilike.${pattern},venue.ilike.${pattern})&start_date=gte.${encodeURIComponent(from.toISOString())}&start_date=lte.${encodeURIComponent(to.toISOString())}&order=start_date.asc&limit=80`, { headers: HEADERS, signal: AbortSignal.timeout(5000) }).catch(() => null)
-  if (!r?.ok) return res.status(503).json({ error: "Sorry — too many people are using Actuent right now. Please try again in a minute." })
+  if (!r?.ok) { res.setHeader("Cache-Control", "no-store"); return res.status(503).json({ error: "Sorry — too many people are using Actuent right now. Please try again in a minute." }) }
   const rows: any[] = await r.json()
   const domains = [...new Set(rows.map(e => e.domain))]
   const hidden = new Set<string>()

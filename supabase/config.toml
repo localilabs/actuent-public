@@ -1,0 +1,6 @@
+# Supabase Edge Function for this repo (the database's own settings are managed in the dashboard).
+project_id = "actuent"
+
+[functions.api]
+verify_jwt = false
+entrypoint = "./functions/api/index.js"

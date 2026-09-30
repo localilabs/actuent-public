@@ -1,0 +1,150 @@
+[
+ {
+  "src": "/api/search",
+  "dest": "/api/search.ts"
+ },
+ {
+  "src": "/api/register",
+  "dest": "/api/register.ts"
+ },
+ {
+  "src": "/api/stats",
+  "dest": "/api/data.ts?op=stats"
+ },
+ {
+  "src": "/api/diff",
+  "dest": "/api/data.ts?op=diff"
+ },
+ {
+  "src": "/api/leaderboard",
+  "dest": "/api/data.ts?op=leaderboard"
+ },
+ {
+  "src": "/api/suggest",
+  "dest": "/api/suggest.ts"
+ },
+ {
+  "src": "/api/webhook-register",
+  "dest": "/api/data.ts?op=webhooks"
+ },
+ {
+  "src": "/api/autocomplete",
+  "dest": "/api/data.ts?op=autocomplete"
+ },
+ {
+  "src": "/api/ask",
+  "dest": "/api/data.ts?op=ask"
+ },
+ {
+  "src": "/api/similar",
+  "dest": "/api/data.ts?op=similar"
+ },
+ {
+  "src": "/api/tonight",
+  "dest": "/api/data.ts?op=tonight"
+ },
+ {
+  "src": "/api/status",
+  "dest": "/api/data.ts?op=status"
+ },
+ {
+  "src": "/api/state",
+  "dest": "/api/data.ts?op=state"
+ },
+ {
+  "src": "/api/unsubscribe",
+  "dest": "/api/data.ts?op=unsubscribe"
+ },
+ {
+  "src": "/go",
+  "dest": "/api/data.ts?op=go"
+ },
+ {
+  "src": "/indexnow\\.txt",
+  "dest": "/api/data.ts?op=indexnow"
+ },
+ {
+  "src": "/trends\\.json",
+  "dest": "/api/site.ts?trends=json"
+ },
+ {
+  "src": "/trends/?",
+  "dest": "/api/site.ts?trends=html"
+ },
+ {
+  "src": "/changes\\.rss",
+  "dest": "/api/site.ts?changes=rss"
+ },
+ {
+  "src": "/state/weekly\\.rss",
+  "dest": "/api/site.ts?weekly=rss"
+ },
+ {
+  "src": "/state/weekly/([0-9]{4}-[0-9]{2}-[0-9]{2})/?",
+  "dest": "/api/site.ts?weekly=$1"
+ },
+ {
+  "src": "/state/weekly/?",
+  "dest": "/api/site.ts?weekly=index"
+ },
+ {
+  "src": "/sitemap.xml",
+  "dest": "/api/sitemap.ts"
+ },
+ {
+  "src": "/sitemap-cities\\.xml",
+  "dest": "/api/sitemap.ts?part=cities"
+ },
+ {
+  "src": "/sitemap-sites-([0-9]+)\\.xml",
+  "dest": "/api/sitemap.ts?part=$1"
+ },
+ {
+  "src": "/site/in/([^/?]+)/whats-on\\.ics",
+  "dest": "/api/site.ts?city=$1&events=ics"
+ },
+ {
+  "src": "/site/in/([^/?]+)/whats-on/?",
+  "dest": "/api/site.ts?city=$1&events=page"
+ },
+ {
+  "src": "/site/in/([^/?]+)/([^/?]+)/?",
+  "dest": "/api/site.ts?city=$1&category=$2"
+ },
+ {
+  "src": "/site/in/([^/?]+)/?",
+  "dest": "/api/site.ts?city=$1"
+ },
+ {
+  "src": "/site/?",
+  "dest": "/api/site.ts"
+ },
+ {
+  "src": "/site/([^/?]+)/changes\\.rss",
+  "dest": "/api/site.ts?domain=$1&changes=rss"
+ },
+ {
+  "src": "/site/([^/?]+)/?",
+  "dest": "/api/site.ts?domain=$1"
+ },
+ {
+  "src": "/leaderboard",
+  "dest": "/api/data.ts?op=leaderboard"
+ },
+ {
+  "src": "/suggest",
+  "dest": "/api/suggest.ts"
+ },
+ {
+  "src": "/.well-known/lawp.json",
+  "dest": "/api/well-known.ts"
+ },
+ {
+  "src": "/badge.json",
+  "dest": "/api/badge.ts?format=json"
+ },
+ {
+  "src": "/badge.svg",
+  "dest": "/api/badge.ts"
+ }
+]
