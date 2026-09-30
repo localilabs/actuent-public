@@ -88,6 +88,10 @@
     {
       "src": "public/checklist.js",
       "use": "@vercel/static"
+    },
+    {
+      "src": "public/whatson.js",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -104,7 +108,7 @@
       "continue": true
     },
     {
-      "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state|warm|site-search|rates|discord/[0-9a-fA-F]{64})|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
+      "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state|warm|site-search|rates|events|discord/[0-9a-fA-F]{64})|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
       "dest": "https://bcmwypjrahtxogytsvuc.supabase.co/functions/v1/api/$1",
       "headers": {
         "x-vercel-enable-rewrite-caching": "1"
@@ -318,6 +322,15 @@
     {
       "src": "/checklist.js",
       "dest": "/public/checklist.js",
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
+      "src": "/whatson.js",
+      "dest": "/public/whatson.js",
       "headers": {
         "Content-Type": "application/javascript; charset=utf-8",
         "Access-Control-Allow-Origin": "*",

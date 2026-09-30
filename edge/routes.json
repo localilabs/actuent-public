@@ -1,5 +1,9 @@
 [
  {
+  "src": "/api/events",
+  "dest": "/api/data.ts?op=events"
+ },
+ {
   "src": "/api/discord/([0-9a-fA-F]{64})",
   "dest": "/api/data.ts?op=discord&key=$1"
  },
