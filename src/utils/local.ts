@@ -20,7 +20,7 @@ const CITIES = ("copenhagen aarhus odense aalborg stockholm gothenburg malmo mal
   " esbjerg roskilde uppsala trondheim stavanger tampere turku tallinn riga vilnius gdansk wroclaw brno bratislava ljubljana zagreb belgrade bucharest sofia thessaloniki minneapolis ottawa phoenix new-orleans salt-lake-city pittsburgh detroit honolulu calgary adelaide gold-coast christchurch osaka kyoto seoul hong-kong taipei bangkok kuala-lumpur manila jakarta bali ho-chi-minh-city mumbai bangalore delhi abu-dhabi tel-aviv cape-town johannesburg nairobi lagos marrakech cairo mexico-city buenos-aires sao-paulo rio-de-janeiro santiago bogota lima medellin doha riyadh" +
   " kolding vejle horsens randers herning silkeborg næstved naestved fredericia viborg helsingør helsingor hillerød hillerod svendborg holbæk holbaek slagelse" +
   " västerås vasteras örebro orebro linköping linkoping helsingborg jönköping jonkoping norrköping norrkoping lund umeå umea gävle gavle" +
-  " bremen hanover hannover nuremberg nürnberg essen dortmund bonn münster munster mannheim karlsruhe freiburg kiel lübeck lubeck augsburg heidelberg").split(" ").map(c => c.replace(/-/g, " "))
+  " bremen hanover hannover nuremberg nürnberg dortmund bonn münster munster mannheim karlsruhe freiburg kiel lübeck lubeck augsburg heidelberg").split(" ").map(c => c.replace(/-/g, " "))
 
 // The country of a city in the list (for product search: shops in the shopper's market first).
 const CITY_COUNTRY: Record<string, string> = {
