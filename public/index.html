@@ -269,7 +269,7 @@ function comparisonHtml(c, results) {
   if (!c || !c.sites || c.sites.length < 2) return ""
   var sites = c.sites.slice(0, 2).map(function(d) { return (results || []).filter(function(r) { return r.domain === d })[0] || { domain: d } })
   var col = function(site) {
-    var q = scoreLAWP(site), b = site.business || {}
+    var q = scoreLAWP(site), b = site.business || {}, shop = c.shops && c.shops[site.domain]
     var acts = (site.actions || []).slice(0, 6).map(function(a) { return '<li>' + esc(a.name || a.id) + (site.executable && a.endpoint ? ' <span class="run">RUN</span>' : '') + '</li>' }).join("")
     var rows = [
       ["What it is", esc(String(site.snippet || (Object.values(site.pages || {})[0] || {}).content || "—").slice(0, 220))],
@@ -280,7 +280,10 @@ function comparisonHtml(c, results) {
       b.address && b.address.city ? ["Where", esc(b.address.city)] : null,
       site.open_now != null ? ["Open now", site.open_now ? '<span class="open">Yes</span>' : "No"] : null,
       ["LAWP quality", '<span style="color:' + (q.score >= 80 ? "#4ade80" : q.score >= 50 ? "#ff8a3d" : "#a8a8b6") + '">' + q.score + '/100</span>'],
-      ["Updated", site.age_hours != null ? (site.age_hours < 48 ? site.age_hours + "h ago" : Math.round(site.age_hours / 24) + "d ago") : "—"]
+      ["Updated", site.age_hours != null ? (site.age_hours < 48 ? site.age_hours + "h ago" : Math.round(site.age_hours / 24) + "d ago") : "—"],
+      shop ? ["Products", shop.products.toLocaleString() + (shop.price_range_eur ? ' · ' + money(shop.price_range_eur[0], "EUR") + '–' + money(shop.price_range_eur[1], "EUR") : "")] : null,
+      shop ? ["Ships to", shop.ships_to ? (shop.ships_to[0] === "*" ? "Worldwide" : esc(shop.ships_to.join(", ").toUpperCase())) : '<span class="muted">Not stated</span>'] : null,
+      shop ? ["Delivery & returns", (shop.delivery_page ? "Delivery page ✓" : "No delivery page") + " · " + (shop.returns_page ? "Returns page ✓" : "No returns page")] : null
     ].filter(Boolean)
     return '<div class="vs-col"><a class="site-domain" href="' + safeUrl(site.visit_url || ("https://" + site.domain)) + '" target="_blank" rel="noopener">' + esc(site.domain) + '</a><div class="site-name">' + esc(site.name && site.name !== site.domain ? site.name : "") + '</div>' +
       rows.map(function(r) { return '<div class="vs-row"><div class="vs-k">' + r[0] + '</div><div>' + r[1] + '</div></div>' }).join("") + '</div>'

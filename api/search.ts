@@ -1,5 +1,6 @@
 import { translateKeywords } from "../src/utils/multilingual"
 import { searchDishes } from "../src/utils/dishes"
+import { shopFacts } from "../src/utils/shop_facts"
 import { alternativeSearches } from "../src/utils/product_match"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { withoutHidden, searchSites, quickSearch, isPlaceSearch } from "../src/utils/search"
@@ -364,6 +365,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     isDomainQuery ? Promise.resolve([]) : searchDishes(cleanQueryKeepPrice(localized)).catch(() => [])
   ])
   const compared = await comparing
+  // Shops compared ("zalando vs boozt"): products, price range, shipping and returns, side by side.
+  const facts = compared ? await Promise.race([Promise.all(compared.map((x: any) => shopFacts(x).catch(() => null))), new Promise<null[]>(r => setTimeout(() => r([null, null]), 2500))]) : [null, null]
   const pair = await comparingProducts
   const productPair = pair[0] && pair[1] && pair[0].url !== pair[1].url ? pair.map((p: any) => ({
     name: p.name, price: p.price, currency: p.currency, price_eur: p.price_eur, domain: p.domain, url: p.url, image: p.image,
@@ -456,7 +459,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
     ...(productPair ? { product_comparison: productPair } : {}),
-    ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
+    ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), ...(facts[0] || facts[1] ? { shops: Object.fromEntries(compared.map((x: any, i: number) => [x.domain, facts[i]])) } : {}), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
     ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
