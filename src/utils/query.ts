@@ -47,7 +47,7 @@ export function nearMe(q: string, cityHeader: string | undefined): string {
   return q.replace(/\b(near me|nearby|around me|close to me)\b/i, city).replace(/\s+/g, " ").trim()
 }
 
-const NOT_SHOPPING = /\b(software|app|saas|api|hosting|news|weather|recipes?|course|courses|jobs?|dentist|doctor|lawyer|plumber|electrician|barber|hairdresser|restaurants?|cafes?|coffee shops?|bars?|pubs?|hotels?|hostels?|flights?|museums?|events?|tickets?|concerts?|near me|how to|bakery|bakeries|pizza|sushi|brunch|gyms?|spas?|salons?|pharmacy|clinic|vet|cinema|theatre|theater|nightclubs?|parks?|dinner|lunch|breakfast)\b/i
+const NOT_SHOPPING = /\b(software|app|saas|api|hosting|news|weather|recipes?|course|courses|jobs?|dentist|doctor|lawyer|plumber|electrician|barber|hairdresser|restaurants?|cafes?|coffee shops?|bars?|pubs?|hotels?|hostels?|flights?|museums?|events?|tickets?|concerts?|near me|how to|bakery|bakeries|pizza|sushi|brunch|gyms?|spas?|salons?|pharmacy|clinic|vet|cinema|theatre|theater|nightclubs?|parks?|dinner|lunch|breakfast|places? to|where to eat|takeaway|take away|open now|tonight|diners?|bistros?|eateries|eatery)\b/i
 // Yes/no questions ("does basecamp have a free plan") and comparisons ("notion vs obsidian") aren't shopping.
 const NOT_SHOPPING_TYPED = /^(does|do|is|are|can|could|will|has|have|should|how (to|do|does))\b|\s(vs\.?|versus)\s/i
 export function wantsProducts(q: string, typed: string = q): boolean {
