@@ -151,6 +151,10 @@
       "dest": "/api/data.ts?op=tonight"
     },
     {
+      "src": "/api/sitemap-pages",
+      "dest": "/api/data.ts?op=sitemap_pages"
+    },
+    {
       "src": "/api/status",
       "dest": "/api/data.ts?op=status"
     },

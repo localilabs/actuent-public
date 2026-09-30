@@ -12,10 +12,11 @@ import indexnow from "../src/handlers/indexnow"
 import ask from "../src/handlers/ask"
 import similar from "../src/handlers/similar"
 import tonight from "../src/handlers/tonight"
+import sitemapPages from "../src/handlers/sitemap-pages"
 
 // Small read-only endpoints (and webhook registration) share one function, because the Vercel
 // Hobby plan allows 12 per project. Routes in vercel.json map each public path to ?op=.
-const OPS: Record<string, (req: VercelRequest, res: VercelResponse) => unknown> = { stats, diff, state, status, autocomplete, leaderboard, webhooks, unsubscribe, go, indexnow, ask, similar, tonight }
+const OPS: Record<string, (req: VercelRequest, res: VercelResponse) => unknown> = { stats, diff, state, status, autocomplete, leaderboard, webhooks, unsubscribe, go, indexnow, ask, similar, tonight, sitemap_pages: sitemapPages }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const op = OPS[String(req.query.op || "")]
