@@ -239,6 +239,7 @@ function hintsHtml(data) {
   if (data.interpreted_as) hints.push('Searched for “' + esc(data.interpreted_as) + '”')
   if (data.near) hints.push(esc(t('Places near {city} first', { city: data.near })))
   if (data.related && data.related.length) hints.push(esc(t('Related:')) + ' ' + data.related.map(searchLink).join(" · "))
+  if (data.try_instead && data.try_instead.length) hints.push(esc(t('Try')) + ' ' + data.try_instead.map(searchLink).join(" · "))
   return hints.length ? '<div class="hints">' + hints.join(" &nbsp;|&nbsp; ") + '</div>' : ""
 }
 

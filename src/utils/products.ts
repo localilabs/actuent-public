@@ -2,7 +2,7 @@ import { complete, Tier } from "./llm"
 import { safeParseJSON } from "./parseAI"
 import { USER_AGENT } from "./robots"
 import { fetchPublic } from "./safe-fetch"
-import { productMatches, rankProducts, importantWords } from "./product_match"
+import { productMatches, rankProducts, importantWords, WANTS_CHEAPEST } from "./product_match"
 
 // Products with prices. Shops are detected automatically, with nothing for the merchant to install:
 //   • Shopify stores publish /products.json and /meta.json (currency) publicly.
@@ -271,7 +271,10 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       if (g && !g.some(x => x.url === o.url) && (maxEur == null || (o.price_eur != null && Number(o.price_eur) <= maxEur))) g.push(o)
     }
 
-    const picked = [...groups.values()].slice(0, max).map(g => {
+    // "cheapest …": the cheapest of the matching products first (each group's lowest price).
+    const lowest = (g: any[]) => Math.min(...g.map(x => x.price_eur == null ? Infinity : Number(x.price_eur)))
+    const ordered = WANTS_CHEAPEST.test(query) ? [...groups.values()].sort((a, b) => lowest(a) - lowest(b)) : [...groups.values()]
+    const picked = ordered.slice(0, max).map(g => {
       const sorted = [...g].sort((a, b) => (a.price_eur == null ? Infinity : Number(a.price_eur)) - (b.price_eur == null ? Infinity : Number(b.price_eur)))
       return { best: { ...sorted[0], name: sorted[0].name ?? g[0].name, image: sorted[0].image ?? g[0].image }, others: sorted.slice(1) }
     })

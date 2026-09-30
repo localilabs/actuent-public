@@ -6,7 +6,7 @@
 
 // Words that say nothing about which product it is.
 const FILLER = new Set(["a", "an", "the", "for", "with", "and", "or", "of", "in", "on", "to", "from", "at", "by", "my", "me", "i",
-  "buy", "best", "cheap", "cheapest", "good", "top", "new", "sale", "online", "shop", "shops", "store", "stores", "price", "prices",
+  "buy", "best", "cheap", "cheapest", "lowest", "billigste", "billigast", "günstigste", "goedkoopste", "economico", "good", "top", "new", "sale", "online", "shop", "shops", "store", "stores", "price", "prices",
   "deal", "deals", "discount", "order", "get", "find", "where", "can", "which", "what", "want", "need", "looking", "some", "any",
   "men", "mens", "women", "womens", "kids", "unisex", "size", "near", "delivery", "free", "shipping", "official", "original", "genuine",
   "køb", "billig", "billige", "bedste", "kaufen", "günstig", "acheter", "comprar", "barato", "comprare", "kopen", "köpa", "kjøpe"])
@@ -69,8 +69,11 @@ const PETS = /\b(dogs?|cats?|pets?|puppy|puppies|kitten|paw|hund|kat|katze|chien
 
 // How well a matching product fits: lower for kids'/pet items the search didn't ask for, for
 // sold-out ones and ones without a picture.
-export function productFit(query: string, row: { name: string, available?: boolean | null, image?: string | null }): number {
+export function productFit(query: string, row: { name: string, available?: boolean | null, image?: string | null, price_eur?: number | string | null }): number {
   let fit = 1
+  // Shop quality: a price agents can compare, and a sensible name (not a keyword-stuffed one).
+  if (row.price_eur == null) fit *= 0.6
+  if (row.name.length > 120) fit *= 0.8
   if (KIDS.test(row.name) && !KIDS.test(query)) fit *= 0.2
   if (PETS.test(row.name) && !PETS.test(query)) fit *= 0.1
   if (row.available === false) fit *= 0.3
@@ -80,7 +83,7 @@ export function productFit(query: string, row: { name: string, available?: boole
 
 // Best fit first, keeping the search order within a fit, and at most `perShop` from one shop until
 // every shop has had its turn (so one shop's catalogue doesn't fill the list).
-export function rankProducts<T extends { name: string, domain: string, available?: boolean | null, image?: string | null }>(query: string, rows: T[], perShop = 2): T[] {
+export function rankProducts<T extends { name: string, domain: string, available?: boolean | null, image?: string | null, price_eur?: number | string | null }>(query: string, rows: T[], perShop = 2): T[] {
   // Kids'/pet items the search didn't ask for are dropped (fit 0.2 / 0.1), not just moved down.
   const scored = rows.map((row, i) => ({ row, fit: productFit(query, row), i })).filter(x => x.fit >= 0.25)
   scored.sort((a, b) => b.fit - a.fit || a.i - b.i)
@@ -104,4 +107,20 @@ export function productMatches(query: string, productName: string): boolean {
     const options = FORMS.get(s) || [s]
     return options.some(o => o.includes(" ") ? stemmedName.includes(` ${o} `) : nameStems.has(o))
   })
+}
+
+// "cheapest trainers", "billigste løbesko": sort by price instead of relevance.
+export const WANTS_CHEAPEST = /\b(cheapest|lowest price|best price|billigste|billigast|günstigste|moins cher|más barato|più economico|goedkoopste)\b/i
+
+// Other ways to say a search, for "nothing found" answers: the everyday English word for each thing
+// ("løbesko" → "running shoe"), and the search without its last word.
+export function alternativeSearches(query: string): string[] {
+  const ws = words(query), out: string[] = []
+  const swapped = ws.map(w => {
+    const group = SAME_THING.find(g => g.some(x => stem(x) === stem(w)))
+    return group && stem(group[0]) !== stem(w) ? group[0] : w
+  }).join(" ")
+  if (swapped !== ws.join(" ")) out.push(swapped)
+  if (ws.length > 2) out.push(ws.slice(0, -1).join(" "))
+  return [...new Set(out)].filter(x => x && x !== query.toLowerCase().trim())
 }

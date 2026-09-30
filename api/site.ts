@@ -427,9 +427,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const file = site.native ? { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions: site.actions || [] } : starterLawp(site, domain)
     return res.status(200).send(JSON.stringify(file, null, 2))
   }
+  // Search-engine bots crawl tens of thousands of these pages: they get the page without the
+  // "compared with similar sites" box, the most expensive part to work out (several queries).
+  const isBot = /bot|crawler|spider|slurp|facebookexternalhit|preview|fetch/i.test(String(req.headers["user-agent"] || ""))
   const [products, vs, checksLog] = await Promise.all([
     rows(`lawp_items?select=name,url,price,currency,image,available&domain=eq.${encodeURIComponent(domain)}&order=updated_at.desc&limit=12`),
-    site.status ? Promise.resolve(null) : compare(site, rows).catch(() => null),
+    site.status || isBot ? Promise.resolve(null) : compare(site, rows).catch(() => null),
     site.native ? rows(`lawp_checks?select=action_id,ok&domain=eq.${encodeURIComponent(domain)}&created_at=gte.${encodeURIComponent(new Date(Date.now() - 30 * 86400000).toISOString())}&limit=2000`) : Promise.resolve([])
   ])
   // Endpoint reliability over 30 days, per action (daily checks and LAWP Checker tests).

@@ -34,6 +34,7 @@ export function welcomeEmail(domain: string): { subject: string, html: string } 
 <ol>
 <li>Edit your pages and actions any time in <a href="https://analytics.actuent.ai">Analytics → My sites</a>.</li>
 <li>Make actions executable (bookings, enquiries) by publishing them in your own <code>/.well-known/lawp.json</code>. On WordPress or Cloudflare it's one click: <a href="https://docs.actuent.ai/#platforms">docs.actuent.ai</a>.</li>
+<li>Work through the <a href="https://docs.actuent.ai/checklist?domain=${d}">agent-ready checklist</a>: steps for your platform, checked live as you fix each one.</li>
 <li>Show your agent-readiness score on your site:<br><code>&lt;img src="https://api.actuent.ai/badge.svg?domain=${d}"&gt;</code></li>
 </ol>
 <p>Questions? Just reply to this email.</p>

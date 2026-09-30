@@ -1,3 +1,5 @@
+import { translateKeywords } from "../src/utils/multilingual"
+import { alternativeSearches } from "../src/utils/product_match"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { withoutHidden, searchSites, quickSearch, isPlaceSearch } from "../src/utils/search"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
@@ -445,6 +447,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(related.length || (await rewritesTo).length ? { related: [...new Set([...(await rewritesTo), ...related])].slice(0, 8) } : {}),
     ...(didYouMean ? { did_you_mean: didYouMean } : {}),
     ...(searchedFor ? { searched_for: searchedFor } : {}),
+    // Nothing at all: other wordings to try (English words for foreign ones, the everyday word, fewer words).
+    ...(!results.length && !products.length && !places.length && !isDomainQuery ? { try_instead: [...new Set([translateKeywords(typed).foreign ? translateKeywords(typed).query : "", ...alternativeSearches(typed)].filter(x => x && x.toLowerCase() !== typed.toLowerCase().trim()))].slice(0, 3) } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }
