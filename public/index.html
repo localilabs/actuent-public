@@ -284,6 +284,15 @@ function comparisonHtml(c, results) {
     '<div class="muted small" id="also" style="margin-top:10px"></div></div>'
 }
 
+// "A vs B" when both are products: side by side, price, shops and whether today's price is the lowest.
+function productCompareHtml(pair) {
+  if (!pair || pair.length !== 2) return ""
+  return '<div class="box"><div class="section">Products side by side</div><div class="vs-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' + pair.map(function(p) {
+    return '<div>' + (p.image ? '<img src="' + safeUrl(p.image) + '" alt="" style="width:100%;max-height:140px;object-fit:contain;border-radius:6px;background:#fff">' : '') +
+      '<div style="font-weight:600;margin-top:6px"><a href="' + safeUrl(p.url) + '" target="_blank" rel="noopener">' + esc(p.name) + '</a></div>' +
+      '<div class="muted small">' + [money(p.price, p.currency), esc(p.domain), p.shops > 1 ? p.shops + " shops" : "", p.lowest_90_days ? "lowest price in 90 days" : ""].filter(Boolean).join(" · ") + '</div></div>'
+  }).join("") + '</div></div>'
+}
 function productsHtml(items) {
   if (!items || !items.length) return ""
   return '<div class="box"><div class="section">Products · ' + items.length + '</div><div class="grid">' + items.slice(0, 12).map(function(p) {
@@ -436,7 +445,7 @@ function doSearch() {
     btn.disabled = false
     btn.textContent = t("Search")
     var sites = data.results || []
-    var extras = comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
+    var extras = productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + placesHtml(data.places)
     var parts = [sites.length ? countOf(sites.length, "site", "sites") : "",
       data.products && data.products.length ? countOf(data.products.length, "product", "products") : "",
       data.events && data.events.length ? countOf(data.events.length, "event", "events") : ""].filter(Boolean)

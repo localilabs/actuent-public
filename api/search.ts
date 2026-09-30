@@ -339,6 +339,14 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const rewritesTo = usualRewrites(typed)
   // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
+  // "pegasus 41 vs clifton 9": the best-matching product for each side, side by side (when both are products).
+  const vsParts = typed.split(/\s+(?:vs\.?|versus|or|eller|oder|ou|o)\s+/i).map(x => x.trim()).filter(Boolean)
+  const comparingProducts = !isDomainQuery && vsParts.length === 2 && /\s(vs\.?|versus)\s/i.test(typed)
+    ? Promise.race([
+        Promise.all(vsParts.map(side => searchProducts(side, tier, 1, shopperCountry).then(r => r[0] || null).catch(() => null))),
+        new Promise<null[]>(r => setTimeout(() => r([null, null]), 3000))
+      ])
+    : Promise.resolve([null, null])
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
   const nameTypos: string[] = []
   // Spelling runs alongside the search (the word list is small and fast): a misspelt search
@@ -353,6 +361,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
     isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery)
   ])
   const compared = await comparing
+  const pair = await comparingProducts
+  const productPair = pair[0] && pair[1] && pair[0].url !== pair[1].url ? pair.map((p: any) => ({
+    name: p.name, price: p.price, currency: p.currency, price_eur: p.price_eur, domain: p.domain, url: p.url, image: p.image,
+    ...(p.lowest_90_days != null ? { lowest_90_days: p.lowest_90_days } : {}), ...(p.price_change_percent ? { price_change_percent: p.price_change_percent } : {}),
+    shops: 1 + (p.other_shops?.length || 0)
+  })) : null
   const asked = await asking
   const answer = asked ? await answerFromSite(asked.site, asked.keywords) : null
   // Pro: a short answer written from the top results, with sources, for question searches.
@@ -438,6 +452,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
+    ...(productPair ? { product_comparison: productPair } : {}),
     ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
     ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
