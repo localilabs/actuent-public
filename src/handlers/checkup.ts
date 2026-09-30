@@ -78,12 +78,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const sitemapOk = (sitemap?.status === 200 && /<(urlset|sitemapindex)/i.test(sitemap.text)) || /^\s*sitemap:/im.test(robots?.text || "")
   const llmsOk = llms?.status === 200 && !/html/i.test(llms.type) && llms.text.trim().length > 20
 
+  // Opening hours: do the hours in the schema.org data appear on the page people read? When the page
+  // shows times and none of the schema's opening or closing times are among them, one is out of date.
+  const visible = html.replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ")
+  const norm = (t: string) => { const [h, m] = t.split(/[:.]/); return `${h.padStart(2, "0")}:${m}` }
+  const pageTimes = new Set((visible.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\b/g) || []).map(norm))
+  const schemaTimes = new Set((business?.opening_hours || []).flatMap(h => [h.opens, h.closes]).filter(Boolean).map(t => norm(String(t))))
+  const hoursMismatch = schemaTimes.size > 0 && pageTimes.size >= 2 && ![...schemaTimes].some(t => pageTimes.has(t))
+
   const checks = [
     { id: "title", label: "Homepage has a title", ok: title.length > 2, points: 5 },
     { id: "description", label: "Homepage has a meta description", ok: description, points: 10 },
     { id: "business", label: "Business details as schema.org data (name, type, address)", ok: !!business?.name || !!business?.type, points: 20 },
     { id: "contact", label: "A phone number or email agents can find", ok: contact, points: 10 },
     { id: "hours", label: "Opening hours as schema.org data (shops and venues)", ok: !!business?.opening_hours?.length, points: 10, optional: !business?.address },
+    { id: "hours_match", label: "Opening hours on the page match the schema.org data", ok: !hoursMismatch, points: 5, optional: !schemaTimes.size || pageTimes.size < 2,
+      detail: hoursMismatch ? `The data says ${[...schemaTimes].slice(0, 4).join(", ")}; the page shows ${[...pageTimes].slice(0, 4).join(", ")}` : undefined },
     { id: "ai_bots", label: "robots.txt lets AI assistants in", ok: !blocked.length, points: 15, detail: blocked.length ? `Blocked: ${blocked.join(", ")}` : undefined },
     { id: "sitemap", label: "A sitemap (sitemap.xml)", ok: sitemapOk, points: 10 },
     { id: "llms_txt", label: "An llms.txt summary for AI", ok: llmsOk, points: 5, optional: true },

@@ -284,6 +284,29 @@ ${!site.business ? `<details><summary>Starter schema.org snippet</summary><div c
 </div>`
 }
 
+// "Your site in 5 AI assistants": for each assistant, whether its bots may read the site when someone
+// asks about it (answers), whether it may learn from it (training), and what it would find.
+const ASSISTANTS: { name: string, answer: string[], training: string | null }[] = [
+  { name: "ChatGPT", answer: ["OAI-SearchBot", "ChatGPT-User"], training: "GPTBot" },
+  { name: "Claude", answer: ["Claude-SearchBot", "Claude-User"], training: "ClaudeBot" },
+  { name: "Perplexity", answer: ["PerplexityBot", "Perplexity-User"], training: null },
+  { name: "Google Gemini", answer: [], training: "Google-Extended" },
+  { name: "Mistral Le Chat", answer: ["MistralAI-User"], training: null }
+]
+function assistantsCard(site: any, access: any): string {
+  if (!access || access.robots_txt === null) return ""
+  const blocked = new Set<string>(access.blocked || [])
+  const home: any = Object.values(site.pages || {})[0] || {}
+  const summary = String(home.content || "").replace(/\s+/g, " ").slice(0, 150)
+  const actions = (site.actions || []).length
+  const cell = (ok: boolean | null) => ok == null ? '<span class="muted">—</span>' : ok ? '<span class="ok">✓ yes</span>' : '<span class="no">✕ blocked</span>'
+  return `<h2>Your site in 5 AI assistants</h2><div class="card"><table style="width:100%;border-collapse:collapse;font-size:13px">
+<tr><th style="text-align:left">Assistant</th><th style="text-align:left">Reads it to answer people</th><th style="text-align:left">Learns from it</th></tr>
+${ASSISTANTS.map(a => `<tr><td>${esc(a.name)}</td><td>${a.answer.length ? cell(!a.answer.some(b => blocked.has(b))) : '<span class="muted">via Google Search</span>'}</td><td>${cell(a.training ? !blocked.has(a.training) : null)}</td></tr>`).join("")}
+</table>
+<div class="muted" style="margin-top:10px">What they find (through Actuent, in ChatGPT and Claude): <strong>${esc(site.name || site.domain)}</strong>${summary ? ` — “${esc(summary)}${String(home.content || "").length > 150 ? "…" : ""}”` : ""}, ${actions} action${actions === 1 ? "" : "s"} they can take.</div></div>`
+}
+
 // Which AI crawlers and assistants the site's robots.txt blocks, with a fix.
 function aiAccessCard(access: any): string {
   if (!access || access.robots_txt === null) return ""
@@ -479,6 +502,7 @@ ${pages.length > 1 ? `<h2>Pages</h2>${pages.slice(0, 12).map(([path, p]) => `<di
 
 ${products.length ? `<h2>Products</h2><div class="grid">${products.map(p => `<a class="card product" href="${esc(p.url)}" rel="nofollow noopener" target="_blank" style="text-decoration:none;color:inherit">${p.image ? `<img src="${esc(p.image)}" alt="" loading="lazy">` : ""}<div><div>${esc(p.name)}</div><div class="price">${p.price != null ? `${esc(p.price)} ${esc(p.currency || "")}` : ""}</div></div></a>`).join("")}</div>` : ""}
 
+${assistantsCard(site, site.ai_access)}
 ${aiAccessCard(site.ai_access)}
 
 ${vs ? `<h2>Compared with similar sites</h2><div class="card"><div>#${vs.rank} of ${vs.total} ${esc((CATEGORIES[vs.category] || vs.category).toLowerCase())}${vs.city ? ` in ${esc(vs.city)}` : " on Actuent"}</div>
