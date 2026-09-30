@@ -163,6 +163,10 @@
       "dest": "/api/data.ts?op=checkup"
     },
     {
+      "src": "/api/newsletter",
+      "dest": "/api/data.ts?op=newsletter"
+    },
+    {
       "src": "/api/status",
       "dest": "/api/data.ts?op=status"
     },

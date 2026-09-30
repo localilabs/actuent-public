@@ -359,6 +359,9 @@ function lawpyFor(score: number): string {
 // The current LAWP spec version (github.com/localilabs/lawp).
 const LAWP_VERSION = "0.5"
 
+// Sign-up box for the weekly email (src/handlers/newsletter.ts: double opt-in, one-click unsubscribe).
+const NEWSLETTER_FORM = `<form class="card" onsubmit="event.preventDefault();var f=this,o=f.querySelector('output');fetch('/api/newsletter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:f.email.value})}).then(function(r){return r.json()}).then(function(d){o.textContent=d.message||d.error}).catch(function(){o.textContent='Could not reach Actuent. Try again.'})" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label for="nl-email" style="font-weight:600">Get it by email every Monday</label><input id="nl-email" name="email" type="email" required placeholder="you@example.com" style="flex:1;min-width:180px;background:#17171f;border:1px solid #34343f;color:#f0f0f0;padding:8px 10px;border-radius:7px"><button style="background:#ff8a3d;color:#0a0a0a;border:0;border-radius:7px;padding:8px 14px;font-weight:700;cursor:pointer">Subscribe</button><output class="muted" style="width:100%"></output></form>`
+
 function starterLawp(site: any, domain: string) {
   const actions = ((site.actions || []) as any[]).map(({ endpoint, ...a }) => a)
   if (!actions.some(a => a.id === "contact")) actions.push({
@@ -489,7 +492,7 @@ ${posts.map(p => `<item><title>${xml(p.title)}</title><link>${BASE}/state/weekly
       title: "State of the AI web, weekly — Actuent", description: "Every Monday: how much of the web AI agents can read and act on, and what changed.",
       canonical: `${BASE}/state/weekly`, image: ogImage("State of the AI web", "Every Monday, from the Actuent index", "api.actuent.ai/state/weekly"),
       jsonLd: { "@context": "https://schema.org", "@graph": [breadcrumbLd(crumbs), { "@type": "Blog", name: "State of the AI web", url: `${BASE}/state/weekly`, publisher: { "@type": "Organization", name: "Actuent", url: "https://actuent.ai" } }] },
-      body: `${breadcrumbHtml(crumbs)}<h1>State of the AI web</h1><p class="lead">Every Monday: how much of the web AI agents can read and act on, and what changed. <a href="${BASE}/state/weekly.rss">RSS feed</a> · <a href="${BASE}/state">Live numbers</a></p>
+      body: `${breadcrumbHtml(crumbs)}<h1>State of the AI web</h1><p class="lead">Every Monday: how much of the web AI agents can read and act on, and what changed. <a href="${BASE}/state/weekly.rss">RSS feed</a> · <a href="${BASE}/state">Live numbers</a></p>${NEWSLETTER_FORM}
 ${posts.length ? `<div class="card list">${posts.map(p => `<a href="${BASE}/state/weekly/${esc(p.week)}"><span>${esc(p.title)}<div class="muted">${esc(String(p.summary).slice(0, 160))}…</div></span></a>`).join("")}</div>` : `<p class="muted">The first post goes out on Monday.</p>`}`
     }))
   }
@@ -519,6 +522,7 @@ ${d.cities?.length ? `<h2>Cities with the most agent-ready businesses</h2>${tabl
 ${d.top_queries?.length ? `<h2>What agents searched for</h2>${table(["Search", "Times"], d.top_queries.map((q: any) => [esc(q.query), n(q.searches)]))}` : ""}
 ${d.top_sites?.length ? `<h2>Sites agents found most</h2>${table(["Site", "Appearances"], d.top_sites.map((s: any) => [`<a href="${BASE}/site/${esc(s.domain)}">${esc(s.domain)}</a>`, n(s.appearances)]))}` : ""}
 <p class="muted" style="margin-top:24px">${prev[0] ? `<a href="${BASE}/state/weekly/${esc(prev[0].week)}">← Week of ${esc(weekTitle(prev[0].week))}</a>` : ""}${prev[0] && next[0] ? " · " : ""}${next[0] ? `<a href="${BASE}/state/weekly/${esc(next[0].week)}">Week of ${esc(weekTitle(next[0].week))} →</a>` : ""}</p>
+${NEWSLETTER_FORM}
 <p class="muted">Figures come straight from the Actuent index; searches are aggregated and only plain words searched at least 3 times are shown. <a href="${BASE}/state/weekly.rss">RSS</a></p>`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(200).send(layout({
