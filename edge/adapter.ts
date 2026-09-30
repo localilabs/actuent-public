@@ -52,13 +52,15 @@ class EdgeResponse {
     return this.end()
   }
   toResponse() {
-    // Vercel's CDN only caches responses from a proxied origin when told to with
-    // Vercel-CDN-Cache-Control: copy the shared-cache part of Cache-Control into it.
+    // Vercel's CDN only caches responses from a proxied origin when the origin opts in
+    // (x-vercel-enable-rewrite-caching) and says how long (Vercel-CDN-Cache-Control): copied from
+    // the shared-cache part of Cache-Control.
     const cc = this.headers.get("cache-control") || ""
     const shared = cc.match(/s-maxage=(\d+)/)
     if (shared && /public/.test(cc) && this.statusCode < 400 && !this.headers.has("vercel-cdn-cache-control")) {
       const swr = cc.match(/stale-while-revalidate=(\d+)/)
       this.headers.set("vercel-cdn-cache-control", `max-age=${shared[1]}${swr ? `, stale-while-revalidate=${swr[1]}` : ""}`)
+      this.headers.set("x-vercel-enable-rewrite-caching", "1")
     }
     const noBody = this.statusCode === 204 || this.statusCode === 304
     return new Response(noBody ? null : this.body, { status: this.statusCode, headers: this.headers })
