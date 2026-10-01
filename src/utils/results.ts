@@ -9,6 +9,15 @@ export function cleanName(name: string, domain: string): string {
     const label = domain.split("/")[0].replace(/^www\./, "").split(".")[0]
     n = label.charAt(0).toUpperCase() + label.slice(1)
   }
+  // Page titles used as names ("宜家家居官网-家 给生活更多-…- IKEA", "Buy Furniture Online: Upto 70% off…"):
+  // the part that is the site's own name (matches the domain), else the first part of a long title.
+  const parts = n.split(/\s+[-|–—·]\s+|\s*[|｜–—]\s*|:\s+|(?<=[^\x00-\x7F])\s*-|-\s*(?=[^\x00-\x7F])/).map(x => x.trim()).filter(Boolean)
+  if (parts.length > 1) {
+    const label = domain.split("/")[0].replace(/^www\./, "").split(".")[0].toLowerCase().replace(/[^a-z0-9]/g, "")
+    const own = parts.find(x => { const w = x.toLowerCase().replace(/[^a-z0-9]/g, ""); return w.length >= 3 && (w === label || (label.length >= 4 && (label.startsWith(w) || w.startsWith(label)))) })
+    if (own) n = own
+    else if (n.length > 50) n = parts[0]
+  }
   return n.slice(0, 100)
 }
 
