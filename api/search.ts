@@ -9,6 +9,7 @@ import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, k
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
+import { getSavedSite } from "../src/utils/crawler"
 import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm, isGeneric } from "../src/utils/define"
 import { openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
@@ -77,6 +78,20 @@ function readParams(req: VercelRequest): Params {
     category: v("category")?.toLowerCase().slice(0, 40), city: v("city")?.toLowerCase().slice(0, 60), lang: v("lang")?.toLowerCase().slice(0, 2),
     openNow: v("open_now") === "true", sort: sort === "popular" || sort === "fresh" || sort === "rating" ? sort : "relevance"
   }
+}
+
+// Searches for Actuent itself, and greetings or tests ("hi", "test") from people trying it out.
+const SELF = /^(?:(?:what|who)(?:'s| is| are)\s+)?(?:actuent(?:\.ai)?|lawpy|lawp)(?:\s+(?:ai|search|mcp|mascot))?\s*\??$/i
+const GREETING = /^(?:hi|hello|hey|hej|hola|yo|sup|ping|test|testing|test test|hello world|are you there|who are you)[!.?\s]*$/i
+const TRY_THESE = ["what's open near me right now", "concerts in new york this weekend", "cheapest hoka clifton", "does notion have a free plan"]
+const ABOUT_ACTUENT = { domain: "actuent.ai", sentences: [
+  { text: "Actuent gives your AI the live internet: what's open now, what's on this weekend, real prices and what a company offers, each with a link to the source.", url: "https://actuent.ai" },
+  { text: "Connect it to Claude, ChatGPT, Cursor or VS Code in 30 seconds, free with no account: docs.actuent.ai/connect. Lawpy is its mascot, a chaotic, cheeky explorer.", url: "https://docs.actuent.ai/connect" }
+] }
+const host = (d: string) => String(d || "").split("/")[0].replace(/^www\./, "")
+async function selfSite(): Promise<any | null> {
+  const saved: any = await getSavedSite("actuent.ai").catch(() => null)
+  return saved ? { ...saved, owner_key: undefined, pages: saved.pages || {}, actions: saved.actions || [], matched: "Actuent itself", score: 100, visit_url: trackedLink("https://actuent.ai") } : null
 }
 
 const OPEN_NOW = /\s*\b(?:(?:that|which|who)(?:'s|’s| is| are)?\s+|(?:is|are)\s+)?(?:(?:still|currently)\s+open|open\s+(?:right\s+)?now|open\s+at\s+the\s+moment)\b\??/i
@@ -409,11 +424,17 @@ async function search(req: VercelRequest, res: VercelResponse) {
   let asked: any = await asking
   // "What is a cat": the thing, not a site that happens to match "cat" (only a site named exactly that wins).
   if (asked && term && (isGeneric(words) || asked.site.domain.replace(/^www\./, "").split(".")[0].toLowerCase() !== term.toLowerCase().replace(/\s+/g, ""))) asked = null
+  // Actuent itself ("actuent", "lawpy", "what is actuent"): actuent.ai first, with a plain answer.
+  // A greeting or a test ("hi", "test"): Lawpy says hello and suggests what to try.
+  const self = SELF.test(typed.trim()) ? await selfSite() : null
+  if (self) results.splice(0, results.length, self, ...results.filter((r: any) => host(r.domain) !== "actuent.ai").filter((r: any) => !/lawpay/i.test(r.domain)))
+  const greeting = GREETING.test(typed.trim())
+  if (greeting) results.splice(0, results.length)
   // A definition question that isn't about a site: Wikipedia first, then only results about the word.
   const wiki = asked ? null : await defining
   const definition = wiki ? definitionResult(wiki, typed) : null
-  if (definition) results.splice(0, results.length, definition.result, ...aboutTheTerm(results, term!).filter((r: any) => r.domain !== "en.wikipedia.org"))
-  const answer = asked ? await answerFromSite(asked.site, asked.keywords) : definition ? definition.answer : null
+  if (definition) results.splice(0, results.length, definition.result as any, ...aboutTheTerm(results, term!).filter((r: any) => r.domain !== "en.wikipedia.org"))
+  const answer = self || greeting ? ABOUT_ACTUENT : asked ? await answerFromSite(asked.site, asked.keywords) : definition ? definition.answer : null
   // Pro: a short answer written from the top results, with sources, for question searches.
   const summary = tier === "pro" && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
   const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
@@ -520,7 +541,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(didYouMean ? { did_you_mean: didYouMean } : {}),
     ...(searchedFor ? { searched_for: searchedFor } : {}),
     // Nothing at all: other wordings to try (English words for foreign ones, the everyday word, fewer words).
-    ...(!results.length && !products.length && !places.length && !isDomainQuery ? { try_instead: [...new Set([translateKeywords(typed).foreign ? translateKeywords(typed).query : "", ...alternativeSearches(typed)].filter(x => x && x.toLowerCase() !== typed.toLowerCase().trim()))].slice(0, 3) } : {}),
+    ...(greeting ? { message: "Hi! I'm Lawpy 👋 Actuent gives your AI the live internet. Ask about something happening right now.", try_instead: TRY_THESE } : {}),
+    ...(!greeting && !results.length && !products.length && !places.length && !isDomainQuery ? { try_instead: [...new Set([translateKeywords(typed).foreign ? translateKeywords(typed).query : "", ...alternativeSearches(typed)].filter(x => x && x.toLowerCase() !== typed.toLowerCase().trim()))].slice(0, 3) } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }
