@@ -207,6 +207,31 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
   ))
 }
 
+// When a closed place opens next ("07:00 today", "09:00 Fri"), in its own time zone, for "nothing's
+// open right now" answers. Looks up to a week ahead; null when the hours are unknown.
+export function opensNext(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date()): { at: string, in_minutes: number } | null {
+  if (!hours?.length || !country) return null
+  const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
+  const zone = code && TIME_ZONES[code]
+  if (!zone) return null
+  return nextOpening(hours, zone, now)
+}
+
+const WEEK = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+export function nextOpening(hours: { days: string[], opens: string }[], zone: string, now = new Date()): { at: string, in_minutes: number } | null {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now).map(p => [p.type, p.value]))
+  const today = WEEK.indexOf(String(parts.weekday).slice(0, 2)), minutes = Number(parts.hour) % 24 * 60 + Number(parts.minute)
+  let best: { at: string, in_minutes: number } | null = null
+  for (const h of hours) for (const d of h.days) {
+    const k = WEEK.indexOf(d); if (k < 0) continue
+    const o = Number(h.opens.slice(0, 2)) * 60 + Number(h.opens.slice(3, 5))
+    let ahead = ((k - today + 7) % 7) * 1440 + o - minutes
+    if (ahead <= 0) ahead += 7 * 1440
+    if (!best || ahead < best.in_minutes) { const day = Math.floor((minutes + ahead) / 1440); best = { at: `${h.opens} ${day === 0 ? "today" : day === 1 ? "tomorrow" : d}`, in_minutes: ahead } }
+  }
+  return best
+}
+
 // Upcoming events from schema.org Event data (concerts, classes, workshops, festivals).
 // JSON-LD text sometimes still has HTML entities ("Talk &#8211; Q&amp;A").
 function entities(v: string): string {

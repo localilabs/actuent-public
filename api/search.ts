@@ -8,7 +8,7 @@ import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, k
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
-import { openNow } from "../src/utils/business"
+import { openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
@@ -77,11 +77,26 @@ function readParams(req: VercelRequest): Params {
   }
 }
 
+const OPEN_NOW = /\s*\b(?:(?:that|which|who)(?:'s|’s| is| are)?\s+|(?:is|are)\s+)?(?:(?:still|currently)\s+open|open\s+(?:right\s+)?now|open\s+at\s+the\s+moment)\b\??/i
+
 function present(body: any, p: Params): any {
   let list: any[] = body.results || []
   if (p.category) list = list.filter(r => r.category === p.category)
   if (p.city) list = list.filter(r => String(r.business?.address?.city || "").toLowerCase() === p.city)
-  if (p.openNow) list = list.filter(r => r.open_now === true)
+  // Nothing open right now (early morning, late night): say so and show what opens soonest instead of
+  // an empty list, so assistants don't guess the data is missing.
+  let nothingOpen: any = null
+  if (p.openNow) {
+    const open = list.filter(r => r.open_now === true)
+    const soon = open.length ? [] : list.filter(r => r.business)
+      .map(r => ({ ...r, opens_next: opensNext(r.business.opening_hours, r.business.address?.country) }))
+      .filter(r => r.opens_next).sort((a, b) => a.opens_next.in_minutes - b.opens_next.in_minutes)
+      .map(r => ({ ...r, opens_next: r.opens_next.at }))
+    if (soon.length) {
+      nothingOpen = { nothing_open_now: true, message: `None of these places are open right now. These open soonest (local time); the first opens at ${soon[0].opens_next}.` }
+      list = soon
+    } else list = open
+  }
   if (p.lang) list = [...list.filter(r => r.language === p.lang), ...list.filter(r => r.language !== p.lang)]
   if (p.sort === "popular") list = [...list].sort((a, b) => (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9))
   // Best rated first (5-point ratings from the sites' own pages); unrated ones keep their order after.
@@ -90,7 +105,7 @@ function present(body: any, p: Params): any {
   const filtered = list.length !== (body.results || []).length || p.sort !== "relevance"
   const total = list.length
   if (p.offset || p.limit) list = list.slice(p.offset, p.limit != null ? p.offset + p.limit : undefined)
-  return { ...body, results: list, count: list.length, ...(filtered || p.offset || p.limit ? { total } : {}) }
+  return { ...body, results: list, count: list.length, ...(filtered || p.offset || p.limit ? { total } : {}), ...(nothingOpen || {}) }
 }
 
 // Event names saved straight from pages can still carry HTML entities ("&#8211;").
@@ -259,9 +274,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // What to search for: "near me" becomes the searcher's city, question-style searches become
   // keywords ("where can I buy running shoes in London?" → "buy running shoes london").
   const typed = query.trim()
-  const localized = nearMe(typed, req.headers["x-vercel-ip-city"] as string | undefined)
+  // "cafés in Copenhagen that are open now" → search "cafés in Copenhagen", only open places.
+  const wantsOpen = OPEN_NOW.test(typed)
+  const words = wantsOpen ? typed.replace(new RegExp(OPEN_NOW.source, "gi"), " ").replace(/\s+/g, " ").trim() || typed : typed
+  const localized = nearMe(words, req.headers["x-vercel-ip-city"] as string | undefined)
   const searchQuery = cleanQuery(localized)
   const params = readParams(req)
+  if (wantsOpen) params.openNow = true
 
   res.setHeader("X-Actuent-Tier", tier)
   // Signed-out GET searches can also be cached by Vercel's CDN for 15 minutes (a new deploy clears
