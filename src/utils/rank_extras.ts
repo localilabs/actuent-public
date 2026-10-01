@@ -5,7 +5,7 @@
 //     folded underneath as regional_sites, instead of three near-identical top results.
 
 const CATEGORY_WORDS: [RegExp, string[]][] = [
-  [/\b(restaurants?|dinner|lunch|pizza|sushi|burgers?|ramen|tapas|steak|italian|thai|indian|mexican|chinese|vegan food|tacos?|burritos?|bbq|barbecue|korean|japanese|vietnamese|pho|dumplings?|noodles?|seafood|oysters?|greek|french|falafel|kebabs?|fried chicken|wings|bagels?|deli|dim sum|curry|poke|brunch|diner)\b/, ["restaurant"]],
+  [/\b(restaurants?|dinner|lunch|pizza|sushi|burgers?|ramen|tapas|steak|italian|thai|indian|mexican|chinese|vegan food|tacos?|burritos?|bbq|barbecue|pho|dumplings?|noodles?|seafood|oysters?|falafel|kebabs?|fried chicken|wings|bagels?|deli|dim sum|curry|poke|brunch|diner)\b/, ["restaurant"]],
   [/\b(cafes?|coffee|espresso|roaster(y|ies)|brunch)\b/, ["cafe"]],
   [/\b(bars?|pubs?|cocktails?|wine bar|brewery)\b/, ["bar"]],
   [/\b(bakery|bakeries|bread|pastry|pastries)\b/, ["bakery"]],
