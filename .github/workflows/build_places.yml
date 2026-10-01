@@ -17,9 +17,11 @@ jobs:
         with:
           node-version: '24'
       - run: node scripts/build_places.mjs
+        timeout-minutes: 100
       - name: Commit if changed
+        if: always()
         run: |
           git config user.name "actuent-bot"
           git config user.email "bot@actuent.ai"
           git add data/us_places.json
-          git diff --cached --quiet || (git commit -m "Weekly US places refresh" && git push)
+          git diff --cached --quiet || (git commit -m "Weekly US places refresh" && git pull --rebase -q && git push)

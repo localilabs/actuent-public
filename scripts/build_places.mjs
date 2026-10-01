@@ -65,7 +65,15 @@ for (const [city, [lat, lon]] of Object.entries(CITIES)) {
   }
   const n = Object.values(out.cities[city]).reduce((s, l) => s + l.length, 0)
   console.log(`${city}: ${n} places`)
+  // Saved after every city: if the job runs out of time, the cities done so far are still committed
+  // (cities not reached keep last week's places).
+  save()
 }
-fs.mkdirSync("data", { recursive: true })
-fs.writeFileSync("data/us_places.json", JSON.stringify(out))
+function save() {
+  fs.mkdirSync("data", { recursive: true })
+  let previous = {}
+  try { previous = JSON.parse(fs.readFileSync("data/us_places.json", "utf8")).cities || {} } catch {}
+  fs.writeFileSync("data/us_places.json", JSON.stringify({ ...out, cities: { ...previous, ...out.cities } }))
+}
+save()
 console.log(`data/us_places.json: ${(fs.statSync("data/us_places.json").size / 1024).toFixed(0)} KB`)
