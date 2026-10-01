@@ -8,6 +8,7 @@ import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, k
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
+import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm } from "../src/utils/define"
 import { openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
@@ -369,6 +370,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
       ])
     : Promise.resolve([null, null])
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
+  // "What is a cat?": Wikipedia's summary, looked up alongside the search.
+  const term = isDomainQuery ? null : definitionTerm(words)
+  const defining = term ? wikipediaSummary(term).catch(() => null) : Promise.resolve(null)
   const nameTypos: string[] = []
   // Spelling runs alongside the search (the word list is small and fast): a misspelt search
   // ("accouting sofware") usually still finds a few loosely matching sites, so waiting until
@@ -393,7 +397,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
     shops: 1 + (p.other_shops?.length || 0)
   })) : null
   const asked = await asking
-  const answer = asked ? await answerFromSite(asked.site, asked.keywords) : null
+  // A definition question that isn't about a site: Wikipedia first, then only results about the word.
+  const wiki = asked ? null : await defining
+  const definition = wiki ? definitionResult(wiki, typed) : null
+  if (definition) results.splice(0, results.length, definition.result, ...aboutTheTerm(results, term!).filter((r: any) => r.domain !== "en.wikipedia.org"))
+  const answer = asked ? await answerFromSite(asked.site, asked.keywords) : definition ? definition.answer : null
   // Pro: a short answer written from the top results, with sources, for question searches.
   const summary = tier === "pro" && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
   const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
