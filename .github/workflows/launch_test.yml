@@ -1,0 +1,24 @@
+name: Launch Question Test
+# ~60 questions a Product Hunt visitor will actually type (scripts/launch_test.mjs), every night and on
+# demand. The log ends with a "To fix" list.
+on:
+  schedule:
+    - cron: '15 5 * * *'
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only these groups (e.g. events,products); empty = all'
+        default: ''
+        required: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/launch_test.mjs
+        env:
+          ONLY: ${{ github.event.inputs.only }}
