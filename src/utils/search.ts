@@ -243,7 +243,7 @@ async function countrySites(what: string, country: string, lang: string | null):
 }
 
 // Things you go to (barber, restaurant, dentist): the city matters for these.
-const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
+export const PLACE_KINDS = new Set(["restaurant", "cafe", "bar", "bakery", "hotel", "hair_beauty", "spa_wellness", "fitness", "dental", "health", "museum_culture", "events", "home_services", "legal", "real_estate", "automotive", "education"])
 // A search for places that names no city ("cafés", "barber"): the answer depends on where the searcher is.
 export function isPlaceSearch(q: string): boolean {
   return !splitCity(q) && [...queryCategories(q)].some(c => PLACE_KINDS.has(c))

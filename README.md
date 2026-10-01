@@ -1,53 +1,53 @@
-# 🌐 Actuent — The AI-Native Web Protocol (LAWP)
+# Actuent: give your AI the live internet
 
-> "The legacy internet was built for humans, styled with HTML, and restricted by brittleness. **Actuent** is the internet layer built exclusively for autonomous AI agents."
+Ask Claude *"what's open near me right now?"*, *"what concerts are on in New York this weekend?"* or *"what's the cheapest Hoka Clifton right now?"*, and with Actuent connected it actually knows. It doesn't guess, and it doesn't say "I can't browse the internet."
 
-`Actuent` is a fully open, frictionless, and zero-auth protocol layer that treats websites not as visual pages to be scraped, but as structured schemas of intents, dependencies, and actionable state transitions. 
+Actuent is a search engine built for AI assistants. It reads websites, shops, venues and maps and hands your AI clean, current answers: opening hours, prices, events and what a company actually offers, each with a link to the source.
 
-No API keys. No walls. Complete autonomy for all machine intelligences.
+**Connect it in 30 seconds:** [docs.actuent.ai/connect](https://docs.actuent.ai/connect) (Claude, ChatGPT, Cursor, VS Code, Claude Code). It's free, and you don't need an account.
+
+## Try these first
+
+Questions your AI can't answer well on its own:
+
+- "What's open near me right now?"
+- "What concerts are on in New York this weekend?"
+- "What's the cheapest Nike Pegasus right now?"
+- "Does Notion have a free plan?"
+- "Compare Notion vs Obsidian"
+
+## "Isn't this just MCP?"
+
+MCP is the plug. Actuent is what comes through it.
+
+MCP (Model Context Protocol) is the standard way for Claude, ChatGPT and Cursor to use tools, but a plug with nothing behind it does nothing. Actuent is an MCP server with a search index behind it: about 95,000 websites, millions of products with prices, thousands of upcoming events, and places with opening hours, kept fresh every day.
+
+## For builders
+
+**MCP server**
+
+```
+https://agents.actuent.ai/api/mcp
+```
+
+```bash
+claude mcp add --transport http actuent https://agents.actuent.ai/api/mcp
+```
+
+**Search API** (no key needed for the free tier)
+
+```bash
+curl "https://api.actuent.ai/api/search?q=cafes+in+brooklyn+open+now"
+```
+
+Every result comes back as structured JSON: the site, what it offers, what you can do there (book, buy, call, get directions), opening hours, prices and a match score explaining why it matched. Full reference: [docs.actuent.ai](https://docs.actuent.ai). SDKs: `npm i @actuent/sdk` · `pip install actuent`.
+
+**Make your own site AI-ready:** check it at [docs.actuent.ai/checklist](https://docs.actuent.ai/checklist).
+
+## LAWP, the format underneath
+
+Every website in Actuent is described in **LAWP**, an open JSON format for what a site is, what's on its pages and which actions an AI can take there. Sites can publish their own at `/.well-known/lawp.json`, and Actuent reads it first. Spec: [github.com/localilabs/lawp](https://github.com/localilabs/lawp).
 
 ---
 
-## 🔁 The AI-Native Loop
-
-When an AI agent interacts with the `Actuent` protocol, it follows an organic, deterministic discovery cycle:
-🤖 Agent Lands On Actuent / Handshakes via **MCP** │ ▼ 🔎 Query the AI Search Directory │ ▼ 📄 Resolve Structured **LAWP** Data Models │ ▼ 🎯 Select Action ──► 🔄 Update State Loop │ (Or Leave if Satisfied)
-1. **Discovery / Handshake:** The agent connects directly to the open Model Context Protocol (**MCP**) tool gateway.
-2. **AI Google Search:** The agent queries the global engine (`/ai/search`) to find the exact node or domain that satisfies its prompt/intent.
-3. ****LAWP** Resolution:** The agent reads the machine-optimized Locali AI Web Protocol (`**LAWP**`) **JSON** representation of that site—bypassing brittle **HTML**.
-4. **Action & Execution:** The agent chooses an available action schema from the node, executes it, receives the updated state transition data, and repeats the loop or exits.
-
----
-
-## 🛠️ Protocol Endpoints
-
-This is a zero-authentication environment. Every machine, agent, and serverless runtime has equal, immediate access.
-
-### 1. MCP Tools Discovery
-
-- **Endpoint:** `**GET** /mcp/tools`
-- **Purpose:** Exposes machine-readable tool schemas telling external systems (like Claude Desktop, OpenAI Assistants, or LangChain nodes) exactly how to interface with the protocol.
-
-### 2. The AI Engine Search
-
-- **Endpoint:** `**POST** /ai/search`
-- **Payload:** ```json
-    {
-    *query*: *how to build a SaaS startup*,
-    *agentId*: *unique-session-id-xyz*
-    }
-  Purpose: Isolated via agentId to ensure multi-agent memory scoping, preventing context cross-contamination while searching the node registry.
-
-## LAWP Resolution
-
-Endpoint: **GET** /lawp/resolve?domain=example.com
-
-Purpose: Yields the pure, visual graph representation and interactive metadata of the site via the Locali AI Web Protocol.
-
-## Direct Action Execution
-
-Endpoint: **POST** /lawp/act
-
-Purpose: Allows agents to trigger functions mapped directly within a site's **LAWP** layout.
-
-🚀 Vision Developed by localilabs. Shifting the paradigm away from chatbots and into automated runtime frameworks. The internet is changing; Actuent makes it compatible with what comes next.
+Made in Copenhagen by [localilabs](https://actuent.ai). Lawpy the explorer says hi. 👋

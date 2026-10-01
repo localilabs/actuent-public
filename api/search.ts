@@ -3,7 +3,8 @@ import { searchDishes } from "../src/utils/dishes"
 import { shopFacts } from "../src/utils/shop_facts"
 import { alternativeSearches } from "../src/utils/product_match"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
-import { withoutHidden, searchSites, quickSearch, isPlaceSearch } from "../src/utils/search"
+import { withoutHidden, searchSites, quickSearch, isPlaceSearch, PLACE_KINDS } from "../src/utils/search"
+import { queryCategories } from "../src/utils/rank_extras"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
@@ -445,6 +446,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
     return true
   })
   results.splice(0, results.length, ...shown)
+  // "Cafes in Brooklyn": only places of that kind (businesses, or sites of that category), never a
+  // site that only shares the letters ("McAfee", "decaf…"). OpenStreetMap places fill in below.
+  const placeAsk = isDomainQuery ? null : splitCity(searchQuery)
+  const kinds = placeAsk ? [...queryCategories(placeAsk.what)].filter(c => PLACE_KINDS.has(c)) : []
+  if (kinds.length && !asked && !compared) results.splice(0, results.length, ...results.filter((r: any) => r.business || kinds.includes(r.category)))
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
