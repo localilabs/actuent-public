@@ -66,6 +66,9 @@ export async function answerFromSite(site: any, keywords: string[]): Promise<{ d
     for (const sentence of page.text.split(/(?<=[.!?])\s+/)) {
       const s = sentence.trim(), lower = s.toLowerCase()
       if (s.length < 25 || s.length > 400) continue
+      // Menus glued into a "sentence" ("Home Premium Plans Support Download"): mostly Capitalised words.
+      const w = s.split(/\s+/), caps = w.filter(x => /^[A-ZÆØÅ]/.test(x)).length
+      if (w.length >= 5 && caps / w.length > 0.6) continue
       // Pricing pages count a little more for price questions; a sentence about something else that
       // shares one word ("unlimited forms for free") counts less than one about the plan itself.
       const score = stems.filter(k => k.length >= 3 && lower.includes(k)).length + (score0(page.url, keywords))
@@ -102,7 +105,7 @@ async function pricingPage(domain: string): Promise<{ url: string, text: string 
   const r = await firstOk(tries)
   if (!r) return null
   const html = (await r.text()).slice(0, 800_000)
-  const text = html.replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<\/(p|div|li|h\d|td|section)>/gi, ". ").replace(/<[^>]+>/g, " ")
+  const text = html.replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<\/(p|div|li|h\d|td|section|a|button|span|label|option|nav|header|footer)>/gi, ". ").replace(/<[^>]+>/g, " ")
     .replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c))).replace(/\s*\.\s*(\.\s*)+/g, ". ").replace(/\s+/g, " ")
   return { url: r.url, text }
 }
