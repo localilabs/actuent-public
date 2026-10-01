@@ -13,7 +13,7 @@ const FILLER = new Set(["a", "an", "the", "for", "with", "and", "or", "of", "in"
 
 // Things and their other names (English forms, and the same thing in the languages shops use most).
 const SAME_THING: string[][] = [
-  ["shoe", "sneaker", "trainer", "footwear", "sko", "skor", "schuh", "schuhe", "løbesko", "löparsko", "hardloopschoen", "chaussure", "zapato", "zapatilla", "scarpa", "scarpe", "schoen", "kenkä", "sportsko", "løbesko", "laufschuh", "air max", "air force", "jordan", "pegasus", "vomero", "dunk", "boost", "ultraboost", "gel"],
+  ["shoe", "sneaker", "trainer", "footwear", "sko", "skor", "schuh", "schuhe", "løbesko", "löparsko", "hardloopschoen", "chaussure", "zapato", "zapatilla", "scarpa", "scarpe", "schoen", "kenkä", "sportsko", "løbesko", "laufschuh"],
   ["boot", "støvle", "stövel", "stiefel", "botte", "bota", "stivale", "laars"],
   ["sandal", "flip flop", "slide", "sandale", "sandalia"],
   ["shirt", "tee", "t shirt", "tshirt", "top", "trøje", "tröja", "hemd", "chemise", "camiseta", "maglia"],
@@ -40,6 +40,13 @@ const SAME_THING: string[][] = [
   // Compound words ("løbesko" = running shoes) count for both parts.
   ["running", "run", "løb", "löpning", "laufen", "course", "correr", "corsa", "hardlopen", "jogging", "løbesko", "laufschuh", "löparsko", "hardloopschoen", "runner"],
 ]
+
+// Model names that are a kind of thing, one way only: "shoes" finds a Pegasus 41 (its name may not
+// say "shoe"), but "pegasus" finds only Pegasus, never an Air Force 1.
+const MODELS: Record<string, string[]> = {
+  shoe: ["air max", "air force", "jordan", "pegasus", "vomero", "dunk", "boost", "ultraboost", "gel", "clifton", "bondi", "ghost", "cloud", "novablast", "kayano", "nimbus", "samba", "gazelle", "stan smith", "550", "990", "chuck taylor"],
+  headphone: ["airpods", "wh 1000xm5", "wh 1000xm4", "quietcomfort", "bose qc"]
+}
 
 // A simple stem: lowercase, no accents, no plural or common ending.
 export function stem(word: string): string {
@@ -85,6 +92,9 @@ export function productFit(query: string, row: { name: string, domain?: string, 
   if (PETS.test(row.name) && !PETS.test(query)) fit *= 0.1
   if (row.available === false) fit *= 0.3
   if (!row.image) fit *= 0.7
+  // Model numbers ("pegasus 41", "iphone 15"): the exact model first, the 42 after it.
+  const numbers = (query.match(/\b\d{1,4}\b/g) || []).filter(n => !/\b(under|below|over|max|size|str)\s*$/i.test(query.slice(0, query.indexOf(n))))
+  if (numbers.length && !numbers.every(n => new RegExp(`\\b${n}\\b`).test(row.name))) fit *= 0.5
   return fit
 }
 
@@ -111,7 +121,10 @@ export function productMatches(query: string, productName: string): boolean {
   const stemmedName = " " + nameWords.map(stem).join(" ") + " "
   return need.every(w => {
     const s = stem(w)
-    const options = FORMS.get(s) || [s]
+    const forms = FORMS.get(s) || [s]
+    // The thing's model names count too ("shoe" → Pegasus), when the search word is that kind of thing.
+    const kind = Object.keys(MODELS).find(k => forms.includes(stem(k)))
+    const options = [...forms, ...(kind ? MODELS[kind].map(m => m.split(" ").map(stem).join(" ")) : [])]
     return options.some(o => o.includes(" ") ? stemmedName.includes(` ${o} `) : nameStems.has(o))
   })
 }
