@@ -2,8 +2,11 @@ name: Build US Places
 # Weekly: places with opening hours for the biggest US cities (scripts/build_places.mjs), committed
 # as data/us_places.json so place searches are instant and don't depend on OpenStreetMap's servers.
 on:
+  # Night-time in Europe and the US, when OpenStreetMap's Overpass server isn't overloaded (evenings it
+  # answers 504). Weekly on Sundays, plus once on 2 October to fill the file before launch.
   schedule:
     - cron: '0 4 * * 0'
+    - cron: '0 3 2 10 *'
   workflow_dispatch:
 permissions:
   contents: write
