@@ -18,6 +18,11 @@ export function definitionTerm(q: string): string | null {
   return term
 }
 
+// "What is a cat" / "what's an API": with "a" or "an" it's always the thing, never a site's name.
+export function isGeneric(q: string): boolean {
+  return /^(?:what|who)\s*(?:'s|\s+(?:is|are|was|were))\s+an?\s+/i.test(q.trim())
+}
+
 export async function wikipediaSummary(term: string): Promise<{ title: string, description?: string, extract: string, url: string } | null> {
   const title = term.charAt(0).toUpperCase() + term.slice(1)
   const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, "_"))}?redirect=true`, {

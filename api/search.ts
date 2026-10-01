@@ -8,7 +8,7 @@ import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, k
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
-import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm } from "../src/utils/define"
+import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm, isGeneric } from "../src/utils/define"
 import { openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
@@ -396,7 +396,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(p.lowest_90_days != null ? { lowest_90_days: p.lowest_90_days } : {}), ...(p.price_change_percent ? { price_change_percent: p.price_change_percent } : {}),
     shops: 1 + (p.other_shops?.length || 0)
   })) : null
-  const asked = await asking
+  let asked: any = await asking
+  // "What is a cat": the thing, not a site that happens to match "cat" (only a site named exactly that wins).
+  if (asked && term && (isGeneric(words) || asked.site.domain.replace(/^www\./, "").split(".")[0].toLowerCase() !== term.toLowerCase().replace(/\s+/g, ""))) asked = null
   // A definition question that isn't about a site: Wikipedia first, then only results about the word.
   const wiki = asked ? null : await defining
   const definition = wiki ? definitionResult(wiki, typed) : null
