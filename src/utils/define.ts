@@ -49,9 +49,9 @@ export function definitionResult(w: { title: string, description?: string, extra
   }
 }
 
-// Other results stay only when they're actually about the word ("cat" as a word, not "Cat Street" in
-// an address or "category"): name or snippet has it, at most four of them.
+// Other results stay only when they're about the word and well known: the name has it as a word
+// (not "RevenueCat" or "Bandwidth"), and it's in the top 100K sites. At most four.
 export function aboutTheTerm(results: any[], term: string): any[] {
   const word = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?\\b`, "i")
-  return results.filter(r => word.test(`${r.name || ""} ${Object.values(r.pages || {}).map((p: any) => p?.title || "").join(" ")}`)).slice(0, 4)
+  return results.filter(r => word.test(String(r.name || "")) && Number(r.popularity_rank) > 0 && Number(r.popularity_rank) < 100000).slice(0, 4)
 }
