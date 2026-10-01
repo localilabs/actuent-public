@@ -494,7 +494,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
     const where = `${r.business?.address?.city || ""} ${r.business?.address?.region || ""} ${JSON.stringify(r.business?.address || {})}`.toLowerCase()
     return metro.some(m => where.includes(m)) || (!r.business && kinds.includes(r.category) && metro.some(m => `${r.snippet || ""} ${JSON.stringify(r.pages || {})}`.toLowerCase().includes(m)))
   }
-  if (kinds.length && !asked && !compared) results.splice(0, results.length, ...results.filter(inCity))
+  // …and of that kind: a software company with an Austin office isn't a taco place.
+  const ofKind = (r: any) => kinds.includes(r.category) || (!r.category && !/^(organization|corporation|ngo|governmentorganization|educationalorganization)$/i.test(String(r.business?.type || "")))
+  if (kinds.length && !asked && !compared) results.splice(0, results.length, ...results.filter((r: any) => inCity(r) && ofKind(r)))
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
