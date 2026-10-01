@@ -6,7 +6,12 @@
   "builds": [
     {
       "src": "api/search.ts",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "data/us_places.json"
+        ]
+      }
     },
     {
       "src": "api/data.ts",

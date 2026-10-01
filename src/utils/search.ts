@@ -693,7 +693,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // ones with a website also compete in the main results (labelled as found on OpenStreetMap, and
     // queued so Actuent crawls them properly).
     if (place && localSites.length < 3 && opts.places && queryCategories(place.what).size) {
-      const found = await osmPlaces(place.what, place.city)
+      // At most 3.5 s: a slow OpenStreetMap never makes the whole search slow (built US places are instant).
+      const found = await Promise.race([osmPlaces(place.what, place.city), new Promise<null>(r => setTimeout(() => r(null), 3500))]).catch(() => null)
       if (found?.length) {
         opts.places.push(...found)
         const cat = [...queryCategories(place.what)][0]

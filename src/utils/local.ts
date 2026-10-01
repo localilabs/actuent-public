@@ -1,3 +1,5 @@
+import fs from "fs"
+import path from "path"
 import { isRateLimited } from "./limits"
 import { openNow, parseOpeningHoursText, zoneOf } from "./business"
 
@@ -124,7 +126,35 @@ const PLACE_TYPES: Record<string, string[]> = {
 // Same question, same places for 30 minutes: OpenStreetMap's free services limit how often one
 // server may ask, and on launch day many people ask the same things.
 const osmCache = new Map<string, { at: number, list: any[] }>()
+// Places built ahead of time for the biggest US cities (scripts/build_places.mjs, weekly): instant, and
+// no dependence on OpenStreetMap's free servers. Opening hours are kept; open-now is worked out here.
+let builtPlaces: any = null
+function prebuilt(what: string, word: string, city: string): any[] | null {
+  if (builtPlaces === null) {
+    try { builtPlaces = JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "us_places.json"), "utf8")).cities || {} } catch { builtPlaces = {} }
+  }
+  const c = builtPlaces[city.toLowerCase()]
+  if (!c) return null
+  const said = what.toLowerCase().trim(), w = word.toLowerCase().trim()
+  const keys = [said, said.replace(/s$/, ""), w, w.replace(/s$/, ""), ...(PREBUILT_ALIASES[said] || PREBUILT_ALIASES[said.replace(/s$/, "")] || [])]
+  const list: any[] | undefined = keys.map(k => c[k]).find((l: any) => Array.isArray(l) && l.length)
+  if (!list) return null
+  return list.map(({ chain, lat, lon, ...p }: any) => {
+    const hours = p.opening_hours ? parseOpeningHoursText(p.opening_hours) : []
+    return { ...p, lat, lon, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null }
+  }).slice(0, 8)
+}
+const PREBUILT_ALIASES: Record<string, string[]> = {
+  coffee: ["cafe"], "coffee shop": ["cafe"], espresso: ["cafe"], cafes: ["cafe"], café: ["cafe"], restaurants: ["restaurant"], food: ["restaurant"], dinner: ["restaurant"], lunch: ["restaurant"],
+  bars: ["bar"], pub: ["bar"], pubs: ["bar"], drinks: ["bar"], cocktails: ["bar"], beer: ["bar"], burgers: ["burger"], tacos: ["taco"], mexican: ["taco"], burrito: ["taco"],
+  barber: ["hairdresser"], haircut: ["hairdresser"], "hair salon": ["hairdresser"], groceries: ["supermarket"], "grocery store": ["supermarket"], hotels: ["hotel"],
+  museums: ["museum"], gallery: ["museum"], "fitness centre": ["gym"], fitness: ["gym"], movies: ["cinema"], doughnut: ["donut"], donuts: ["donut"], bagels: ["bagel"],
+  vietnamese: ["pho"], barbecue: ["bbq"], sandwich: ["deli"], sandwiches: ["deli"], "vegan food": ["vegan"], vegetarian: ["vegan"], pharmacies: ["pharmacy"], drugstore: ["pharmacy"]
+}
+
 export async function osmPlaces(what: string, city: string): Promise<any[] | null> {
+  const ready = prebuilt(what, OSM_WORDS[what] || what, city)
+  if (ready?.length) return ready
   const key = `${what}|${city}`.toLowerCase(), hit = osmCache.get(key)
   if (hit && Date.now() - hit.at < 30 * 60000) return hit.list
   const list = await osmPlacesLive(what, city)
