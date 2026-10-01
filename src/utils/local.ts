@@ -121,7 +121,17 @@ const PLACE_TYPES: Record<string, string[]> = {
   cinema: ["cinema"], library: ["library"], dentist: ["dentist"], doctors: ["doctors", "clinic"], "ice cream": ["ice_cream"], "fast food": ["fast_food"]
 }
 
+// Same question, same places for 30 minutes: OpenStreetMap's free services limit how often one
+// server may ask, and on launch day many people ask the same things.
+const osmCache = new Map<string, { at: number, list: any[] }>()
 export async function osmPlaces(what: string, city: string): Promise<any[] | null> {
+  const key = `${what}|${city}`.toLowerCase(), hit = osmCache.get(key)
+  if (hit && Date.now() - hit.at < 30 * 60000) return hit.list
+  const list = await osmPlacesLive(what, city)
+  if (list?.length) { osmCache.set(key, { at: Date.now(), list }); if (osmCache.size > 500) osmCache.delete(osmCache.keys().next().value!) }
+  return list
+}
+async function osmPlacesLive(what: string, city: string): Promise<any[] | null> {
   if (await isRateLimited("osm:search", 30)) return null
   const word = OSM_WORDS[what] || what
   // "[cafe] in Brooklyn" is OpenStreetMap's way to ask for places of that kind; without the brackets

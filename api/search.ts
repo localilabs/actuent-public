@@ -112,7 +112,13 @@ function present(body: any, p: Params): any {
     if (soon.length) {
       nothingOpen = { nothing_open_now: true, message: `None of these places are open right now. These open soonest (local time); the first opens at ${soon[0].opens_next}.` }
       list = soon
+    } else if (!open.length && list.some(r => r.business && r.open_now == null)) {
+      // No opening hours listed anywhere: show them anyway, and say so, rather than an empty answer.
+      list = list.filter(r => r.business && r.open_now == null)
+      nothingOpen = { hours_unknown: true, message: "These places don't list their opening hours, so Actuent can't confirm they're open right now. Check before going." }
     } else list = open
+    // Places from OpenStreetMap: open ones first, closed ones left out.
+    if (body.places?.items?.length) body = { ...body, places: { ...body.places, items: body.places.items.filter((x: any) => x.open_now !== false).sort((a: any, b: any) => (b.open_now === true ? 1 : 0) - (a.open_now === true ? 1 : 0)) } }
   }
   if (p.lang) list = [...list.filter(r => r.language === p.lang), ...list.filter(r => r.language !== p.lang)]
   if (p.sort === "popular") list = [...list].sort((a, b) => (a.popularity_rank || 1e9) - (b.popularity_rank || 1e9))
@@ -376,7 +382,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const productPlace = splitCity(cleanQueryKeepPrice(localized))
   const productText = productPlace ? productPlace.what : cleanQueryKeepPrice(localized)
   const shopperCountry = cityCountry(productPlace?.city) || String(req.headers["x-vercel-ip-country"] || "").toLowerCase().slice(0, 2) || null
-  const productSearch = isDomainQuery || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
+  // Looking for a place ("coffee in seattle", "anything open now"), not shopping: no products.
+  const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
+  const productSearch = isDomainQuery || lookingForPlace || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
