@@ -52,6 +52,6 @@ export function definitionResult(w: { title: string, description?: string, extra
 // Other results stay only when they're about the word and well known: the name has it as a word
 // (not "RevenueCat" or "Bandwidth"), and it's in the top 100K sites. At most four.
 export function aboutTheTerm(results: any[], term: string): any[] {
-  const word = new RegExp(`\\b${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?\\b`, "i")
+  const word = new RegExp(`(^|\\s)${term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}s?($|[\\s,:;&!?])`, "i")
   return results.filter(r => word.test(String(r.name || "")) && Number(r.popularity_rank) > 0 && Number(r.popularity_rank) < 100000).slice(0, 4)
 }
