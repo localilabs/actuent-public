@@ -494,6 +494,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
   await later(trackSearch(typed, domains, logTier, trackKey, Date.now() - requestStart, results.length))
 
   if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
+  // Never a dead end: nothing in the index, no products, places or events → Wikipedia on the search
+  // itself ("photosynthesis", "roman empire"), before falling back to "try instead".
+  let lastResort: any = null
+  if (!results.length && !products.length && !places.length && !events.length && !greeting && !isDomainQuery && words.split(/\s+/).length <= 5) {
+    const w = await wikipediaSummary(cleanQuery(words) || words).catch(() => null)
+    if (w) { lastResort = definitionResult(w, typed); results.push(lastResort.result) }
+  }
   if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: typed }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
@@ -532,7 +539,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(productPair ? { product_comparison: productPair } : {}),
     ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), ...(facts[0] || facts[1] ? { shops: Object.fromEntries(compared.map((x: any, i: number) => [x.domain, facts[i]])) } : {}), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
-    ...(answer ? { answer: { ...answer, note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
+    ...(answer || lastResort ? { answer: { ...(answer || lastResort.answer), note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
     ...(dishes.length ? { dishes } : {}),
     // A search for places without a city: places near the searcher came first.
