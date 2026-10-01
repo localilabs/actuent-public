@@ -36,7 +36,7 @@ function time(value: unknown): string | null {
 }
 
 // "Mo-Fr 09:00-17:00" / "Mo,We 10:00-14:00"
-function parseOpeningHoursText(text: string): OpeningHours[] {
+export function parseOpeningHoursText(text: string): OpeningHours[] {
   const out: OpeningHours[] = []
   // Each group is "<day list> <open>-<close>"; day lists can mix ranges and commas ("Sa,Su", "Mo-Fr").
   for (const m of text.matchAll(/([A-Za-z]{2}(?:\s*[-,]\s*[A-Za-z]{2})*)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/g)) {
@@ -189,10 +189,22 @@ export const TIME_ZONES: Record<string, string> = {
 const COUNTRY_NAMES: Record<string, string> = { denmark: "DK", sweden: "SE", norway: "NO", germany: "DE", netherlands: "NL", france: "FR", spain: "ES", italy: "IT", "united kingdom": "GB", "united states": "US", ireland: "IE" }
 
 // Special days (holidays) come first: closed on 25 December means closed, whatever the weekday says.
-export function openNow(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), special?: SpecialHours[]): boolean | null {
+// Countries with several time zones: the place's longitude picks the right one (a Seattle café isn't
+// on New York time).
+export function zoneOf(code: string | undefined, lon?: number): string | undefined {
+  const c = String(code || "").toUpperCase()
+  if (lon != null && Number.isFinite(lon)) {
+    if (c === "US") return lon < -115 ? "America/Los_Angeles" : lon < -101 ? "America/Denver" : lon < -87 ? "America/Chicago" : "America/New_York"
+    if (c === "CA") return lon < -120 ? "America/Vancouver" : lon < -102 ? "America/Edmonton" : lon < -90 ? "America/Winnipeg" : lon < -63 ? "America/Toronto" : "America/Halifax"
+    if (c === "AU") return lon < 129 ? "Australia/Perth" : lon < 141 ? "Australia/Adelaide" : "Australia/Sydney"
+  }
+  return TIME_ZONES[c]
+}
+
+export function openNow(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), special?: SpecialHours[], lon?: number): boolean | null {
   if ((!hours?.length && !special?.length) || !country) return null
   const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
-  const zone = code && TIME_ZONES[code]
+  const zone = zoneOf(code, lon)
   if (!zone) return null
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now).map(p => [p.type, p.value]))
   const today = String(parts.weekday).slice(0, 2)
@@ -209,10 +221,10 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
 
 // When a closed place opens next ("07:00 today", "09:00 Fri"), in its own time zone, for "nothing's
 // open right now" answers. Looks up to a week ahead; null when the hours are unknown.
-export function opensNext(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date()): { at: string, in_minutes: number } | null {
+export function opensNext(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), lon?: number): { at: string, in_minutes: number } | null {
   if (!hours?.length || !country) return null
   const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
-  const zone = code && TIME_ZONES[code]
+  const zone = zoneOf(code, lon)
   if (!zone) return null
   return nextOpening(hours, zone, now)
 }

@@ -252,7 +252,9 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
     if (!Array.isArray(rows) || !rows.length) return []
     // Only products that match every important word ("nike shoes" → Nike *and* shoes, never a Nike
     // golf club); none at all is better than unrelated ones (src/utils/product_match.ts).
-    rows = rows.map((row: any) => ({ ...row, name: decodeEntities(row.name) })).filter((row: any) => productMatches(text, row.name))
+    // A brand's own shop counts as the brand ("The Quencher Tumbler" on stanley1913.com is a Stanley tumbler).
+    const shopBrand = (d: string) => String(d || "").replace(/^www\./, "").split(".")[0].replace(/\d+$/, "").replace(/-/g, " ")
+    rows = rows.map((row: any) => ({ ...row, name: decodeEntities(row.name) })).filter((row: any) => productMatches(text, row.name) || productMatches(text, `${shopBrand(row.domain)} ${row.name}`))
     if (!rows.length) return []
     // The shopper's market first. Shops in far-off markets (rupees for a Copenhagen search) are
     // never shown to a shopper whose market is known: nothing is better than products they can't buy.

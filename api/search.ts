@@ -91,7 +91,7 @@ function present(body: any, p: Params): any {
   if (p.openNow) {
     const open = list.filter(r => r.open_now === true)
     const soon = open.length ? [] : list.filter(r => r.business)
-      .map(r => ({ ...r, opens_next: opensNext(r.business.opening_hours, r.business.address?.country) }))
+      .map(r => ({ ...r, opens_next: opensNext(r.business.opening_hours, r.business.address?.country, new Date(), Number(r.business.geo?.lon)) }))
       .filter(r => r.opens_next).sort((a, b) => a.opens_next.in_minutes - b.opens_next.in_minutes)
       .map(r => ({ ...r, opens_next: r.opens_next.at }))
     if (soon.length) {
@@ -123,7 +123,7 @@ async function upcomingEvents(q: string): Promise<any[]> {
   // "concerts in new york this weekend": the time words set the dates, not part of the city.
   const weekend = /\b(this weekend)\b/i.test(q), soon = /\b(tonight|today)\b/i.test(q)
   const place = splitCity(q.replace(/\b(this weekend|next weekend|this week|next week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim())
-  const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(in|on|at|this|next|week|tonight)\b/gi, " ").replace(/\s+/g, " ").trim()
+  const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(what'?s|whats|what|is|are|any|good|best|in|on|at|this|next|week|weekend|tonight|today|tomorrow|happening|going)\b/gi, " ").replace(/['’?!]/g, " ").replace(/\s+/g, " ").trim()
   const now = new Date()
   const until = weekend ? new Date(now.getTime() + ((7 - now.getUTCDay()) % 7 + 1) * 86400000) : soon ? new Date(now.getTime() + 18 * 3600000) : null
   const filters = [`start_date=gte.${encodeURIComponent(now.toISOString())}`, ...(until ? [`start_date=lte.${encodeURIComponent(until.toISOString())}`] : [])]
@@ -331,7 +331,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       query: typed, partial: true, count: quick.length,
       results: quick.map(({ ownerKey, rank, ...r }: any) => ({
         ...r, name: cleanName(r.name, r.domain), snippet: snippet(r, searchQuery), native: !!r.native, executable: isExecutable(r),
-        ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours) } : {}),
+        ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)) } : {}),
         visit_url: trackedLink(`https://${r.domain}`, typed)
       }))
     })
@@ -459,7 +459,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // site that only shares the letters ("McAfee", "decaf…"). OpenStreetMap places fill in below.
   const placeAsk = isDomainQuery ? null : splitCity(searchQuery)
   const kinds = placeAsk ? [...queryCategories(placeAsk.what)].filter(c => PLACE_KINDS.has(c)) : []
-  if (kinds.length && !asked && !compared) results.splice(0, results.length, ...results.filter((r: any) => r.business || kinds.includes(r.category)))
+  // …and in that city: a business there, or a site of that kind that mentions the city (not Starbucks' head office site).
+  const inCity = (r: any) => {
+    const c = placeAsk!.city.toLowerCase(), metro = c === "new york" ? ["new york", "brooklyn", "manhattan", "queens", "bronx"] : [c]
+    const where = `${r.business?.address?.city || ""} ${r.business?.address?.region || ""} ${JSON.stringify(r.business?.address || {})}`.toLowerCase()
+    return metro.some(m => where.includes(m)) || (!r.business && kinds.includes(r.category) && metro.some(m => `${r.snippet || ""} ${JSON.stringify(r.pages || {})}`.toLowerCase().includes(m)))
+  }
+  if (kinds.length && !asked && !compared) results.splice(0, results.length, ...results.filter(inCity))
   const domains = results.map(r => r.domain)
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
@@ -494,7 +500,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       // Freshness: when this LAWP was last updated, so agents know how current it is.
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
-      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours) } : {}),
+      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)

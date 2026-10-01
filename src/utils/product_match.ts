@@ -22,6 +22,7 @@ const SAME_THING: string[][] = [
   ["hoodie", "sweatshirt", "sweater", "jumper", "pullover", "hættetrøje", "sweat"],
   ["dress", "kjole", "klänning", "kleid", "robe", "vestido", "vestito", "jurk"],
   ["bag", "backpack", "rucksack", "tote", "taske", "väska", "tasche", "sac", "bolso", "borsa", "tas", "rygsæk"],
+  ["tumbler", "quencher", "insulated cup", "travel mug", "termokrus", "thermobecher"],
   ["watch", "smartwatch", "ur", "klocka", "uhr", "montre", "reloj", "orologio", "horloge"],
   ["headphone", "earphone", "earbud", "headset", "høretelefon", "hörlurar", "kopfhörer", "casque", "auricular", "cuffie", "airpod"],
   ["phone", "smartphone", "iphone", "mobil", "handy", "téléphone", "telefono", "móvil"],

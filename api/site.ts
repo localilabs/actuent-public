@@ -646,7 +646,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const city = site.business?.address?.city ? String(site.business.address.city) : null
   const b = site.business
   const scoreColor = score >= 80 ? "var(--good)" : score >= 45 ? "var(--accent)" : "var(--bad)"
-  const open = b ? openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours) : null
+  const open = b ? openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours, Number(b.geo?.lon)) : null
   const description = home?.content && !/^Website at /.test(home.content)
     ? `${String(home.content).slice(0, 150)}${String(home.content).length > 150 ? "…" : ""}`
     : `What AI agents see on ${domain}: pages, actions and agent-readiness score.`

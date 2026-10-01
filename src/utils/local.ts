@@ -1,5 +1,5 @@
 import { isRateLimited } from "./limits"
-import { openNow } from "./business"
+import { openNow, parseOpeningHoursText, zoneOf } from "./business"
 
 // Local searches ("barber amsterdam", "italian restaurant in london"): the city is taken out of the
 // query, businesses whose address is in that city come first (search_lawp_businesses), and when
@@ -102,7 +102,7 @@ export async function localBusinesses(what: string, city: string, max = 10): Pro
     // Open right now first, then better rated (schema.org or OpenStreetMap data), then relevance.
     const score = (x: any, i: number) => {
       const b = x.business || {}
-      const open = openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours)
+      const open = openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours, Number(b.geo?.lon))
       const rating = Number(b.rating?.value) || 0
       const reviews = Number(b.rating?.count) || 0
       return (open === true ? 3 : open === false ? -1 : 0) + (reviews >= 5 ? rating / 2.5 : 0) - i * 0.15
@@ -131,6 +131,12 @@ export async function osmPlaces(what: string, city: string): Promise<any[] | nul
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(kind ? `[${word.replace(/s$/, "")}] in ${city}` : `${word} in ${city}`)}&format=jsonv2&limit=8&extratags=1&addressdetails=1`, { headers: OSM_HEADERS, signal: AbortSignal.timeout(5000) })
     let list = r.ok ? await r.json() : []
     if (kind && Array.isArray(list)) list = list.filter((p: any) => kind.includes(String(p.type)))
+    // Big cities: the free-text search finds few ("burger in New York": none). Ask Overpass for
+    // places tagged that kind or cuisine around the city centre instead.
+    if (!Array.isArray(list) || list.length < 3) {
+      const more = await overpassPlaces(what, word, city).catch(() => [])
+      if (more.length) return more
+    }
     // Closed places stay in OpenStreetMap as "vacant" or "disused" for a while: never list them.
     return (Array.isArray(list) ? list : []).filter((p: any) => p.name && !closedPlace(p.type, p.extratags)).map((p: any) => ({
       name: p.name, type: String(p.type || "").replace(/_/g, " "),
@@ -141,6 +147,76 @@ export async function osmPlaces(what: string, city: string): Promise<any[] | nul
       map: `https://www.openstreetmap.org/${p.osm_type}/${p.osm_id}`
     }))
   } catch { return null }
+}
+
+// Cuisines OpenStreetMap tags restaurants with ("cuisine=burger"), for "<dish> in <city>" searches.
+const CUISINES: Record<string, string> = {
+  burger: "burger", pizza: "pizza", sushi: "sushi", taco: "mexican|taco", mexican: "mexican|taco", ramen: "ramen|japanese", thai: "thai",
+  indian: "indian", chinese: "chinese", italian: "italian", japanese: "japanese|sushi|ramen", korean: "korean", vietnamese: "vietnamese", pho: "vietnamese",
+  bbq: "bbq|barbecue", barbecue: "bbq|barbecue", bagel: "bagel", donut: "donut", doughnut: "donut", steak: "steak", seafood: "seafood|fish", greek: "greek",
+  french: "french", falafel: "falafel|middle_eastern", kebab: "kebab|turkish", dumpling: "dumpling|chinese", "fried chicken": "chicken", chicken: "chicken", sandwich: "sandwich|deli", deli: "deli|sandwich"
+}
+const centers = new Map<string, { lat: number, lon: number, country: string } | null>()
+async function cityCenter(city: string): Promise<{ lat: number, lon: number, country: string } | null> {
+  const key = city.toLowerCase()
+  if (centers.has(key)) return centers.get(key)!
+  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=jsonv2&limit=1&addressdetails=1&featureType=city`, { headers: OSM_HEADERS, signal: AbortSignal.timeout(4000) }).catch(() => null)
+  const p = r?.ok ? (await r.json())?.[0] : null
+  const c = p ? { lat: Number(p.lat), lon: Number(p.lon), country: String(p.address?.country_code || "").toUpperCase() } : null
+  centers.set(key, c)
+  return c
+}
+// The public mirrors tested on 2026-10-01 all timed out, so only the main server (2–3 s answers).
+const OVERPASS = ["https://overpass-api.de/api/interpreter"]
+// Same question, same answer for 30 minutes (launch day: many people ask "burger in new york").
+const placeCache = new Map<string, { at: number, list: any[] }>()
+async function overpassPlaces(what: string, word: string, city: string): Promise<any[]> {
+  const key = `${what}|${word}|${city}`.toLowerCase(), hit = placeCache.get(key)
+  if (hit && Date.now() - hit.at < 30 * 60000) return hit.list
+  const list = await overpassLookup(what, word, city)
+  if (list.length) { placeCache.set(key, { at: Date.now(), list }); if (placeCache.size > 500) placeCache.delete(placeCache.keys().next().value!) }
+  return list
+}
+async function overpassLookup(what: string, word: string, city: string): Promise<any[]> {
+  // The searcher's own word for the cuisine ("burger"), the OpenStreetMap word for the kind ("fast food").
+  const said = what.toLowerCase().trim(), w = word.toLowerCase().trim().replace(/s$/, "")
+  const cuisine = CUISINES[said] || CUISINES[said.replace(/s$/, "")], kind = PLACE_TYPES[w] || PLACE_TYPES[said.replace(/s$/, "")]
+  if (!kind && !cuisine) return []
+  const c = await cityCenter(city)
+  if (!c) return []
+  const around = `(around:${cuisine ? 4000 : 2500},${c.lat},${c.lon})`
+  const query = cuisine
+    ? `nwr["amenity"~"^(restaurant|fast_food|cafe|food_court)$"]["cuisine"~"${cuisine}",i]${around};`
+    : `nwr["amenity"~"^(${kind!.join("|")})$"]${around};nwr["shop"~"^(${kind!.join("|")})$"]${around};nwr["tourism"~"^(${kind!.join("|")})$"]${around};nwr["leisure"~"^(${kind!.join("|")})$"]${around};`
+  // Overpass limits how often one address can ask: a limited or slow answer means no extra places this time.
+  let els: any[] | null = null
+  for (const server of OVERPASS) {
+    const r = await fetch(server, {
+      method: "POST", headers: { ...OSM_HEADERS, "Content-Type": "application/x-www-form-urlencoded" },
+      body: `data=${encodeURIComponent(`[out:json][timeout:6];(${query});out center 60;`)}`, signal: AbortSignal.timeout(6500)
+    }).catch(() => null)
+    if (!r?.ok) continue
+    const d: any = await r.json().catch(() => null)
+    if (Array.isArray(d?.elements)) { els = d.elements; break }
+  }
+  if (!els) return []
+  return els.filter(e => e.tags?.name && !closedPlace(e.tags.amenity || e.tags.shop, e.tags)).map(e => {
+    const t = e.tags, lat = e.lat ?? e.center?.lat, lon = e.lon ?? e.center?.lon
+    const hours = t.opening_hours ? parseOpeningHoursText(t.opening_hours) : []
+    return {
+      name: t.name, type: String(t.amenity || t.shop || t.tourism || t.leisure || "").replace(/_/g, " "),
+      address: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"] || city].filter(Boolean).join(", "),
+      website: t.website || t["contact:website"] || null, phone: t.phone || t["contact:phone"] || null,
+      opening_hours: t.opening_hours || null,
+      open_now: /^24\/7$/.test(t.opening_hours || "") ? true : hours.length ? openNow(hours, c.country, new Date(), undefined, lon) : null,
+      map: `https://www.openstreetmap.org/${e.type}/${e.id}`, lat, lon, chain: !!(t.brand || t["brand:wikidata"])
+    }
+  })
+    // Local places before chains ("best burger": Burgerhead before Burger King), then ones with
+    // opening hours and a website (more useful to an assistant).
+    .sort((a, b) => (a.chain ? 4 : 0) - (b.chain ? 4 : 0) + (b.opening_hours ? 2 : 0) + (b.website ? 1 : 0) - (a.opening_hours ? 2 : 0) - (a.website ? 1 : 0))
+    .map(({ chain, ...p }) => p)
+    .slice(0, 8)
 }
 
 export function closedPlace(type: string | undefined, tags: Record<string, string> | null | undefined): boolean {
