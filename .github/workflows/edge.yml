@@ -21,7 +21,7 @@ jobs:
           node-version: '24'
       - run: npm ci || npm install
       - run: node scripts/build-edge.mjs
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: latest
       # Until the SUPABASE_ACCESS_TOKEN secret exists, the build is checked but nothing is deployed.
