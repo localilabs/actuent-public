@@ -203,7 +203,8 @@ export async function closestName(name: string): Promise<any | null> {
     // Fewest typing mistakes first (then the database's similarity); at most 2 mistakes, fewer for short names.
     const scored = found.map((x: any) => ({ ...x, typos: typos(q, String(x.name).toLowerCase()) })).filter((x: any) => x.typos <= (q.length <= 5 ? 1 : 2))
       .sort((a: any, b: any) => a.typos - b.typos || b.similarity - a.similarity)
-    const best = scored[0] || (Array.isArray(found) ? found.find((x: any) => x.similarity >= 0.45) : null)
+    // Only real near-misses: a loose look-alike turned everyday words into a brand ("running shoes" → Red Wing Shoes).
+    const best = scored[0] || (!q.includes(" ") && Array.isArray(found) ? found.find((x: any) => x.similarity >= 0.6) : null)
     if (!best || String(best.name).toLowerCase() === name.toLowerCase()) return null
     const [site] = await sitesFor([best.domain])
     return site ? { ...site, suggested_name: best.name } : null

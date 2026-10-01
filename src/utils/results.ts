@@ -3,7 +3,8 @@
 
 // "Home - Nike" / "Welcome to Nike" / "Nike | Official Site" → "Nike"
 export function cleanName(name: string, domain: string): string {
-  let n = String(name || "").replace(/\s+/g, " ").trim()
+  let n = String(name || "").replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c))).replace(/&#x([0-9a-f]+);/gi, (_, c) => String.fromCodePoint(parseInt(c, 16)))
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()
   n = n.replace(/^(welcome to|home\s*[-|–—:]\s*|homepage\s*[-|–—:]\s*)/i, "").replace(/\s*[-|–—:]\s*(home|homepage|official (web)?site|welcome)$/i, "").trim()
   if (/^(home|homepage|index|untitled|welcome|website)$/i.test(n) || !n) {
     const label = domain.split("/")[0].replace(/^www\./, "").split(".")[0]
