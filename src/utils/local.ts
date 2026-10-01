@@ -113,12 +113,24 @@ export async function localBusinesses(what: string, city: string, max = 10): Pro
 
 // OpenStreetMap places for "<what> in <city>" when the index has no local websites. One request,
 // shared across all users at a gentle rate (OpenStreetMap's usage policy).
+// Place kinds and the OpenStreetMap types that count as them.
+const PLACE_TYPES: Record<string, string[]> = {
+  cafe: ["cafe", "coffee"], coffee: ["cafe", "coffee"], restaurant: ["restaurant", "fast_food", "food_court"], bar: ["bar", "pub", "biergarten"], pub: ["pub", "bar"],
+  bakery: ["bakery", "pastry"], pharmacy: ["pharmacy", "chemist"], hairdresser: ["hairdresser", "barber", "beauty"], supermarket: ["supermarket", "convenience", "grocery"],
+  hotel: ["hotel", "hostel", "guest_house", "motel"], museum: ["museum", "gallery"], gym: ["fitness_centre", "sports_centre"], "fitness centre": ["fitness_centre"],
+  cinema: ["cinema"], library: ["library"], dentist: ["dentist"], doctors: ["doctors", "clinic"], "ice cream": ["ice_cream"], "fast food": ["fast_food"]
+}
+
 export async function osmPlaces(what: string, city: string): Promise<any[] | null> {
   if (await isRateLimited("osm:search", 30)) return null
   const word = OSM_WORDS[what] || what
+  // "[cafe] in Brooklyn" is OpenStreetMap's way to ask for places of that kind; without the brackets
+  // "cafe in Brooklyn" matched pubs. Plain words ("sushi", a place's name) are searched as they are.
+  const kind = PLACE_TYPES[word.toLowerCase().replace(/s$/, "")]
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${word} in ${city}`)}&format=jsonv2&limit=8&extratags=1&addressdetails=1`, { headers: OSM_HEADERS, signal: AbortSignal.timeout(5000) })
-    const list = r.ok ? await r.json() : []
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(kind ? `[${word.replace(/s$/, "")}] in ${city}` : `${word} in ${city}`)}&format=jsonv2&limit=8&extratags=1&addressdetails=1`, { headers: OSM_HEADERS, signal: AbortSignal.timeout(5000) })
+    let list = r.ok ? await r.json() : []
+    if (kind && Array.isArray(list)) list = list.filter((p: any) => kind.includes(String(p.type)))
     // Closed places stay in OpenStreetMap as "vacant" or "disused" for a while: never list them.
     return (Array.isArray(list) ? list : []).filter((p: any) => p.name && !closedPlace(p.type, p.extratags)).map((p: any) => ({
       name: p.name, type: String(p.type || "").replace(/_/g, " "),

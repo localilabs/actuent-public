@@ -120,10 +120,19 @@ function decodeEntities(v: string): string {
 const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy)\b/i
 async function upcomingEvents(q: string): Promise<any[]> {
   if (!EVENTY.test(q)) return []
-  const place = splitCity(q)
+  // "concerts in new york this weekend": the time words set the dates, not part of the city.
+  const weekend = /\b(this weekend)\b/i.test(q), soon = /\b(tonight|today)\b/i.test(q)
+  const place = splitCity(q.replace(/\b(this weekend|next weekend|this week|next week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim())
   const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(in|on|at|this|next|week|tonight)\b/gi, " ").replace(/\s+/g, " ").trim()
-  const filters = [`start_date=gte.${encodeURIComponent(new Date().toISOString())}`]
-  if (place) filters.push(`or=${encodeURIComponent(`(city.ilike.*${place.city.replace(/[*,()]/g, "")}*,venue.ilike.*${place.city.replace(/[*,()]/g, "")}*)`)}`)
+  const now = new Date()
+  const until = weekend ? new Date(now.getTime() + ((7 - now.getUTCDay()) % 7 + 1) * 86400000) : soon ? new Date(now.getTime() + 18 * 3600000) : null
+  const filters = [`start_date=gte.${encodeURIComponent(now.toISOString())}`, ...(until ? [`start_date=lte.${encodeURIComponent(until.toISOString())}`] : [])]
+  // New York includes Brooklyn and Queens venues (and the like for LA and SF).
+  const METRO: Record<string, string[]> = { "new york": ["new york", "brooklyn", "manhattan", "queens", "bronx", "forest hills"], "los angeles": ["los angeles", "hollywood", "anaheim", "inglewood"], "san francisco": ["san francisco", "oakland", "berkeley"] }
+  if (place) {
+    const names = METRO[place.city.toLowerCase()] || [place.city]
+    filters.push(`or=${encodeURIComponent(`(${names.map(n => n.replace(/[*,()]/g, "")).flatMap(n => [`city.ilike.*${n}*`, `venue.ilike.*${n}*`]).join(",")})`)}`)
+  }
   if (topic && topic.length >= 3) filters.push(`or=${encodeURIComponent(`(name.ilike.*${topic.replace(/[*,()]/g, "")}*,description.ilike.*${topic.replace(/[*,()]/g, "")}*)`)}`)
   if (!place && !(topic && topic.length >= 3)) return []
   try {
