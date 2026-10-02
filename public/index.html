@@ -490,6 +490,9 @@ function doSearch() {
     status.textContent = parts.length ? parts.join(" · ") + " · " + ((Date.now() - started) / 1000).toFixed(1) + "s" : ""
     // Share this search: a link with a Lawpy card for X, LinkedIn, Slack…
     if (parts.length) { status.insertAdjacentHTML("beforeend", ' · <a href="#" id="share">Share ↗</a>'); document.getElementById("share").onclick = function(e) { e.preventDefault(); shareSearch(query, this) } }
+    // "Wrong answer?": goes to the ops page so it can be fixed (saved as a public report).
+    status.insertAdjacentHTML("beforeend", (status.textContent ? ' · ' : '') + '<a href="#" id="wrong">👎 Wrong answer?</a>')
+    document.getElementById("wrong").onclick = function(e) { e.preventDefault(); reportWrong(query, sites[0] && sites[0].domain, this) }
     // Lawpy: explains an answer, dances when something was found, calms down when nothing was.
     lawpy(data.answer || data.comparison ? "talk" : sites.length || extras ? "dance" : "idle", 2)
 
@@ -616,6 +619,16 @@ function gameLater(on) {
   clearTimeout(game.timer)
   if (on) { game.timer = setTimeout(startGame, 3000); return }
   if (game.running) { game.running = false; cancelAnimationFrame(game.raf); game.stop && game.stop(); document.getElementById("game").style.display = "none" }
+}
+
+function reportWrong(query, top, link) {
+  var note = window.prompt("What was wrong? (optional, e.g. \"closed down\" or \"wrong city\")", "")
+  if (note === null) return
+  link.textContent = "Sending…"
+  fetch("https://api.actuent.ai/api/suggest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "wrong_answer", query: query, domain: top || "", note: note }) })
+    .then(function (r) { return r.json() }).then(function (d) { link.textContent = d.saved ? "Thanks! Lawpy is on it 🫡" : (d.error || "Couldn't send it") })
+    .catch(function () { link.textContent = "Couldn't send it" })
+  link.onclick = function (e) { e.preventDefault() }
 }
 
 function shareSearch(query, link) {

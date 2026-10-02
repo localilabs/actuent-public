@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyAgentRequest } from "../src/utils/verify-actuent"
+import { isRateLimited } from "../src/utils/limits"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!
@@ -111,6 +112,21 @@ async function submit() {
     // As a LAWP action this is Actuent's reference implementation of LAWP 0.4: signed requests
     // (RFC 9421 or Actuent's headers), standard errors, quotes, test mode and a long-running result.
     const body = req.body || {}
+    // "This answer was wrong" from the humans page: saved as a bad rating (position -1 = a public
+    // report) so the ops page lists it for fixing. Ten a minute per visitor at most.
+    if (body.kind === "wrong_answer") {
+      const query = String(body.query || "").trim().slice(0, 200)
+      if (!query) return res.status(400).json({ error: "query is required" })
+      const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown"
+      if (await isRateLimited(`report:${ip}`, 10)) return res.status(429).json({ error: "Thanks! That's plenty of reports for a minute." })
+      const what = String(body.domain || "").trim().slice(0, 120) || "(whole answer)"
+      const note = String(body.note || "").replace(/\s+/g, " ").trim().slice(0, 140)
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/search_ratings`, {
+        method: "POST", headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ query, domain: note ? `${what} | ${note}` : what, position: -1, good: false })
+      }).catch(() => null)
+      return res.status(r?.ok ? 200 : 500).json(r?.ok ? { saved: true, message: "Thanks! Lawpy is on it." } : { error: "Couldn't save the report" })
+    }
     const isAction = body.action === "suggest_site"
     if (isAction) {
       // The body is re-serialised exactly as the agent sent it (compact JSON).
