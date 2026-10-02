@@ -76,7 +76,8 @@ const Q = [
   ["events", "comedy in new york", d => events(d).length >= 1, "a comedy show"],
   ["events", "concerts copenhagen this weekend", d => events(d).length >= 3, "3+ Copenhagen concerts"],
   // ── Products ──
-  ["products", "cheapest airpods pro", d => allProducts(d, /airpods/i), "only AirPods"],
+  // Apple sells AirPods itself, rarely through indexed shops: apple.com up top and no wrong products is right.
+  ["products", "cheapest airpods pro", d => noJunkProducts(d, /airpods/i) && (products(d).length > 0 || top(d, 3).includes("apple.com")), "AirPods (or apple.com), never other products"],
   ["products", "hoka clifton", d => allProducts(d, /clifton/i), "only Hoka Cliftons"],
   ["products", "nike pegasus 41", d => noJunkProducts(d, /pegasus/i), "no non-Pegasus shoes"],
   ["products", "stanley tumbler", d => allProducts(d, /stanley|tumbler|quencher/i), "Stanley tumblers"],
