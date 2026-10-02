@@ -490,7 +490,7 @@ ${userFacing.length ? `<div class="muted" style="margin-top:8px">${userFacing.le
 }
 
 function ogImage(title: string, subtitle: string, tag: string, lawpy = "wave") {
-  return `${BASE}/og?${new URLSearchParams({ title, subtitle, tag, lawpy })}`
+  return `${BASE}/og?${new URLSearchParams({ v: "2", title, subtitle, tag, lawpy })}`
 }
 
 async function topCities(): Promise<string> {

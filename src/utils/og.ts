@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { lawpyRects, LAWPY_FRAMES, hatRects, seasonHat } from "./lawpy_frames"
+import { LOGO_PNG_DATA_URI } from "./logo_data"
 
 // Social preview cards (1200×630) for Actuent pages: /og?title=…&subtitle=…&tag=…&lawpy=wave
 // Lawpy stands in the corner; `lawpy` picks his pose (idle, wave, talk, think, dance; site pages
@@ -28,7 +29,7 @@ export async function ogImage(req: VercelRequest, res: VercelResponse) {
 
   const card = h("div", { width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "72px", background: "#0a0a0a", color: "#f5f5f7", fontFamily: "sans-serif", position: "relative" }, [
     h("div", { display: "flex", alignItems: "center", gap: "20px" }, [
-      h("div", { width: "64px", height: "64px", borderRadius: "14px", background: "#ff8a3d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "44px", fontWeight: 700, color: "#fff" }, "A"),
+      { type: "img", props: { src: LOGO_PNG_DATA_URI, width: 61, height: 64, style: { width: "61px", height: "64px" } } },
       h("div", { fontSize: "34px", fontWeight: 700 }, "Actuent")
     ]),
     h("div", { display: "flex", flexDirection: "column", gap: "20px", paddingRight: "300px" }, [
