@@ -96,6 +96,11 @@ async function selfSite(): Promise<any | null> {
   return saved ? { ...saved, owner_key: undefined, pages: saved.pages || {}, actions: saved.actions || [], matched: "Actuent itself", score: 100, visit_url: trackedLink("https://actuent.ai") } : null
 }
 
+// Questions about when an artist plays ("when is X playing", "X tour dates"), and the words to strip
+// to get the artist's name.
+const IS_ARTIST_ASK = /\b(when|where)\s+(is|are|does|do)\b.*\b(play|playing|perform|performing|on tour|touring)\b|\btour dates\b/i
+const ARTIST_ASK = /\b(when|where|is|are|does|do|playing|performing|perform|play|touring|on tour|tour dates|tour|dates|concerts?|tickets|live|next|show|shows|in|the|this|weekend|tonight)\b/gi
+
 const isDomainLike = (q: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(q.trim())
 
 const OPEN_NOW = /\s*\b(?:(?:that|which|who)(?:'s|’s| is| are)?\s+|(?:is|are)\s+)?(?:(?:still|currently)\s+open|open\s+(?:right\s+)?now|open\s+at\s+the\s+moment)\b\??/i
@@ -491,6 +496,15 @@ async function search(req: VercelRequest, res: VercelResponse) {
     return true
   })
   results.splice(0, results.length, ...shown)
+  // "When is Ray LaMontagne playing": the events answer it. Sites stay only when they're about the
+  // artist (setlist.fm, the venue), not ray.io for "ray".
+  if (events.length && IS_ARTIST_ASK.test(typed)) {
+    const who = typed.toLowerCase().replace(ARTIST_ASK, " ").replace(/[?!.,'’]/g, " ").split(/\s+/).filter(w => w.length >= 3)
+    if (who.length) {
+      const about = (r: any) => { const t = `${r.name || ""} ${r.snippet || ""} ${JSON.stringify(r.pages || {})}`.toLowerCase(); return who.every(w => t.includes(w)) }
+      results.splice(0, results.length, ...results.filter(about))
+    }
+  }
   // "Cafes in Brooklyn": only places of that kind (businesses, or sites of that category), never a
   // site that only shares the letters ("McAfee", "decaf…"). OpenStreetMap places fill in below.
   const placeAsk = isDomainQuery ? null : splitCity(searchQuery)
