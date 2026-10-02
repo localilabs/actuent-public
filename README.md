@@ -20,7 +20,7 @@ Questions your AI can't answer well on its own:
 
 MCP is the plug. Actuent is what comes through it.
 
-MCP (Model Context Protocol) is the standard way for Claude, ChatGPT and Cursor to use tools, but a plug with nothing behind it does nothing. Actuent is an MCP server with a search index behind it: about 95,000 websites, millions of products with prices, thousands of upcoming events, and places with opening hours, kept fresh every day.
+MCP (Model Context Protocol) is the standard way for Claude, ChatGPT and Cursor to use tools, but a plug with nothing behind it does nothing. Actuent is an MCP server with a search index behind it: about 96,000 websites, products with prices from online shops, thousands of upcoming events, and places with opening hours, kept fresh every day.
 
 ## For builders
 
