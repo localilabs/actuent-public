@@ -5,7 +5,7 @@
     "build": "echo 'no build needed'"
   },
   "dependencies": {
-    "@vercel/node": "^13.0.2",
+    "@vercel/node": "^16.0.1",
     "@vercel/og": "^0.8.6",
     "groq-sdk": "^1.6.0"
   },
