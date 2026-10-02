@@ -6,6 +6,7 @@ import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFac
 import { later } from "./later"
 import { comparisonSides } from "./answer"
 import { nameOf, looksLikeName, brandSites, sameOwner, linkedProjects, officialWebsite, cityMuseums, sitesFor, closestName } from "./brand"
+import { categoryLeaders } from "./leaders"
 import { sites, Site } from "../data/sites"
 import { crawlSite, crawlPage, getSavedSite } from "./crawler"
 import { complete, llmStatus, Tier } from "./llm"
@@ -711,7 +712,11 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
         }
       }
     }
-    const namedList = [...await nameSearch, ...await museumSearch]
+    // "project management tool", "best crm": the category's best-known options first (src/utils/leaders.ts).
+    const leaderDomains = place ? null : categoryLeaders(query)
+    const leaderList = leaderDomains ? await sitesFor(leaderDomains).then(found => leaderDomains.map(d => found.find((f: any) => f.domain === d || f.domain === `www.${d}`)).filter(Boolean).slice(0, 5)
+      .map((x: any) => ({ ...x, matched: "one of the best-known options for this (editorial list, never paid)" }))).catch(() => []) : []
+    const namedList = [...await nameSearch, ...await museumSearch, ...leaderList]
     if (namedList.length) { namedFound = true; if (opts.related) opts.related.length = 0 }
     const named: Site[] = namedList.map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: x.matched || "exact name" }))
     const enough = searchable && (!ml.foreign || ml.english.length > 0) && plain.sites.length + plain.pages.length >= 3
