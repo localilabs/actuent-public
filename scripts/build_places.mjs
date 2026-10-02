@@ -38,13 +38,31 @@ async function overpass(filter, lat, lon, radius) {
   return []
 }
 
+function features(t) {
+  const yes = v => v === "yes" || v === "only" || v === "designated"
+  const out = []
+  if (yes(t["diet:vegan"])) out.push("vegan")
+  if (yes(t["diet:vegetarian"]) || yes(t["diet:vegan"])) out.push("vegetarian")
+  if (yes(t["diet:gluten_free"])) out.push("gluten_free")
+  if (yes(t.wheelchair)) out.push("wheelchair")
+  if (yes(t.outdoor_seating)) out.push("outdoor_seating")
+  if (["wlan", "yes", "wifi"].includes(t.internet_access || "")) out.push("wifi")
+  if (yes(t.kids_area) || yes(t.changing_table) || yes(t.highchair)) out.push("kids")
+  if (yes(t.dog)) out.push("dogs")
+  if (yes(t.takeaway)) out.push("takeaway")
+  if (yes(t.delivery)) out.push("delivery")
+  if (yes(t.reservation) || t.reservation === "recommended") out.push("reservations")
+  return out
+}
+
 function place(e, city) {
   const t = e.tags || {}
   return {
     name: t.name, type: String(t.amenity || t.shop || t.tourism || t.leisure || "").replace(/_/g, " "),
     address: [[t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), t["addr:city"] || city.replace(/\b\w/g, c => c.toUpperCase())].filter(Boolean).join(", "),
     website: t.website || t["contact:website"] || null, phone: t.phone || t["contact:phone"] || null, opening_hours: t.opening_hours || null,
-    ...(t["diet:vegan"] === "yes" || t["diet:vegan"] === "only" ? { vegan: true } : {}),
+    // What people filter on ("dog friendly", "outdoor seating", "wifi"…), from OpenStreetMap's tags.
+    features: features(t),
     map: `https://www.openstreetmap.org/${e.type}/${e.id}`, lat: e.lat ?? e.center?.lat, lon: e.lon ?? e.center?.lon, chain: !!(t.brand || t["brand:wikidata"])
   }
 }

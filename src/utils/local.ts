@@ -137,16 +137,28 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
   }
   const c = builtPlaces.get(name)
   if (!c) return null
-  const said = what.toLowerCase().trim(), w = word.toLowerCase().trim()
+  // "bars open late", "dog friendly cafes": the kind of place, then what it should have and when.
+  const said = what.toLowerCase().replace(NEED_WORDS, " ").replace(/\s+/g, " ").trim() || what.toLowerCase().trim(), w = word.toLowerCase().trim()
   const keys = [said, said.replace(/s$/, ""), w, w.replace(/s$/, ""), ...(PREBUILT_ALIASES[said] || PREBUILT_ALIASES[said.replace(/s$/, "")] || [])]
   const list: any[] | undefined = keys.map(k => c[k]).find((l: any) => Array.isArray(l) && l.length)
   if (!list) return null
-  return list.map(({ chain, lat, lon, ...p }: any) => {
+  const lon0 = Number(list[0]?.lon)
+  const needs = localNeeds(what, zoneOf("US", lon0) || "America/New_York")
+  let places = list.map(({ chain, lat, lon, ...p }: any) => {
     const hours = p.opening_hours ? parseOpeningHoursText(p.opening_hours) : []
-    return { ...p, lat, lon, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null }
-  }).slice(0, 8)
+    return { ...p, lat, lon, hours, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null }
+  })
+  if (needs.features.length) places = places.filter((p: any) => needs.features.every(f => (p.features || []).includes(f)))
+  // A time asked for ("open late", "for brunch on sunday"): open then first, unknown hours after, closed ones out.
+  if (needs.day && needs.minutes != null) places = places
+    .map((p: any) => ({ p, at: /^24\/7$/.test(p.opening_hours || "") ? true : p.hours.length ? openAt(p.hours, needs.day!, needs.minutes!) : null }))
+    .filter((x: any) => x.at !== false).sort((a: any, b: any) => (b.at ? 1 : 0) - (a.at ? 1 : 0)).map((x: any) => x.p)
+  return places.map(({ hours, ...p }: any) => p).slice(0, 8)
 }
+// Words that say what a place should have or when, not what it is.
+const NEED_WORDS = /\b(open late|late night|late|open now|open|now|tonight|today|tomorrow|this evening|for brunch|for dinner|for lunch|for breakfast|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(dog|pet|kid|family)[- ]friendly|with (a )?(terrace|garden|wifi|wi-fi|outdoor seating)|outdoor( seating)?|terrace|wifi|wi-fi|wheelchair( accessible)?|accessible|step[- ]free|gluten[- ]free|with dogs|for kids|good for groups|for groups|cheap|best|good|nice|cozy|cosy)\b/gi
 const PREBUILT_ALIASES: Record<string, string[]> = {
+  brunch: ["cafe", "restaurant"], breakfast: ["cafe", "bagel"], "coffee shops": ["cafe"], cocktail: ["bar"], "cocktail bar": ["bar"], "wine bar": ["bar"], nightlife: ["bar"],
   coffee: ["cafe"], "coffee shop": ["cafe"], espresso: ["cafe"], cafes: ["cafe"], café: ["cafe"], restaurants: ["restaurant"], food: ["restaurant"], dinner: ["restaurant"], lunch: ["restaurant"],
   bars: ["bar"], pub: ["bar"], pubs: ["bar"], drinks: ["bar"], cocktails: ["bar"], beer: ["bar"], burgers: ["burger"], tacos: ["taco"], mexican: ["taco"], burrito: ["taco"],
   barber: ["hairdresser"], haircut: ["hairdresser"], "hair salon": ["hairdresser"], groceries: ["supermarket"], "grocery store": ["supermarket"], hotels: ["hotel"],
