@@ -9,6 +9,7 @@ import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, k
 import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
+import { fixSpelling } from "../src/utils/spelling"
 import { getSavedSite } from "../src/utils/crawler"
 import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm, isGeneric } from "../src/utils/define"
 import { openNow, opensNext } from "../src/utils/business"
@@ -93,6 +94,8 @@ async function selfSite(): Promise<any | null> {
   const saved: any = await getSavedSite("actuent.ai").catch(() => null)
   return saved ? { ...saved, owner_key: undefined, pages: saved.pages || {}, actions: saved.actions || [], matched: "Actuent itself", score: 100, visit_url: trackedLink("https://actuent.ai") } : null
 }
+
+const isDomainLike = (q: string) => /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(q.trim())
 
 const OPEN_NOW = /\s*\b(?:(?:that|which|who)(?:'s|’s| is| are)?\s+|(?:is|are)\s+)?(?:(?:still|currently)\s+open|open\s+(?:right\s+)?now|open\s+at\s+the\s+moment)\b\??/i
 
@@ -309,7 +312,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // "cafés in Copenhagen that are open now" → search "cafés in Copenhagen", only open places.
   const wantsOpen = OPEN_NOW.test(typed)
   const words = wantsOpen ? typed.replace(new RegExp(OPEN_NOW.source, "gi"), " ").replace(/\s+/g, " ").trim() || typed : typed
-  const localized = nearMe(words, req.headers["x-vercel-ip-city"] as string | undefined)
+  // "cofee in seatle" → "coffee in seattle": near-miss typos in cities and everyday words (src/utils/spelling.ts).
+  const respelled = isDomainLike(words) ? null : fixSpelling(words)
+  const localized = nearMe(respelled || words, req.headers["x-vercel-ip-city"] as string | undefined)
   const searchQuery = cleanQuery(localized)
   const params = readParams(req)
   if (wantsOpen) params.openNow = true
@@ -464,7 +469,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // When the results are thin (fewer than 5), the corrected search is run too, and its results are
   // shown instead when it finds more ("Showing results for …").
   let didYouMean: string | null = nameTypos[0] || await spelling
-  let searchedFor: string | null = null
+  let searchedFor: string | null = respelled
   if (!isDomainQuery && didYouMean && !nameTypos.length && results.length < 5) {
     const again = await searchSites(didYouMean, tier, timing, [], { lite })
     if (again.length > results.length) { results.splice(0, results.length, ...again); searchedFor = didYouMean }

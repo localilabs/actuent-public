@@ -197,7 +197,7 @@ export async function closestName(name: string): Promise<any | null> {
     const q = name.toLowerCase()
     // Also with doubled letters made single ("ikeaa" → "ikea", "adiddas" → "adidas").
     const variants = [...new Set([q, q.replace(/(\p{L})\1+/gu, "$1")])]
-    const lists = await Promise.all(variants.map(v => fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: v }), signal: AbortSignal.timeout(1200) }).then(r => r.ok ? r.json() : []).catch(() => [])))
+    const lists = await Promise.all(variants.map(v => fetch(`${SUPABASE_URL}/rest/v1/rpc/similar_site_name`, { method: "POST", headers: HEADERS, body: JSON.stringify({ q: v }), signal: AbortSignal.timeout(2000) }).then(r => r.ok ? r.json() : []).catch(() => [])))
     const seen = new Set<string>()
     const found = lists.flat().filter((x: any) => x?.name && !seen.has(x.domain) && seen.add(x.domain))
     // Fewest typing mistakes first (then the database's similarity); at most 2 mistakes, fewer for short names.
