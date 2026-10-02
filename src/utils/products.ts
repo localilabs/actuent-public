@@ -244,6 +244,20 @@ export function sizeFrom(query: string): { size: string | null, rest: string } {
 // Sizes like "EU 44" or "44 EU" or "44" count as 44.
 const sizeValue = (v: string) => (String(v).toUpperCase().match(/\d{1,2}(?:[.,]5)?|XXXL|XXL|XL|XXS|XS|\b[SML]\b/) || [""])[0].replace(",", ".")
 
+// Is it in stock right now? Shopify's product JSON (/products/<handle>.js) for that variant, or any
+// variant; null when the shop doesn't answer quickly (then the stored stock stands).
+async function liveStock(url: string, variant?: string): Promise<boolean | null> {
+  if (!/\/products\/[^/?#]+/.test(url)) return null
+  try {
+    const r = await fetch(`${url.split(/[?#]/)[0]}.js`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "application/json" }, signal: AbortSignal.timeout(1500) })
+    if (!r.ok) return null
+    const p: any = await r.json()
+    const vs: any[] = Array.isArray(p?.variants) ? p.variants : []
+    if (!vs.length) return null
+    return variant ? vs.some(v => String(v.id) === variant && v.available !== false) : vs.some(v => v.available !== false)
+  } catch { return null }
+}
+
 export async function searchProducts(query: string, tier: Tier, max: number, country: string | null = null): Promise<any[]> {
   const asked = sizeFrom(query)
   const { text, maxEur, currency } = await parsePriceLimit(asked.rest)
@@ -290,12 +304,21 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
     rows = spreadKinds(text, rankProducts(text, rows))
     if (!rows.length) return []
     // A size was asked for: only products in stock in that size (sizes from list_nineteen.sql).
-    const sizes = new Map<string, string[]>()
+    const sizes = new Map<string, string[]>(), sizeVariant = new Map<string, string>()
     if (asked.size) {
       const urls = rows.slice(0, 80).map((r: any) => r.url)
       const o = await fetch(`${SUPABASE_URL}/rest/v1/lawp_items?select=url,options&url=in.(${encodeURIComponent(urls.map((u: string) => `"${u.replace(/"/g, "")}"`).join(","))})`, { headers: HEADERS, signal: AbortSignal.timeout(2000) }).then(r => r.ok ? r.json() : []).catch(() => [])
-      for (const x of Array.isArray(o) ? o : []) if (x.options?.size?.length) sizes.set(x.url, x.options.size)
+      for (const x of Array.isArray(o) ? o : []) if (x.options?.size?.length) {
+        sizes.set(x.url, x.options.size)
+        // The asked size's own variant: links and carts for exactly that size.
+        const v = Object.entries(x.options.size_variants || {}).find(([s]) => sizeValue(s) === asked.size)?.[1]
+        if (v) sizeVariant.set(x.url, String(v))
+      }
       rows = rows.filter((r: any) => (sizes.get(r.url) || []).some(v => sizeValue(v) === asked.size))
+      if (!rows.length) return []
+      // Stock changes by the hour: the top few are checked with the shop now, and sold-out ones dropped.
+      const checked = await Promise.all(rows.slice(0, 3).map((r: any) => liveStock(r.url, sizeVariant.get(r.url))))
+      rows = rows.filter((r: any, i: number) => i >= 3 || checked[i] !== false).map((r: any, i: number) => i < 3 && checked[i] === true ? { ...r, stock_checked_now: true } : r)
       if (!rows.length) return []
     }
 
@@ -347,11 +370,13 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       return {
         name: names[i], original_name: names[i] !== row.name ? row.name : undefined,
         price: row.price, currency: row.currency, price_eur: row.price_eur,
-        url: row.url, domain: row.domain, image: row.image, available: row.available,
+        url: sizeVariant.has(row.url) ? `${row.url}${row.url.includes("?") ? "&" : "?"}variant=${sizeVariant.get(row.url)}` : row.url, domain: row.domain, image: row.image, available: row.available,
         ...(sizes.has(row.url) ? { sizes_in_stock: sizes.get(row.url) } : {}),
+        ...(asked.size && sizeVariant.has(row.url) ? { size: asked.size } : {}),
+        ...(row.stock_checked_now ? { stock_checked_now: true } : {}),
         ...(row.ships_to_you != null ? { ships_to_you: row.ships_to_you } : {}),
         // Shopify: a link that opens the shop's cart with this product in it.
-        ...(row.variant_id ? { cart_url: `https://${row.domain}/cart/${row.variant_id}:1` } : {}),
+        ...(sizeVariant.has(row.url) || row.variant_id ? { cart_url: `https://${row.domain}/cart/${sizeVariant.get(row.url) || row.variant_id}:1` } : {}),
         // Price history: e.g. -20 means 20% cheaper than before the last change.
         ...(change ? { previous_price_eur: prev, price_change_percent: change, price_changed_at: row.price_changed_at } : {}),
         // The last 90 days of prices (EUR, oldest first), and whether today's is the lowest of them.
