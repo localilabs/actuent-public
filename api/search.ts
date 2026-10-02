@@ -138,13 +138,13 @@ function decodeEntities(v: string): string {
 }
 
 // Upcoming events for event-style searches ("concerts copenhagen", "what's on in london").
-const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy)\b/i
+const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy|playing|performing|on tour|tour dates|touring)\b/i
 async function upcomingEvents(q: string): Promise<any[]> {
   if (!EVENTY.test(q)) return []
   // "concerts in new york this weekend": the time words set the dates, not part of the city.
   const weekend = /\b(this weekend)\b/i.test(q), soon = /\b(tonight|today)\b/i.test(q)
   const place = splitCity(q.replace(/\b(this weekend|next weekend|this week|next week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim())
-  const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(what'?s|whats|what|is|are|any|good|best|in|on|at|this|next|week|weekend|tonight|today|tomorrow|happening|going)\b/gi, " ").replace(/['’?!]/g, " ").replace(/\s+/g, " ").trim()
+  const topic = (place?.what || q).replace(EVENTY, " ").replace(/\b(what'?s|whats|what|when|where|is|are|does|do|any|good|best|in|on|at|this|next|week|weekend|tonight|today|tomorrow|happening|going|playing|performing|perform|play|tour|touring|dates?|live|see|next)\b/gi, " ").replace(/['’?!]/g, " ").replace(/\s+/g, " ").trim()
   const now = new Date()
   const until = weekend ? new Date(now.getTime() + ((7 - now.getUTCDay()) % 7 + 1) * 86400000) : soon ? new Date(now.getTime() + 18 * 3600000) : null
   const filters = [`start_date=gte.${encodeURIComponent(now.toISOString())}`, ...(until ? [`start_date=lte.${encodeURIComponent(until.toISOString())}`] : [])]
