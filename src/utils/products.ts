@@ -136,9 +136,16 @@ const CURRENCY_WORDS: Record<string, string> = {
 
 export const PRICE_PHRASE = /\b(?:under|below|less than|cheaper than|max(?:imum)?|up to|for less than|til under|unter|moins de|menos de|sotto i)\s*([€$£])?\s*(\d+(?:[.,]\d+)?)\s*(eur|euros?|usd|dollars?|gbp|pounds?|kr\.?|kroner|dkk|sek|nok)?\b/i
 
+// A currency named without "under" ("$100 headphones", "airpods in dollars"): the market, no price cap.
+const CURRENCY_MARK = /(?:([$£€])\s?(\d+(?:[.,]\d+)?)|(\d+(?:[.,]\d+)?)\s?([$£€])|\b(usd|dollars?|gbp|pounds|dkk|kroner)\b)/i
 export async function parsePriceLimit(query: string): Promise<{ text: string, maxEur: number | null, currency: string | null }> {
   const m = query.match(PRICE_PHRASE)
-  if (!m) return { text: query, maxEur: null, currency: null }
+  if (!m) {
+    const c = query.match(CURRENCY_MARK)
+    if (!c) return { text: query, maxEur: null, currency: null }
+    const mark = (c[1] || c[4] || c[5] || "").toLowerCase().replace(/^kroner$/, "kr")
+    return { text: query.replace(c[0], " ").replace(/\s+/g, " ").trim(), maxEur: null, currency: CURRENCY_WORDS[mark] || null }
+  }
   const amount = Number(m[2].replace(",", "."))
   const currency = CURRENCY_WORDS[(m[1] || m[3] || "€").toLowerCase().replace(/\.$/, "").replace(/^kroner$/, "kr")] || "EUR"
   return { text: query.replace(m[0], " ").replace(/\s+/g, " ").trim(), maxEur: await toEur(amount, currency), currency }
@@ -146,6 +153,7 @@ export async function parsePriceLimit(query: string): Promise<{ text: string, ma
 
 // Where the shopper is: the currency they named ("500 dkk") or the country of the city they named.
 // Shops in that market rank first, and shops in far-off markets are dropped when local ones exist.
+const CURRENCY_COUNTRY: Record<string, string> = { USD: "us", GBP: "gb", DKK: "dk", SEK: "se", NOK: "no" }
 const COUNTRY_CURRENCY: Record<string, string> = { dk: "DKK", se: "SEK", no: "NOK", gb: "GBP", uk: "GBP", us: "USD", ch: "CHF", pl: "PLN", cz: "CZK", is: "ISK", in: "INR", jp: "JPY", au: "AUD", ca: "CAD", nz: "NZD", br: "BRL", mx: "MXN", za: "ZAR", sg: "SGD", hk: "HKD", kr: "KRW", ae: "AED", tr: "TRY", cn: "CNY", id: "IDR", ph: "PHP", my: "MYR", th: "THB", il: "ILS", sa: "SAR", ng: "NGN", ar: "ARS", cl: "CLP", co: "COP" }
 const EUROZONE = new Set(["de", "fr", "nl", "be", "es", "it", "pt", "at", "ie", "fi", "gr", "lu", "ee", "lv", "lt", "sk", "si", "mt", "cy", "hr"])
 export type Market = { currency: string | null, country: string | null }
@@ -240,6 +248,9 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
   const asked = sizeFrom(query)
   const { text, maxEur, currency } = await parsePriceLimit(asked.rest)
   if (!text) return []
+  // A named currency picks the market too: "$" means US shops, "£" UK shops, whatever the shopper's IP says.
+  const named = currency ? CURRENCY_COUNTRY[currency] : undefined
+  if (named) country = named
   const market: Market = { currency: currency || (country ? COUNTRY_CURRENCY[country] || (EUROZONE.has(country) ? "EUR" : null) : null), country }
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/search_lawp_items`, {
