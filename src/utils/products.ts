@@ -244,6 +244,13 @@ export function sizeFrom(query: string): { size: string | null, rest: string } {
 // Sizes like "EU 44" or "44 EU" or "44" count as 44.
 const sizeValue = (v: string) => (String(v).toUpperCase().match(/\d{1,2}(?:[.,]5)?|XXXL|XXL|XL|XXS|XS|\b[SML]\b/) || [""])[0].replace(",", ".")
 
+// The model numbers in a product name ("Pegasus 41" → "41", "iPhone 15 Pro" → "15"), ignoring sizes,
+// pack counts and units, so products with different model numbers are never merged.
+function modelNumbers(name: string): string {
+  return (String(name).toLowerCase().replace(/\b\d+(\.\d+)?\s?(ml|l|g|kg|oz|cm|mm|m|in|inch|pack|pcs|stk|x)\b/g, " ").replace(/\b(size|str|eu|us|uk)\s?\d+(\.\d+)?\b/g, " ")
+    .match(/\b\d{1,4}\b/g) || []).sort().join(",")
+}
+
 // Is it in stock right now? Shopify's product JSON (/products/<handle>.js) for that variant, or any
 // variant; null when the shop doesn't answer quickly (then the stored stock stands).
 async function liveStock(url: string, variant?: string): Promise<boolean | null> {
@@ -341,7 +348,9 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         const tj = tokens(gj[0].name), pj = Number(gj[0].price_eur)
         const shared = [...ti].filter(w => tj.has(w)).length, union = new Set([...ti, ...tj]).size
         const similarPrice = !pi || !pj || Math.abs(pi - pj) / Math.max(pi, pj) <= 0.35
-        if (union >= 3 && shared / union >= 0.8 && similarPrice && gi.every(x => gj.every(y => x.domain !== y.domain))) {
+        // Model numbers must agree: a Pegasus 41 and a Pegasus 42 aren't one product.
+        const sameModel = modelNumbers(gi[0].name) === modelNumbers(gj[0].name)
+        if (union >= 3 && shared / union >= 0.8 && similarPrice && sameModel && gi.every(x => gj.every(y => x.domain !== y.domain))) {
           for (const x of gj) if (!gi.some(y => y.url === x.url)) gi.push(x)
           groups.delete(keys[j])
         }
@@ -382,10 +391,15 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         // The last 90 days of prices (EUR, oldest first), and whether today's is the lowest of them.
         ...(past.length >= 2 ? { price_history: past, lowest_90_days: now != null && now <= Math.min(...past.map(p => p.price_eur)) } : {}),
         // The same product in other shops, cheapest first; this result is the cheapest.
-        ...(others.length ? {
-          cheapest: now != null, matched_by: row.gtin ? "barcode" : "name",
-          other_shops: others.slice(0, 5).map(o => ({ domain: o.domain, price: o.price, currency: o.currency, price_eur: o.price_eur, url: o.url }))
-        } : {})
+        // Other shops only (the same shop's other colours aren't "other shops"), one entry per shop.
+        ...((() => {
+          const seen = new Set([row.domain]), shops = others.filter((o: any) => !seen.has(o.domain) && seen.add(o.domain))
+          return shops.length ? {
+            cheapest: now != null, matched_by: row.gtin ? "barcode" : "name", shops_compared: shops.length + 1,
+            price_note: now != null ? `Cheapest of ${shops.length + 1} shops` : undefined,
+            other_shops: shops.slice(0, 5).map((o: any) => ({ domain: o.domain, price: o.price, currency: o.currency, price_eur: o.price_eur, url: o.url, ...(o.ships_to_you != null ? { ships_to_you: o.ships_to_you } : {}) }))
+          } : {}
+        })())
       }
     })
   } catch { return [] }
