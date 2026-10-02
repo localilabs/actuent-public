@@ -9,7 +9,7 @@
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
-          "data/us_places.json"
+          "data/places/**"
         ]
       }
     },

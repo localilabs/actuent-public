@@ -128,12 +128,14 @@ const PLACE_TYPES: Record<string, string[]> = {
 const osmCache = new Map<string, { at: number, list: any[] }>()
 // Places built ahead of time for the biggest US cities (scripts/build_places.mjs, weekly): instant, and
 // no dependence on OpenStreetMap's free servers. Opening hours are kept; open-now is worked out here.
-let builtPlaces: any = null
+const builtPlaces = new Map<string, any>()
 function prebuilt(what: string, word: string, city: string): any[] | null {
-  if (builtPlaces === null) {
-    try { builtPlaces = JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "us_places.json"), "utf8")).cities || {} } catch { builtPlaces = {} }
+  const name = city.toLowerCase().replace(/\s+/g, "-")
+  if (!/^[a-z-]{2,40}$/.test(name)) return null
+  if (!builtPlaces.has(name)) {
+    try { builtPlaces.set(name, JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "places", `${name}.json`), "utf8")).kinds || null) } catch { builtPlaces.set(name, null) }
   }
-  const c = builtPlaces[city.toLowerCase()]
+  const c = builtPlaces.get(name)
   if (!c) return null
   const said = what.toLowerCase().trim(), w = word.toLowerCase().trim()
   const keys = [said, said.replace(/s$/, ""), w, w.replace(/s$/, ""), ...(PREBUILT_ALIASES[said] || PREBUILT_ALIASES[said.replace(/s$/, "")] || [])]

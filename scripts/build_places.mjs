@@ -1,8 +1,9 @@
-// Builds data/us_places.json: places (with opening hours) for the biggest US cities and the things
+// Builds data/places/<city>.json: places (with opening hours) for the biggest US cities and the things
 // people ask for most ("cafes in brooklyn", "tacos in austin"), from OpenStreetMap's Overpass API.
 // Searches read this file first, so they're instant and don't depend on OpenStreetMap's free servers
 // being quick on launch day; the live lookup stays as the fallback for everything else.
-// Weekly (.github/workflows/build_places.yml), or: node scripts/build_places.mjs
+// Weekly (.github/workflows/build_places.yml, four groups of cities in parallel), or:
+//   CITIES_ONLY="austin,seattle" node scripts/build_places.mjs
 // © OpenStreetMap contributors, ODbL.
 import fs from "fs"
 
@@ -51,29 +52,21 @@ function place(e, city) {
 const best = list => list.filter(p => p.name && !/^(vacant|disused)/i.test(p.type))
   .sort((a, b) => (a.chain ? 4 : 0) - (b.chain ? 4 : 0) + (b.opening_hours ? 2 : 0) + (b.website ? 1 : 0) - (a.opening_hours ? 2 : 0) - (a.website ? 1 : 0)).slice(0, 12)
 
-const out = { built: new Date().toISOString(), attribution: "© OpenStreetMap contributors, ODbL", cities: {} }
+const only = (process.env.CITIES_ONLY || "").split(",").map(c => c.trim().toLowerCase()).filter(Boolean)
+fs.mkdirSync("data/places", { recursive: true })
 for (const [city, [lat, lon]] of Object.entries(CITIES)) {
-  out.cities[city] = {}
+  if (only.length && !only.includes(city)) continue
+  const kinds = {}
   for (const [kind, filter] of Object.entries(KINDS)) {
-    out.cities[city][kind] = best((await overpass(filter, lat, lon, 2500)).map(e => place(e, city)))
+    kinds[kind] = best((await overpass(filter, lat, lon, 2500)).map(e => place(e, city)))
     await new Promise(r => setTimeout(r, 2500))
   }
   for (const [cuisine, tag] of Object.entries(CUISINES)) {
     const filter = tag ? `["amenity"~"^(restaurant|fast_food|cafe)$"]["cuisine"~"${tag}",i]` : `["amenity"~"^(restaurant|fast_food|cafe)$"]["diet:vegan"~"^(yes|only)$"]`
-    out.cities[city][cuisine] = best((await overpass(filter, lat, lon, 4000)).map(e => place(e, city)))
+    kinds[cuisine] = best((await overpass(filter, lat, lon, 4000)).map(e => place(e, city)))
     await new Promise(r => setTimeout(r, 2500))
   }
-  const n = Object.values(out.cities[city]).reduce((s, l) => s + l.length, 0)
-  console.log(`${city}: ${n} places`)
-  // Saved after every city: if the job runs out of time, the cities done so far are still committed
-  // (cities not reached keep last week's places).
-  save()
+  // One file per city, written as soon as the city is done (a job that runs out of time keeps what it did).
+  fs.writeFileSync(`data/places/${city.replace(/\s+/g, "-")}.json`, JSON.stringify({ built: new Date().toISOString(), city, attribution: "© OpenStreetMap contributors, ODbL", kinds }))
+  console.log(`${city}: ${Object.values(kinds).reduce((s, l) => s + l.length, 0)} places`)
 }
-function save() {
-  fs.mkdirSync("data", { recursive: true })
-  let previous = {}
-  try { previous = JSON.parse(fs.readFileSync("data/us_places.json", "utf8")).cities || {} } catch {}
-  fs.writeFileSync("data/us_places.json", JSON.stringify({ ...out, cities: { ...previous, ...out.cities } }))
-}
-save()
-console.log(`data/us_places.json: ${(fs.statSync("data/us_places.json").size / 1024).toFixed(0)} KB`)

@@ -1,12 +1,12 @@
 name: Build US Places
-# Weekly: places with opening hours for the biggest US cities (scripts/build_places.mjs), committed
-# as data/us_places.json so place searches are instant and don't depend on OpenStreetMap's servers.
+# Weekly: places with opening hours for the biggest US cities (scripts/build_places.mjs → one file per
+# city in data/places/), so place searches are instant and don't depend on OpenStreetMap's servers.
+# Four groups of cities in parallel (each on its own runner, so Overpass's per-address limit is shared
+# less); each commits its cities when done, or what it finished if it runs out of time.
 on:
-  # Night-time in Europe and the US, when OpenStreetMap's Overpass server isn't overloaded (evenings it
-  # answers 504). Weekly on Sundays, plus once on 2 October to fill the file before launch.
+  # Night-time in Europe and the US, when Overpass isn't overloaded (European evenings it answers 504).
   schedule:
     - cron: '0 4 * * 0'
-    - cron: '0 3 2 10 *'
   workflow_dispatch:
 permissions:
   contents: write
@@ -14,6 +14,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        cities:
+          - "new york,manhattan,brooklyn,queens,los angeles"
+          - "san francisco,chicago,austin,seattle,boston"
+          - "miami,denver,washington,philadelphia"
+          - "atlanta,las vegas,portland,nashville,san diego,houston,dallas"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -21,10 +29,14 @@ jobs:
           node-version: '24'
       - run: node scripts/build_places.mjs
         timeout-minutes: 100
+        env:
+          CITIES_ONLY: ${{ matrix.cities }}
       - name: Commit if changed
         if: always()
         run: |
           git config user.name "actuent-bot"
           git config user.email "bot@actuent.ai"
-          git add data/us_places.json
-          git diff --cached --quiet || (git commit -m "Weekly US places refresh" && git pull --rebase -q && git push)
+          git add data/places
+          git diff --cached --quiet && exit 0
+          git commit -m "US places refresh: ${{ matrix.cities }}"
+          for i in 1 2 3 4 5; do git pull --rebase -q && git push && break; sleep $((i * 10)); done
