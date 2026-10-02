@@ -396,7 +396,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Looking for a place ("coffee in seattle", "anything open now"), not shopping: no products.
   const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
   // Software and services ("best crm", "vpn") aren't shopping either.
-  const productSearch = isDomainQuery || lookingForPlace || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
+  // …and neither are events ("comedy in los angeles", "concerts this weekend").
+  const productSearch = isDomainQuery || lookingForPlace || EVENTY.test(typed) || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
