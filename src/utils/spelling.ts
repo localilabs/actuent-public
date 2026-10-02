@@ -37,10 +37,11 @@ export function fixSpelling(query: string): string | null {
     const afterPlaceWord = /^(in|near|at|around)$/i.test((parts[i - 2] || "").trim())
     // A plural of a known word is fine ("tickets", "cafés").
     if (KNOWN.has(w.replace(/e?s$/, "")) || KNOWN.has(w.replace(/'s$/, ""))) continue
-    const allowed = w.length >= 7 ? 2 : 1
+    // Two mistakes only in long words, and the first letter must match ("bickett" isn't "tickets").
+    const allowed = w.length >= 8 ? 2 : 1
     let best: string | null = null, bestD = allowed + 1
     for (const k of afterPlaceWord ? [...CITY_WORDS, ...WORDS] : WORDS) {
-      if (Math.abs(k.length - w.length) > allowed || k[0] !== w[0] && allowed === 1) continue
+      if (Math.abs(k.length - w.length) > allowed || k[0] !== w[0]) continue
       const d = typos(w, k)
       if (d < bestD) { best = k; bestD = d }
     }

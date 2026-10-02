@@ -10,6 +10,7 @@ import { isExecutable } from "../src/utils/native"
 import { searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
 import { fixSpelling } from "../src/utils/spelling"
+import { categoryLeaders } from "../src/utils/leaders"
 import { getSavedSite } from "../src/utils/crawler"
 import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm, isGeneric } from "../src/utils/define"
 import { openNow, opensNext } from "../src/utils/business"
@@ -389,7 +390,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const shopperCountry = cityCountry(productPlace?.city) || String(req.headers["x-vercel-ip-country"] || "").toLowerCase().slice(0, 2) || null
   // Looking for a place ("coffee in seattle", "anything open now"), not shopping: no products.
   const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
-  const productSearch = isDomainQuery || lookingForPlace || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
+  // Software and services ("best crm", "vpn") aren't shopping either.
+  const productSearch = isDomainQuery || lookingForPlace || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
