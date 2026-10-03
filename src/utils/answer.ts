@@ -77,7 +77,10 @@ export async function answerFromSite(site: any, keywords: string[], question = "
     // The company's article: "Zara (retailer)", "Patagonia (clothing)" when the plain name is something else.
     const isCompany = (w: any) => w && /compan|brand|manufactur|retailer|corporation|business|founded|headquarter|footwear|clothing|maker|chain|firm/i.test(`${w.description || ""} ${w.extract}`)
     const findWiki = async () => {
-      for (const t of [name, `${name} (company)`, `${name} (retailer)`, `${name} (clothing)`, `${name} (brand)`, `${name} Inc.`]) {
+      // The site's name can be a slogan ("Patagonia Outdoor Clothing & Gear"): also the domain's brand word.
+      const brand = String(site.domain).split("/")[0].replace(/^www\./, "").split(".")[0].replace(/-/g, " ")
+      const names = [...new Set([name, brand.charAt(0).toUpperCase() + brand.slice(1), name.split(/\s+/).slice(0, 2).join(" ")])].filter(Boolean)
+      for (const t of names.flatMap(n => [n, `${n} (company)`, `${n} (retailer)`, `${n} (clothing)`, `${n} (brand)`, `${n}, Inc.`])) {
         const w = await wikipediaSummary(t).catch(() => null)
         if (isCompany(w)) return w
       }
