@@ -56,7 +56,9 @@ export async function answerFromSite(site: any, keywords: string[]): Promise<{ d
   } catch {}
   // Price and plan questions ("does notion have a free plan") when the site's pricing page isn't in
   // the index: read it live (a few seconds at most), so the answer comes from the right page.
-  if (PRICING.test(keywords.join(" ")) && !pages.some(p => PRICING_PAGE.test(p.url))) {
+  // An indexed pricing page counts only if it mentions what's asked ("student"): otherwise read it live.
+  const ks = keywords.map(k => k.toLowerCase().replace(/(ies|es|s)$/, "")).filter(k => k.length >= 3)
+  if (PRICING.test(keywords.join(" ")) && !pages.some(p => PRICING_PAGE.test(p.url) && ks.some(k => p.text.toLowerCase().includes(k)))) {
     const live = await pricingPage(site.domain, keywords).catch(() => null)
     if (live) pages.push(live)
   }
