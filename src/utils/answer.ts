@@ -57,7 +57,7 @@ export async function answerFromSite(site: any, keywords: string[]): Promise<{ d
   // Price and plan questions ("does notion have a free plan") when the site's pricing page isn't in
   // the index: read it live (a few seconds at most), so the answer comes from the right page.
   if (PRICING.test(keywords.join(" ")) && !pages.some(p => PRICING_PAGE.test(p.url))) {
-    const live = await pricingPage(site.domain).catch(() => null)
+    const live = await pricingPage(site.domain, keywords).catch(() => null)
     if (live) pages.push(live)
   }
   const stems = keywords.map(k => k.replace(/(ies|es|s)$/, ""))
@@ -84,28 +84,25 @@ const PRICING = /\b(free|plans?|price|prices|pricing|cost|costs|subscriptions?|t
 const PRICING_PAGE = /\/(pricing|prices|plans|premium|priser|preise|tarifs)\b/i
 const score0 = (url: string, keywords: string[]) => PRICING.test(keywords.join(" ")) && PRICING_PAGE.test(url) ? 0.5 : 0
 
-// The first of several attempts that succeeds (null when none do).
-function firstOk<T>(tries: Promise<T>[]): Promise<T | null> {
-  return new Promise(resolve => {
-    let left = tries.length
-    if (!left) resolve(null)
-    for (const t of tries) t.then(resolve, () => { if (--left === 0) resolve(null) })
-  })
-}
 
 // Sites call it different things (Spotify: /premium): the first of these that answers, read in parallel.
-async function pricingPage(domain: string): Promise<{ url: string, text: string } | null> {
+export async function pricingPage(domain: string, keywords: string[] = []): Promise<{ url: string, text: string } | null> {
   const host = domain.replace(/^www\./, "")
-  const tries = ["/pricing", "/premium", "/plans"].map(async path => {
-    if (!await robotsAllows(host, path)) throw new Error("robots")
-    const r = await fetch(`https://${host}${path}`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9" }, redirect: "follow", signal: AbortSignal.timeout(2500) })
-    if (!r.ok || !(r.headers.get("content-type") || "").includes("html") || /\/(404|not-found)/.test(r.url)) throw new Error("no page")
-    return r
-  })
-  const r = await firstOk(tries)
-  if (!r) return null
-  const html = (await r.text()).slice(0, 800_000)
-  const text = html.replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<\/(p|div|li|h\d|td|section|a|button|span|label|option|nav|header|footer)>/gi, ". ").replace(/<[^>]+>/g, " ")
-    .replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c))).replace(/\s*\.\s*(\.\s*)+/g, ". ").replace(/\s+/g, " ")
-  return { url: r.url, text }
+  const pages = await Promise.all(["/pricing", "/premium", "/plans"].map(async path => {
+    try {
+      if (!await robotsAllows(host, path)) return null
+      const r = await fetch(`https://${host}${path}`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html", "Accept-Language": "en-US,en;q=0.9" }, redirect: "follow", signal: AbortSignal.timeout(2500) })
+      if (!r.ok || !(r.headers.get("content-type") || "").includes("html") || /\/(404|not-found)/.test(r.url)) return null
+      const html = (await r.text()).slice(0, 800_000)
+      const text = html.replace(/<(script|style|noscript|svg)[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<\/(p|div|li|h\d|td|section|a|button|span|label|option|nav|header|footer)>/gi, ". ").replace(/<[^>]+>/g, " ")
+        .replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c))).replace(/\s*\.\s*(\.\s*)+/g, ". ").replace(/\s+/g, " ")
+      return { url: r.url, text }
+    } catch { return null }
+  }))
+  // Sites have stubs at some of these (Spotify's /pricing is nearly empty; /premium has the plans):
+  // the page that mentions the question's words most, then the fuller one.
+  const stems = keywords.map(k => k.toLowerCase().replace(/(ies|es|s)$/, "")).filter(k => k.length >= 3)
+  const hits = (t: string) => { const l = t.toLowerCase(); return stems.reduce((n, k) => n + l.split(k).length - 1, 0) }
+  const found = pages.filter((p): p is { url: string, text: string } => !!p && p.text.length > 200)
+  return found.sort((a, b) => hits(b.text) - hits(a.text) || b.text.length - a.text.length)[0] || null
 }
