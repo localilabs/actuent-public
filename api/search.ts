@@ -147,7 +147,7 @@ function decodeEntities(v: string): string {
 }
 
 // Upcoming events for event-style searches ("concerts copenhagen", "what's on in london").
-const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy|playing|performing|on tour|tour dates|touring)\b/i
+const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy|playing|performing|on tour|tour dates|touring|markets?|flea markets?|loppemarked|kræmmermarked|things to do|what to do)\b/i
 // Event lookups that timed out or failed (this instance): their answers aren't cached, so a slow moment
 // doesn't hide events for the next 30 minutes.
 const eventsFailed = new Set<string>()
@@ -160,14 +160,19 @@ async function upcomingEvents(q: string): Promise<any[]> {
   const topic = (place?.what || q).replace(/\b(events?|concerts?|koncerter|koncert|gigs?|what'?s on|shows?|live music|playing|performing|on tour|tour dates|touring)\b/gi, " ").replace(/\b(what'?s|whats|what|when|where|is|are|does|do|any|good|best|in|on|at|this|next|week|weekend|tonight|today|tomorrow|happening|going|playing|performing|perform|play|tour|touring|dates?|live|see|next)\b/gi, " ").replace(/['’?!]/g, " ").replace(/\s+/g, " ").trim()
   const now = new Date()
   const until = weekend ? new Date(now.getTime() + ((7 - now.getUTCDay()) % 7 + 1) * 86400000) : soon ? new Date(now.getTime() + 18 * 3600000) : null
-  const filters = [`start_date=gte.${encodeURIComponent(now.toISOString())}`, ...(until ? [`start_date=lte.${encodeURIComponent(until.toISOString())}`] : [])]
+  // "today": a market that opened at 9 is still on at 10, so events that started up to 5 hours ago count.
+  const since = /\b(today|now|right now)\b/i.test(q) ? new Date(now.getTime() - 5 * 3600000) : now
+  const filters = [`start_date=gte.${encodeURIComponent(since.toISOString())}`, ...(until ? [`start_date=lte.${encodeURIComponent(until.toISOString())}`] : [])]
   // New York includes Brooklyn and Queens venues (and the like for LA and SF).
   const METRO: Record<string, string[]> = { "new york": ["new york", "brooklyn", "manhattan", "queens", "bronx", "forest hills"], "los angeles": ["los angeles", "hollywood", "anaheim", "inglewood"], "san francisco": ["san francisco", "oakland", "berkeley"] }
   if (place) {
     const names = METRO[place.city.toLowerCase()] || [place.city]
     filters.push(`or=${encodeURIComponent(`(${names.map(n => n.replace(/[*,()]/g, "")).flatMap(n => [`city.ilike.*${n}*`, `venue.ilike.*${n}*`]).join(",")})`)}`)
   }
-  if (topic && topic.length >= 3) filters.push(`or=${encodeURIComponent(`(name.ilike.*${topic.replace(/[*,()]/g, "")}*,description.ilike.*${topic.replace(/[*,()]/g, "")}*)`)}`)
+  // Markets: Danish listings say "loppemarked" / "kræmmermarked", so "market" looks for those too.
+  const MARKET = /\b(flea )?markets?\b|\bloppe ?marked\b|\bkræmmermarked\b/i
+  const words = MARKET.test(topic) ? ["marked", "market", "loppe", "flea"] : topic && topic.length >= 3 && !/^(things to do|what to do|to do)$/i.test(topic) ? [topic.replace(/[*,()]/g, "")] : []
+  if (words.length) filters.push(`or=${encodeURIComponent(`(${words.flatMap(w => [`name.ilike.*${w}*`, `description.ilike.*${w}*`]).join(",")})`)}`)
   if (!place && !(topic && topic.length >= 3)) return []
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency&${filters.join("&")}&order=start_date.asc&limit=12`, {
