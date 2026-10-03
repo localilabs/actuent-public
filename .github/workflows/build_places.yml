@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: '0 4 * * 0'
   workflow_dispatch:
+    inputs:
+      cities:
+        description: 'Only these cities, comma-separated (e.g. "seattle,boston"); empty = all four groups'
+        default: ''
+        required: false
 permissions:
   contents: write
 jobs:
@@ -17,11 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cities:
-          - "new york,manhattan,brooklyn,queens,los angeles"
-          - "san francisco,chicago,austin,seattle,boston"
-          - "miami,denver,washington,philadelphia"
-          - "atlanta,las vegas,portland,nashville,san diego,houston,dallas"
+        cities: ${{ fromJSON(github.event.inputs.cities && format('["{0}"]', github.event.inputs.cities) || '["new york,manhattan,brooklyn,queens,los angeles","san francisco,chicago,austin,seattle,boston","miami,denver,washington,philadelphia","atlanta,las vegas,portland,nashville,san diego,houston,dallas"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
