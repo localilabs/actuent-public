@@ -160,8 +160,8 @@ async function upcomingEvents(q: string): Promise<any[]> {
   const topic = (place?.what || q).replace(/\b(events?|concerts?|koncerter|koncert|gigs?|what'?s on|shows?|live music|playing|performing|on tour|tour dates|touring)\b/gi, " ").replace(/\b(what'?s|whats|what|when|where|is|are|does|do|any|good|best|in|on|at|this|next|week|weekend|tonight|today|tomorrow|happening|going|playing|performing|perform|play|tour|touring|dates?|live|see|next)\b/gi, " ").replace(/['’?!]/g, " ").replace(/\s+/g, " ").trim()
   const now = new Date()
   const until = weekend ? new Date(now.getTime() + ((7 - now.getUTCDay()) % 7 + 1) * 86400000) : soon ? new Date(now.getTime() + 18 * 3600000) : null
-  // "today": a market that opened at 9 is still on at 10, so events that started up to 5 hours ago count.
-  const since = /\b(today|now|right now)\b/i.test(q) ? new Date(now.getTime() - 5 * 3600000) : now
+  // "today": a market that opened at 9 is on all day, so events that started up to 8 hours ago count.
+  const since = /\b(today|now|right now)\b/i.test(q) ? new Date(now.getTime() - 8 * 3600000) : now
   // Always a window (3 weeks unless the search says otherwise): scanning every future event was slow.
   const end = until || new Date(now.getTime() + 21 * 86400000)
   const filters = [`start_date=gte.${encodeURIComponent(since.toISOString())}`, `start_date=lte.${encodeURIComponent(end.toISOString())}`]
