@@ -148,6 +148,9 @@ function decodeEntities(v: string): string {
 
 // Upcoming events for event-style searches ("concerts copenhagen", "what's on in london").
 const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this weekend|shows?|exhibitions?|live music|comedy|playing|performing|on tour|tour dates|touring)\b/i
+// Event lookups that timed out or failed (this instance): their answers aren't cached, so a slow moment
+// doesn't hide events for the next 30 minutes.
+const eventsFailed = new Set<string>()
 async function upcomingEvents(q: string): Promise<any[]> {
   if (!EVENTY.test(q)) return []
   // "concerts in new york this weekend": the time words set the dates, not part of the city.
@@ -167,12 +170,13 @@ async function upcomingEvents(q: string): Promise<any[]> {
   if (!place && !(topic && topic.length >= 3)) return []
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency&${filters.join("&")}&order=start_date.asc&limit=12`, {
-      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(2500)
+      headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(4000)
     })
-    const rows: any[] = r.ok ? await r.json() : []
+    if (!r.ok) { eventsFailed.add(q); return [] }
+    const rows: any[] = await r.json()
     return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 5)
       .map(e => ({ ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, visit_url: trackedLink(e.url) }))
-  } catch { return [] }
+  } catch { eventsFailed.add(q); return [] }
 }
 
 // A client searching again within 90 seconds with overlapping words is refining the search.
@@ -594,7 +598,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }
   // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
-  if (degraded) res.setHeader("Cache-Control", "no-store")
+  const eventsMissing = eventsFailed.delete(searchQuery)
+  if (degraded || eventsMissing) res.setHeader("Cache-Control", "no-store")
   else if (results.length > 0 || products.length > 0) {
     cacheSet(key, body)
     // Only full answers are shared for 30 minutes: a thin one may be a slow moment in the database.
