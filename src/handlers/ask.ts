@@ -25,7 +25,7 @@ export default async function ask(req: VercelRequest, res: VercelResponse) {
   const site = (await r.json())[0]
   if (!site) return res.status(404).json({ domain, question: q, sentences: [], message: `${domain} isn't on Actuent yet. Search for it at humans.actuent.ai and it will be added.` })
 
-  const answer = await answerFromSite(site, questionKeywords(q, `${site.name || ""} ${domain}`)).catch(() => null)
+  const answer = await answerFromSite(site, questionKeywords(q, `${site.name || ""} ${domain}`), q).catch(() => null)
   // Actions that fit the question too ("can I book?" → the booking action).
   const words = questionKeywords(q)
   const actions = (site.actions || []).filter((a: any) => words.some(w => `${a.name} ${(a.intent || []).join(" ")}`.toLowerCase().includes(w)))

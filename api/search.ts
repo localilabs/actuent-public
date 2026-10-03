@@ -469,7 +469,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const wiki = asked ? null : await defining
   const definition = wiki ? definitionResult(wiki, typed) : null
   if (definition) results.splice(0, results.length, definition.result as any, ...aboutTheTerm(results, term!).filter((r: any) => r.domain !== "en.wikipedia.org"))
-  const answer = self || greeting ? ABOUT_ACTUENT : asked ? await answerFromSite(asked.site, asked.keywords) : definition ? definition.answer : null
+  const answer = self || greeting ? ABOUT_ACTUENT : asked ? await answerFromSite(asked.site, asked.keywords, typed) : definition ? definition.answer : null
   // Pro: a short answer written from the top results, with sources, for question searches.
   const summary = tier === "pro" && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
   const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
