@@ -201,7 +201,11 @@ export function zoneOf(code: string | undefined, lon?: number): string | undefin
   return TIME_ZONES[c]
 }
 
+// "00:00-00:00" could mean open all day or closed, depending on the site: treated as unknown.
+const usable = (hours: OpeningHours[] | undefined) => (hours || []).filter(h => !(h.opens === h.closes && /^0?0:00$/.test(h.opens)))
+
 export function openNow(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), special?: SpecialHours[], lon?: number): boolean | null {
+  hours = usable(hours)
   if ((!hours?.length && !special?.length) || !country) return null
   const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
   const zone = zoneOf(code, lon)
@@ -222,6 +226,7 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
 // When a closed place opens next ("07:00 today", "09:00 Fri"), in its own time zone, for "nothing's
 // open right now" answers. Looks up to a week ahead; null when the hours are unknown.
 export function opensNext(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), lon?: number): { at: string, in_minutes: number } | null {
+  hours = usable(hours)
   if (!hours?.length || !country) return null
   const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
   const zone = zoneOf(code, lon)
