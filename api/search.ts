@@ -499,6 +499,14 @@ async function search(req: VercelRequest, res: VercelResponse) {
   results.splice(0, results.length, ...shown)
   // "When is Ray LaMontagne playing": the events answer it. Sites stay only when they're about the
   // artist (setlist.fm, the venue), not ray.io for "ray".
+  // "comedy in new york": with events found, sites stay only when they're about that city (a club, a
+  // listings site for it), not comedy.co.uk.
+  const eventCity = events.length && EVENTY.test(typed) ? splitCity(typed.replace(/\b(this weekend|next weekend|this week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim()) : null
+  if (eventCity) {
+    const c = eventCity.city.toLowerCase(), names = c === "new york" ? ["new york", "nyc", "brooklyn", "manhattan", "queens"] : c === "los angeles" ? ["los angeles", "hollywood", " la "] : [c]
+    const local = (r: any) => { const t = ` ${r.name || ""} ${r.domain || ""} ${r.snippet || ""} ${JSON.stringify(r.business?.address || {})} ${JSON.stringify(r.pages || {})} `.toLowerCase(); return names.some(n => t.includes(n)) }
+    results.splice(0, results.length, ...results.filter(local))
+  }
   if (events.length && IS_ARTIST_ASK.test(typed)) {
     const who = typed.toLowerCase().replace(ARTIST_ASK, " ").replace(/[?!.,'’]/g, " ").split(/\s+/).filter(w => w.length >= 3)
     if (who.length) {
