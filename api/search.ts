@@ -511,7 +511,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // artist (setlist.fm, the venue), not ray.io for "ray".
   // "comedy in new york": with events found, sites stay only when they're about that city (a club, a
   // listings site for it), not comedy.co.uk.
-  const eventCity = events.length && EVENTY.test(typed) ? splitCity(typed.replace(/\b(this weekend|next weekend|this week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim()) : null
+  const eventCity = EVENTY.test(typed) ? splitCity(typed.replace(/\b(this weekend|next weekend|this week|tonight|today|tomorrow)\b/gi, " ").replace(/\s+/g, " ").trim()) : null
   if (eventCity) {
     const c = eventCity.city.toLowerCase(), names = c === "new york" ? ["new york", "nyc", "brooklyn", "manhattan", "queens"] : c === "los angeles" ? ["los angeles", "hollywood", " la "] : [c]
     const local = (r: any) => { const t = ` ${r.name || ""} ${r.domain || ""} ${r.snippet || ""} ${JSON.stringify(r.business?.address || {})} ${JSON.stringify(r.pages || {})} `.toLowerCase(); return names.some(n => t.includes(n)) }
