@@ -24,9 +24,13 @@ const CITY_WORDS = CITY_NAMES.filter(c => !c.includes(" "))
 const LEAVE = new Set(["near", "best", "open", "free", "plan", "plans", "with", "from", "that", "this", "what", "when", "where", "does", "have",
   "cost", "buy", "shop", "food", "good", "late", "now", "today", "show", "shows", "tour", "live", "music", "bare", "card", "cards", "post", "rest", "list"])
 
+// Short city names people type ("what's on in cph today", "pizza nyc").
+const SHORT_CITIES: [RegExp, string][] = [[/\b(cph|kbh)\b/gi, "copenhagen"], [/\bnyc\b/gi, "new york"], [/\b(in|near) (la)\b/gi, "$1 los angeles"], [/\b(in|near) (sf)\b/gi, "$1 san francisco"], [/\b(in|near) (dc)\b/gi, "$1 washington"], [/\bldn\b/gi, "london"], [/\bsthlm\b/gi, "stockholm"]]
+
 export function fixSpelling(query: string): string | null {
-  const parts = query.split(/(\s+)/)
-  let changed = false
+  const short = SHORT_CITIES.reduce((q, [re, to]) => q.replace(re, to), query)
+  const parts = short.split(/(\s+)/)
+  let changed = short !== query
   for (let i = 0; i < parts.length; i++) {
     const raw = parts[i], w = raw.toLowerCase().replace(/[?!.,]+$/, "")
     if (w.length < 4 || /[^a-zæøåäöüé'-]/.test(w) || KNOWN.has(w) || LEAVE.has(w)) continue
