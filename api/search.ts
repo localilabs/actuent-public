@@ -519,7 +519,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   if (eventCity) {
     const c = eventCity.city.toLowerCase(), names = c === "new york" ? ["new york", "nyc", "brooklyn", "manhattan", "queens"] : c === "los angeles" ? ["los angeles", "hollywood", " la "] : [c]
     const local = (r: any) => { const t = ` ${r.name || ""} ${r.domain || ""} ${r.snippet || ""} ${JSON.stringify(r.business?.address || {})} ${JSON.stringify(r.pages || {})} `.toLowerCase(); return names.some(n => t.includes(n)) }
-    results.splice(0, results.length, ...results.filter(local))
+    // …and that are places or things to do, not software companies based there (Linkfire for "markets").
+    results.splice(0, results.length, ...results.filter((r: any) => local(r) && !/^(software|developer|ai|finance|jobs|news_media)$/.test(String(r.category || ""))))
   }
   if (events.length && IS_ARTIST_ASK.test(typed)) {
     const who = typed.toLowerCase().replace(ARTIST_ASK, " ").replace(/[?!.,'’]/g, " ").split(/\s+/).filter(w => w.length >= 3)
