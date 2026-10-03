@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "actuent": {
+      "type": "http",
+      "url": "https://agents.actuent.ai/api/mcp"
+    }
+  }
+}

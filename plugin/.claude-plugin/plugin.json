@@ -1,0 +1,9 @@
+{
+  "name": "actuent",
+  "displayName": "Actuent",
+  "version": "1.0.0",
+  "description": "Live answers from the web: what's on today, what's open now, real prices and what a company offers, each with a link to the source. Claude uses it by itself for current and local questions.",
+  "author": { "name": "localilabs", "url": "https://actuent.ai" },
+  "homepage": "https://docs.actuent.ai",
+  "license": "MIT"
+}
