@@ -25,7 +25,7 @@ export async function comparison(q: string): Promise<any[] | null> {
 }
 
 const QUESTION = /^(does|do|is|are|can|could|how much|how many|how do i|how to|what|when|where|which|who|why|will)\b/i
-const STOP = new Set("does do is are can could how much many what when where which who why will i you they it the a an of for to in on at with have has had there their your my any some cost costs price prices plan plans free open".split(" "))
+const STOP = new Set("does do is are can could how much many what when where which who why will i you they it the a an of for to in on at with have has had there their your my any some cost costs price prices plan plans free open founded founder founders owns owner owned based from headquartered headquarters made history started ceo origin company brand".split(" "))
 
 // The site the question is about: the first word or two that match a site's name or domain.
 export async function questionSite(q: string): Promise<{ site: any, keywords: string[] } | null> {
