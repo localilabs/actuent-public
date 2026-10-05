@@ -1,7 +1,7 @@
 import fs from "fs"
 import path from "path"
 import { isRateLimited } from "./limits"
-import { openNow, parseOpeningHoursText, zoneOf } from "./business"
+import { todayHours, openNow, parseOpeningHoursText, zoneOf } from "./business"
 
 // Local searches ("barber amsterdam", "italian restaurant in london"): the city is taken out of the
 // query, businesses whose address is in that city come first (search_lawp_businesses), and when
@@ -146,7 +146,7 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
   const needs = localNeeds(what, zoneOf("US", lon0) || "America/New_York")
   let places = list.map(({ chain, lat, lon, ...p }: any) => {
     const hours = p.opening_hours ? parseOpeningHoursText(p.opening_hours) : []
-    return { ...p, lat, lon, hours, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null }
+    return { ...p, lat, lon, hours, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null, ...(todayHours(hours, "US", lon) || {}) }
   })
   if (needs.features.length) places = places.filter((p: any) => needs.features.every(f => (p.features || []).includes(f)))
   // A time asked for ("open late", "for brunch on sunday"): open then first, unknown hours after, closed ones out.
@@ -263,6 +263,7 @@ async function overpassLookup(what: string, word: string, city: string): Promise
       website: t.website || t["contact:website"] || null, phone: t.phone || t["contact:phone"] || null,
       opening_hours: t.opening_hours || null,
       open_now: /^24\/7$/.test(t.opening_hours || "") ? true : hours.length ? openNow(hours, c.country, new Date(), undefined, lon) : null,
+      ...(todayHours(hours, c.country, lon) || {}),
       map: `https://www.openstreetmap.org/${e.type}/${e.id}`, lat, lon, chain: !!(t.brand || t["brand:wikidata"])
     }
   })

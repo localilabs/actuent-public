@@ -223,6 +223,24 @@ export function openNow(hours: OpeningHours[] | undefined, country: string | und
   ))
 }
 
+// Today's hours in the place's own time zone, for "what time does it close?": { today: "07:00–22:00",
+// closes_at: "22:00" } or { today: "closed" }; null when the hours are unknown.
+export function todayHours(hours: OpeningHours[] | undefined, country: string | undefined, lon?: number, now = new Date()): { today: string, closes_at?: string } | null {
+  hours = usable(hours)
+  if (!hours?.length || !country) return null
+  const code = country.length === 2 ? country.toUpperCase() : COUNTRY_NAMES[country.toLowerCase()]
+  const zone = zoneOf(code, lon)
+  if (!zone) return null
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: zone, weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now).map(p => [p.type, p.value]))
+  const day = String(parts.weekday).slice(0, 2)
+  const spans = hours.filter(h => h.days.includes(day)).sort((a, b) => a.opens.localeCompare(b.opens))
+  if (!spans.length) return { today: "closed" }
+  const minutes = Number(parts.hour) % 24 * 60 + Number(parts.minute)
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5))
+  const current = spans.find(h => minutes < toMin(h.closes) || toMin(h.closes) <= toMin(h.opens)) || spans[spans.length - 1]
+  return { today: spans.map(h => `${h.opens}–${h.closes}`).join(", "), closes_at: current.closes }
+}
+
 // When a closed place opens next ("07:00 today", "09:00 Fri"), in its own time zone, for "nothing's
 // open right now" answers. Looks up to a week ahead; null when the hours are unknown.
 export function opensNext(hours: OpeningHours[] | undefined, country: string | undefined, now = new Date(), lon?: number): { at: string, in_minutes: number } | null {

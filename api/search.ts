@@ -13,7 +13,7 @@ import { fixSpelling } from "../src/utils/spelling"
 import { categoryLeaders } from "../src/utils/leaders"
 import { getSavedSite } from "../src/utils/crawler"
 import { definitionTerm, wikipediaSummary, definitionResult, aboutTheTerm, isGeneric } from "../src/utils/define"
-import { openNow, opensNext } from "../src/utils/business"
+import { todayHours, openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
@@ -596,7 +596,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       // Freshness: when this LAWP was last updated, so agents know how current it is.
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
-      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)) } : {}),
+      ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)), ...(todayHours(r.business.opening_hours, r.business.address?.country, Number(r.business.geo?.lon)) || {}) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)
