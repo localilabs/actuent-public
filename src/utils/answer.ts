@@ -25,11 +25,15 @@ export async function comparison(q: string): Promise<any[] | null> {
 }
 
 const QUESTION = /^(does|do|is|are|can|could|how much|how many|how do i|how to|what|when|where|which|who|why|will)\b/i
-const STOP = new Set("does do is are can could how much many what when where which who why will i you they it the a an of for to in on at with have has had there their your my any some cost costs price prices plan plans free open founded founder founders owns owner owned based from headquartered headquarters made history started ceo origin company brand".split(" "))
+const STOP = new Set("does do is are can could how much many what when where which who why will i you they it the a an of for to in on at with have has had there their your my any some cost costs price prices plan plans free open founded founder founders owns owner owned based from headquartered headquarters made history started ceo origin company brand pricing return returns refund refunds shipping delivery student students discount discounts trial subscription subscriptions warranty cancel cancellation customer service support contact policy tier version".split(" "))
 
 // The site the question is about: the first word or two that match a site's name or domain.
+// The same questions as keywords, the way assistants rewrite them: "patagonia free returns", "notion
+// free plan pricing", "spotify student discount". Not plain prices ("hoka clifton 9 price" is a product).
+const TOPIC = /\b(free (plan|tier|trial|version|shipping|returns?)|pricing|plans|subscriptions?|student|discounts?|trial|returns?|return policy|refunds?|shipping|delivery|warranty|cancel(lation)?|customer service|support|contact|founded|founders?|owners?|headquarters)\b/i
 export async function questionSite(q: string): Promise<{ site: any, keywords: string[] } | null> {
-  if (!QUESTION.test(q.trim()) || q.split(/\s+/).length > 14) return null
+  const n = q.trim().split(/\s+/).length
+  if (!(QUESTION.test(q.trim()) && n <= 14) && !(TOPIC.test(q) && n >= 2 && n <= 7)) return null
   const words = q.toLowerCase().replace(/[?!.,]/g, " ").split(/\s+/).filter(Boolean)
   const candidates = words.filter(w => w.length >= 3 && !STOP.has(w)).slice(0, 4)
   const tries = [...candidates.slice(0, -1).map((w, i) => `${w} ${candidates[i + 1]}`), ...candidates]

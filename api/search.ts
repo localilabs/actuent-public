@@ -334,10 +334,21 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const words = wantsOpen ? typed.replace(new RegExp(OPEN_NOW.source, "gi"), " ").replace(/\s+/g, " ").trim() || typed : typed
   // "cofee in seatle" → "coffee in seattle": near-miss typos in cities and everyday words (src/utils/spelling.ts).
   const respelled = isDomainLike(words) ? null : fixSpelling(words)
-  const localized = nearMe(respelled || words, req.headers["x-vercel-ip-city"] as string | undefined)
-  const searchQuery = cleanQuery(localized)
+  // Calls from Actuent's own MCP server come from Vercel's Dublin servers for every MCP user: their IP
+  // and IP city say nothing about the person, so no "near me" city or remembered city from them.
+  const internal = isInternalCall(req.headers["x-actuent-internal"])
+  const ipCity = internal ? undefined : req.headers["x-vercel-ip-city"] as string | undefined
   const params = readParams(req)
   if (wantsOpen) params.openNow = true
+  // A city given as a filter (city=Copenhagen, as assistants send it) is searched in, not only used
+  // to filter: "vegan restaurant" + Copenhagen searches "vegan restaurant in copenhagen".
+  let asTyped = respelled || words
+  if (params.city && !isDomainLike(words) && !asTyped.toLowerCase().includes(params.city)) {
+    asTyped = `${asTyped} in ${params.city}`
+    params.city = undefined
+  }
+  const localized = nearMe(asTyped, ipCity)
+  const searchQuery = cleanQuery(localized)
 
   res.setHeader("X-Actuent-Tier", tier)
   // Signed-out GET searches can also be cached by Vercel's CDN for 15 minutes (a new deploy clears
@@ -346,9 +357,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // So is a search for places without a city ("cafés"): it favours the searcher's own city.
   const clientKey = ipHash((req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim())
   const searchedCity = splitCity(searchQuery)?.city
-  if (searchedCity) rememberCity(clientKey, searchedCity)
+  if (searchedCity && !internal) rememberCity(clientKey, searchedCity)
   const placeSearch = isPlaceSearch(searchQuery)
-  const homeCity = placeSearch ? recentCity(clientKey) || headerCity(req.headers["x-vercel-ip-city"] as string | undefined) : null
+  const homeCity = placeSearch && !internal ? recentCity(clientKey) || headerCity(ipCity) : null
   res.setHeader("Vary", "Authorization")
   res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed && !placeSearch
     ? "public, max-age=0, s-maxage=900, stale-while-revalidate=3600"
@@ -406,7 +417,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // market (the city's country, or where the searcher is) rank first.
   const productPlace = splitCity(cleanQueryKeepPrice(localized))
   const productText = productPlace ? productPlace.what : cleanQueryKeepPrice(localized)
-  const shopperCountry = cityCountry(productPlace?.city) || String(req.headers["x-vercel-ip-country"] || "").toLowerCase().slice(0, 2) || null
+  const shopperCountry = cityCountry(productPlace?.city) || (internal ? "" : String(req.headers["x-vercel-ip-country"] || "")).toLowerCase().slice(0, 2) || null
   // Looking for a place ("coffee in seattle", "anything open now"), not shopping: no products.
   const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
   // Software and services ("best crm", "vpn") aren't shopping either.
