@@ -80,6 +80,7 @@ const KIDS_SHOPS = /(^|\.)(reima\.(com|dk|se|fi)|polarnopyret\.(com|dk|se|no)|mo
 export function isKids(row: { name: string, domain?: string }): boolean {
   return KIDS.test(row.name) || KIDS_BRANDS.test(row.name) || (!!row.domain && KIDS_SHOPS.test(row.domain))
 }
+const ACCESSORY = /\b(case|cases|cover|covers|sleeve|skin|skins|screen protector|protector|holder|mount|keychain|compatible with|replacement|ear ?tips|charging cable|cable|adapter|strap|bands?|laces|insoles?)\b/i
 const PETS = /\b(dogs?|cats?|pets?|puppy|puppies|kitten|paw|hund|kat|katze|chien|chat|perro|gato|cane|gatto)\b/i
 
 // How well a matching product fits: lower for kids'/pet items the search didn't ask for, for
@@ -95,7 +96,13 @@ export function productFit(query: string, row: { name: string, domain?: string, 
   if (!row.image) fit *= 0.7
   // Model numbers ("pegasus 41", "iphone 15"): the exact model first, the 42 after it.
   const numbers = (query.match(/\b\d{1,4}\b/g) || []).filter(n => !/\b(under|below|over|max|size|str)\s*$/i.test(query.slice(0, query.indexOf(n))))
-  if (numbers.length && !numbers.every(n => new RegExp(`\\b${n}\\b`).test(row.name))) fit *= 0.5
+  if (numbers.length && !numbers.every(n => new RegExp(`\\b${n}\\b`).test(row.name))) {
+    // A different model ("Clifton 11" for "clifton 9") is dropped; a name without a number may still be it.
+    const other = (row.name.match(/\b\d{1,3}\b/g) || []).some(n => !numbers.includes(n))
+    fit *= other ? 0.2 : 0.5
+  }
+  // Accessories for the thing ("AirPods Pro case", "iPhone 15 screen protector") only when asked for.
+  if (ACCESSORY.test(row.name) && !ACCESSORY.test(query)) fit *= 0.2
   return fit
 }
 
