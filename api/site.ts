@@ -377,6 +377,35 @@ function sharePage(res: VercelResponse, q: string) {
 <body style="background:#0a0a0a;color:#f5f5f7;font-family:sans-serif"><p><a href="${esc(target)}" style="color:#ff8a3d">See the search →</a></p></body></html>`)
 }
 
+// /share?city=Copenhagen&when=tonight — a "what's on" card to share: the link preview counts what's
+// on ("Tonight in Copenhagen: 12 concerts · 3 comedy shows · 5 kids' events") and opens the search.
+const WHEN_HOURS: Record<string, [number, number]> = { tonight: [0, 14], today: [0, 16], tomorrow: [16, 40], "this weekend": [0, 96], "this week": [0, 168] }
+const EVENT_KINDS: [string, string, RegExp][] = [
+  ["concert", "concerts", /Genre: |\b(concert|koncert|konsert|konzert|live music|tour)\b/i], ["comedy", "comedy shows", /\b(comedy|stand-?up|improv|komik)\b/i],
+  ["kids'", "kids' events", /\b(kids|family|storytime|børn|barn)\b/i], ["market", "markets", /\b(market|marked|loppe|flea)\b/i],
+  ["theatre show", "theatre shows", /\b(theatre|theater|teater|play)\b/i], ["club night", "club nights", /\b(club night|dj|techno|house music|rave)\b/i]
+]
+async function shareEventsPage(res: VercelResponse, cityIn: string, whenIn: string) {
+  const city = cityIn.replace(/[^\p{L}\p{N} .'-]/gu, "").trim().slice(0, 40)
+  const when = WHEN_HOURS[whenIn.toLowerCase()] ? whenIn.toLowerCase() : "tonight"
+  const [a, b] = WHEN_HOURS[when]
+  const from = new Date(Date.now() + a * 3600_000 - 3 * 3600_000).toISOString(), to = new Date(Date.now() + b * 3600_000).toISOString()
+  const rows: any[] = city ? await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,description&start_date=gte.${encodeURIComponent(from)}&start_date=lte.${encodeURIComponent(to)}&or=(city.ilike.*${encodeURIComponent(city)}*,venue.ilike.*${encodeURIComponent(city)}*)&limit=1000`, { headers: HEADERS, signal: AbortSignal.timeout(6000) }).then(r => r.ok ? r.json() : []).catch(() => []) : []
+  const counts = EVENT_KINDS.map(([one, many, re]) => {
+    const n = rows.filter(e => re.test(`${e.name} ${e.description || ""}`)).length
+    return n ? `${n} ${n === 1 ? one : many}` : ""
+  }).filter(Boolean).slice(0, 3)
+  const Title = `${when.charAt(0).toUpperCase()}${when.slice(1)} in ${city || "your city"}`
+  const subtitle = rows.length ? `${counts.length ? counts.join(" · ") : `${rows.length} events`}. My AI found these with Actuent.` : "My AI checks what's on with Actuent. Lawpy takes full credit."
+  const query = `what's on in ${city} ${when}`
+  const target = `https://humans.actuent.ai/?q=${encodeURIComponent(query)}`
+  const image = ogImage(Title, subtitle, "actuent.ai", "dance")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=1800")
+  return res.status(200).send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${esc(Title)} — found with Actuent</title>
+<meta name="robots" content="noindex"><meta property="og:title" content="${esc(`${Title}: ${rows.length ? `${rows.length} things on` : "what's on"}`)}"><meta property="og:description" content="${esc(subtitle)}"><meta property="og:image" content="${esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta http-equiv="refresh" content="0;url=${esc(target)}"></head>
+<body style="background:#0a0a0a;color:#f5f5f7;font-family:sans-serif"><p><a href="${esc(target)}" style="color:#ff8a3d">See what's on →</a></p></body></html>`)
+}
+
 // /smarter — "Your AI got smarter this week": what Actuent (and so every AI using it) learned in the
 // last 7 days, from the index and the changelog, in Lawpy's voice. Linked from the weekly email.
 async function smarterPage(res: VercelResponse) {
@@ -597,6 +626,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.changes === "rss" && !req.query.domain) return changesFeed(res, null)
   if (req.query.trends) return trendsPage(res, req.query.trends === "json")
   if (req.query.status === "page") return statusPage(res)
+  if (req.query.share != null && req.query.city) return shareEventsPage(res, String(req.query.city), String(req.query.when || "tonight"))
   if (req.query.share != null) return sharePage(res, String(req.query.q || ""))
   if (req.query.smarter != null) return smarterPage(res)
   if (req.query.deals) return dealsPage(res, req.query.deals === "rss")
