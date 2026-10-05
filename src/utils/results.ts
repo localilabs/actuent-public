@@ -6,7 +6,9 @@ export function cleanName(name: string, domain: string): string {
   let n = String(name || "").replace(/&#(\d+);/g, (_, c) => String.fromCodePoint(Number(c))).replace(/&#x([0-9a-f]+);/gi, (_, c) => String.fromCodePoint(parseInt(c, 16)))
     .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim()
   n = n.replace(/^(welcome to|home\s*[-|–—:]\s*|homepage\s*[-|–—:]\s*)/i, "").replace(/\s*[-|–—:]\s*(home|homepage|official (web)?site|welcome)$/i, "").trim()
-  if (/^(home|homepage|index|untitled|welcome|website)$/i.test(n) || !n) {
+  // Interstitial or bot-check titles saved as the name ("Hang Tight! Routing to checkout...", "Just a moment...").
+  const junk = /^(hang tight|routing to|just a moment|please wait|one moment|loading(\.\.\.|…|\s*$)|redirecting|access denied|attention required|checking your browser|are you a robot|security check|pardon our interruption)/i.test(n)
+  if (/^(home|homepage|index|untitled|welcome|website)$/i.test(n) || !n || junk) {
     const label = domain.split("/")[0].replace(/^www\./, "").split(".")[0]
     n = label.charAt(0).toUpperCase() + label.slice(1)
   }

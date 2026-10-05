@@ -567,8 +567,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
     const w = await wikipediaSummary(cleanQuery(words) || words).catch(() => null)
     if (w) { lastResort = definitionResult(w, typed); results.push(lastResort.result) }
   }
-  // Events found are an answer too ("concerts copenhagen this weekend"): no "came back empty-handed".
-  if (events.length) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
+  // Anything found (results, an answer, events) means no "came back empty-handed" or "nothing matched".
+  if (events.length || results.length || products.length || places.length) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
   if (!results.length && !products.length && !places.length && !events.length && !notices.length) notices.push(notice("no_results", { query: typed }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
