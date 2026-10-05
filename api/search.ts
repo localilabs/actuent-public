@@ -152,6 +152,9 @@ const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this we
 // Event lookups that timed out or failed (this instance): their answers aren't cached, so a slow moment
 // doesn't hide events for the next 30 minutes.
 const eventsFailed = new Set<string>()
+// The music venue readers' listings (actuent-crawler venue_readers.ts): every one is a concert.
+const MUSIC_DOMAINS = ["vega.dk", "royalarena.dk", "drkoncerthuset.dk", "ab-b.dk", "pumpehuset.dk", "aegpresents.com", "mercuryeastpresents.com", "irvingplaza.com", "livenation.com", "thebellhouseny.com"]
+
 // What kind of event, for filters ("comedy", "kids"): concerts have a genre instead.
 function eventKind(text: string): string | null {
   if (/Genre: /.test(text)) return "concert"
@@ -187,6 +190,9 @@ async function upcomingEvents(q: string): Promise<any[]> {
   // Market words are always in the event's name ("Loppemarked – Brønshøj Torv"): name only, which is fast.
   const fields = MARKET.test(topic) ? ["name"] : ["name", "description"]
   if (words.length) filters.push(`or=${encodeURIComponent(`(${words.flatMap(w => fields.map(f => `${f}.ilike.*${w}*`)).join(",")})`)}`)
+  // "concerts in copenhagen" with no other topic: music only (a genre, a concert word, or a music
+  // venue's listing), not every library talk and storytime in the city.
+  else if (/\b(concerts?|koncert(er)?|gigs?|live music)\b/i.test(q)) filters.push(`or=${encodeURIComponent(`(description.ilike.*Genre:*,name.ilike.*concert*,name.ilike.*koncert*,description.ilike.*concert*,description.ilike.*koncert*,description.ilike.*live music*,domain.in.(${MUSIC_DOMAINS.join(",")}))`)}`)
   if (!place && !(topic && topic.length >= 3)) return []
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency,description&${filters.join("&")}&order=start_date.asc&limit=16`, {
