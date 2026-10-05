@@ -556,7 +556,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
     const w = await wikipediaSummary(cleanQuery(words) || words).catch(() => null)
     if (w) { lastResort = definitionResult(w, typed); results.push(lastResort.result) }
   }
-  if (!results.length && !products.length && !places.length && !notices.length) notices.push(notice("no_results", { query: typed }))
+  // Events found are an answer too ("concerts copenhagen this weekend"): no "came back empty-handed".
+  if (events.length) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
+  if (!results.length && !products.length && !places.length && !events.length && !notices.length) notices.push(notice("no_results", { query: typed }))
   const unique = notices.filter((n, i) => notices.findIndex(x => x.code === n.code) === i)
   const degraded = unique.some(n => DEGRADED.has(n.code))
   // Busy answers are counted, and the status banner (/api/status) turns on when there are many.
@@ -604,7 +606,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(searchedFor ? { searched_for: searchedFor } : {}),
     // Nothing at all: other wordings to try (English words for foreign ones, the everyday word, fewer words).
     ...(greeting ? { message: "Hi! I'm Lawpy 👋 Actuent gives your AI the live internet. Ask about something happening right now.", try_instead: TRY_THESE } : {}),
-    ...(!greeting && !results.length && !products.length && !places.length && !isDomainQuery ? { try_instead: [...new Set([translateKeywords(typed).foreign ? translateKeywords(typed).query : "", ...alternativeSearches(typed)].filter(x => x && x.toLowerCase() !== typed.toLowerCase().trim()))].slice(0, 3) } : {}),
+    ...(!greeting && !results.length && !products.length && !places.length && !events.length && !isDomainQuery ? { try_instead: [...new Set([translateKeywords(typed).foreign ? translateKeywords(typed).query : "", ...alternativeSearches(typed)].filter(x => x && x.toLowerCase() !== typed.toLowerCase().trim()))].slice(0, 3) } : {}),
     // What happened, in plain English, whenever results are limited or empty (docs.actuent.ai/#errors).
     ...(unique.length ? { notices: unique, message: unique[0].message } : {})
   }
