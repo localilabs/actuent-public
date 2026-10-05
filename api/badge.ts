@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { robotsAllows } from "../src/utils/robots"
 import { readiness } from "../src/utils/score"
 import { ogImage } from "../src/utils/og"
 import { lawpySvg, seasonHat, HAT_HEIGHT } from "../src/utils/lawpy_frames"
@@ -60,6 +61,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const domain = String(req.query.domain || "").toLowerCase().replace(/^https?:\/\//, "").split("/")[0]
   const style = req.query.style === "card" ? "card" : "compact"
   const withLawpy = req.query.lawpy !== "0"
+
+  // /badge.svg?domain=yoursite.com&lawp=1 → "LAWP: valid" while the site's own /.well-known/lawp.json
+  // loads and parses (checked live, cached 6 hours), so the badge updates itself when it breaks or is fixed.
+  if (req.query.lawp != null && domain) {
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
+    let state = "not found", color = "#6b6b78", actions = 0
+    try {
+      if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain) && await robotsAllows(domain, "/.well-known/lawp.json")) {
+        const r = await fetch(`https://${domain}/.well-known/lawp.json`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "application/json" }, redirect: "follow", signal: AbortSignal.timeout(6000) })
+        if (r.ok) {
+          const d = JSON.parse((await r.text()).slice(0, 2_000_000))
+          if (d?.name && Array.isArray(d.actions)) { state = "valid ✓"; color = "#3fb950"; actions = d.actions.length } else { state = "incomplete"; color = "#d29922" }
+        }
+      }
+    } catch { state = "invalid"; color = "#f85149" }
+    if (json) return res.status(200).json({ domain, lawp: state.replace(" ✓", ""), actions, spec: "https://github.com/localilabs/lawp" })
+    return res.status(200).send(badge("LAWP", actions ? `${state} · ${actions} actions` : state, color, actions ? 200 : 150, withLawpy && actions ? ["dance", 0] : undefined))
+  }
 
   if (json) {
     res.setHeader("Cache-Control", "public, max-age=0, s-maxage=21600, stale-while-revalidate=86400")
