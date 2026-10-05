@@ -152,6 +152,15 @@ const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this we
 // Event lookups that timed out or failed (this instance): their answers aren't cached, so a slow moment
 // doesn't hide events for the next 30 minutes.
 const eventsFailed = new Set<string>()
+// What kind of event, for filters ("comedy", "kids"): concerts have a genre instead.
+function eventKind(text: string): string | null {
+  if (/Genre: /.test(text)) return "concert"
+  for (const [kind, re] of [["comedy", /\b(comedy|stand-?up|improv)\b/i], ["kids", /\b(kids|family|storytime|børn|barn)\b/i], ["market", /\b(market|marked|loppe|flea)\b/i],
+    ["theatre", /\b(theatre|theater|teater)\b/i], ["talk", /\b(talk|lecture|foredrag|samtal)\b/i], ["exhibition", /\b(exhibition|udstilling|utställning)\b/i], ["concert", /\b(concert|koncert|konsert|live music)\b/i]] as [string, RegExp][])
+    if (re.test(text)) return kind
+  return null
+}
+
 async function upcomingEvents(q: string): Promise<any[]> {
   if (!EVENTY.test(q)) return []
   // "concerts in new york this weekend": the time words set the dates, not part of the city.
@@ -180,13 +189,18 @@ async function upcomingEvents(q: string): Promise<any[]> {
   if (words.length) filters.push(`or=${encodeURIComponent(`(${words.flatMap(w => fields.map(f => `${f}.ilike.*${w}*`)).join(",")})`)}`)
   if (!place && !(topic && topic.length >= 3)) return []
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency&${filters.join("&")}&order=start_date.asc&limit=12`, {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency,description&${filters.join("&")}&order=start_date.asc&limit=16`, {
       headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(4000)
     })
     if (!r.ok) { eventsFailed.add(q); return [] }
     const rows: any[] = await r.json()
-    return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 5)
-      .map(e => ({ ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, visit_url: trackedLink(e.url) }))
+    return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 12)
+      .map(({ description, ...e }) => {
+        // Concerts carry "Genre: indie rock, post-punk (rock, indie)." (actuent-crawler genres.ts).
+        const genre = String(description || "").match(/Genre: ([^.]+)\./)?.[1]
+        const kind = eventKind(`${e.name} ${description || ""}`)
+        return { ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, ...(genre ? { genre } : {}), ...(kind ? { kind } : {}), visit_url: trackedLink(e.url) }
+      })
   } catch { eventsFailed.add(q); return [] }
 }
 

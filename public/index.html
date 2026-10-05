@@ -331,14 +331,36 @@ function dishesHtml(items) {
     return '<div class="row"><div class="date">' + (d.price != null ? money(d.price, d.currency) : "") + '</div><div>' + esc(d.name) + '<div class="muted small">' + esc(d.place) + ' · ' + esc(d.domain) + '</div></div></div>'
   }).join("") + '</div>'
 }
+// An event's filter tags: broad music families from its genre ("indie rock (rock, indie)" → rock, indie),
+// or its kind (comedy, kids, market…).
+function eventTags(e) {
+  var tags = []
+  if (e.genre) { var fam = e.genre.match(/\(([^)]+)\)/); tags = (fam ? fam[1] : e.genre).split(/\s*,\s*/).slice(0, 3) }
+  if (e.kind && e.kind !== "concert") tags.push(e.kind)
+  return tags.map(function(x) { return x.toLowerCase() })
+}
 function eventsHtml(items) {
   if (!items || !items.length) return ""
-  return '<div class="box"><div class="section">' + esc(t('Upcoming events')) + '</div>' + items.map(function(e) {
+  var counts = {}
+  items.forEach(function(e) { eventTags(e).forEach(function(x) { counts[x] = (counts[x] || 0) + 1 }) })
+  var tags = Object.keys(counts).sort(function(a, b) { return counts[b] - counts[a] }).slice(0, 8)
+  var chips = tags.length > 1 ? '<div class="chips" style="justify-content:flex-start;margin:6px 0 10px">' + ['all'].concat(tags).map(function(x) {
+    return '<button class="chip event-chip" type="button" data-tag="' + esc(x) + '"' + (x === 'all' ? ' style="border-color:#ff8a3d;color:#f0f0f0"' : '') + '>' + esc(x === 'all' ? 'All' : x) + (x === 'all' ? '' : ' · ' + counts[x]) + '</button>'
+  }).join("") + '</div>' : ""
+  return '<div class="box"><div class="section">' + esc(t('Upcoming events')) + '</div>' + chips + items.map(function(e) {
     var where = [e.venue, e.city].filter(Boolean).map(esc).join(", ")
-    return '<div class="row"><div class="date">' + shortDate(e.start_date) + '</div><div><a href="' + safeUrl(e.url) + '" target="_blank" rel="noopener">' + esc(e.name) + '</a>' +
-      '<div class="muted small">' + [where, e.price != null ? money(e.price, e.currency) : "", esc(e.domain)].filter(Boolean).join(" · ") + '</div></div></div>'
+    return '<div class="row event-row" data-tags="' + esc(eventTags(e).join(",")) + '"><div class="date">' + shortDate(e.start_date) + '</div><div><a href="' + safeUrl(e.url) + '" target="_blank" rel="noopener">' + esc(e.name) + '</a>' +
+      '<div class="muted small">' + [where, e.genre ? '🎵 ' + esc(e.genre.replace(/\s*\([^)]*\)/, "")) : "", e.price != null ? money(e.price, e.currency) : "", esc(e.domain)].filter(Boolean).join(" · ") + '</div></div></div>'
   }).join("") + '</div>'
 }
+// Genre and kind chips above the events filter the list in place.
+document.addEventListener("click", function(ev) {
+  var chip = ev.target.closest && ev.target.closest(".event-chip")
+  if (!chip) return
+  var tag = chip.getAttribute("data-tag"), box = chip.closest(".box")
+  box.querySelectorAll(".event-chip").forEach(function(c) { c.style.borderColor = c === chip ? "#ff8a3d" : ""; c.style.color = c === chip ? "#f0f0f0" : "" })
+  box.querySelectorAll(".event-row").forEach(function(r) { r.style.display = tag === "all" || (r.getAttribute("data-tags") || "").split(",").indexOf(tag) >= 0 ? "" : "none" })
+})
 
 // Local searches with no indexed websites yet: places from OpenStreetMap, labelled as such.
 function placesHtml(places) {
