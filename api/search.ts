@@ -20,6 +20,7 @@ import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from
 import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
 import { splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
+import { landmarkHours } from "../src/utils/landmark"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -441,6 +442,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
       ])
     : Promise.resolve([null, null])
   const asking = isDomainQuery ? Promise.resolve(null) : questionSite(typed).catch(() => null)
+  // "Is the Louvre open on Monday?": the place's hours from OpenStreetMap (not for "cafés open now").
+  const placeHoursP = isDomainQuery || placeSearch ? Promise.resolve(null) : landmarkHours(typed).catch(() => null)
   // "What is a cat?": Wikipedia's summary, looked up alongside the search.
   const term = isDomainQuery ? null : definitionTerm(words)
   const defining = term ? wikipediaSummary(term).catch(() => null) : Promise.resolve(null)
@@ -609,6 +612,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
     ...(answer || lastResort ? { answer: { ...(answer || lastResort.answer), note: "Sentences from the site's own pages that match the question; check the page before relying on them." } } : {}),
     ...(events.length ? { events } : {}),
+    ...(await placeHoursP ? { place_hours: await placeHoursP } : {}),
     ...(dishes.length ? { dishes } : {}),
     // A search for places without a city: places near the searcher came first.
     ...(searchOpts.nearCity ? { near: searchOpts.nearCity } : {}),
