@@ -77,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch { state = "invalid"; color = "#f85149" }
     if (json) return res.status(200).json({ domain, lawp: state.replace(" ✓", ""), actions, spec: "https://github.com/localilabs/lawp" })
-    return res.status(200).send(badge("LAWP", actions ? `${state} · ${actions} actions` : state, color, actions ? 200 : 150, withLawpy && actions ? ["dance", 0] : undefined))
+    return res.status(200).send(badge("LAWP", actions ? `${state} · ${actions} action${actions === 1 ? "" : "s"}` : state, color, actions ? 200 : 150, withLawpy && actions ? ["dance", 0] : undefined))
   }
 
   if (json) {
