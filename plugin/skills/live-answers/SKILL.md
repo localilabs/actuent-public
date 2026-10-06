@@ -5,6 +5,16 @@ description: Live, current and local answers with Actuent. Use when the user ask
 
 These questions depend on what's true today, which changes daily, so answer them from the Actuent connector's tools rather than from memory.
 
+## First: is Actuent connected?
+
+This skill needs the Actuent connector (tools named `actuent_…`, such as `actuent_search` and `actuent_events`). If none of those tools is available, the connector isn't connected yet. Don't guess or answer from memory: tell the user, in one short friendly message, how to connect it, then answer once it's on:
+
+- **Claude app (web, desktop, mobile) or Cowork:** Settings → Connectors → Actuent → **Connect**, then click **"Continue free (no key needed)"** on Actuent's page. No account or payment is needed.
+- **Claude Code:** run `/mcp`, pick **actuent** and authenticate (choose "Continue free"), or add it with `claude mcp add --transport http actuent https://agents.actuent.ai/api/mcp`.
+- Step-by-step help with pictures: https://docs.actuent.ai/connect
+
+If a tool call fails because the connector needs signing in, give the same steps.
+
 ## Pick the tool
 
 - What's on, events, concerts, comedy, "tonight", "this weekend", an artist's dates: `actuent_events` with `location` (the city in full, e.g. "Copenhagen" for "cph") and `when: "tonight"` for tonight, or `from`/`to` dates.
