@@ -153,6 +153,14 @@ const EVENTY = /\b(events?|concerts?|gigs?|what'?s on|festivals?|tonight|this we
 // Event lookups that timed out or failed (this instance): their answers aren't cached, so a slow moment
 // doesn't hide events for the next 30 minutes.
 const eventsFailed = new Set<string>()
+// "checked today" … "checked 3 weeks ago: may have changed, read it live with actuent_get_page".
+function freshness(hours: number | null): string {
+  if (hours == null) return "unknown"
+  if (hours < 24) return "checked today"
+  if (hours < 24 * 7) return `checked ${Math.round(hours / 24)} day${Math.round(hours / 24) === 1 ? "" : "s"} ago`
+  return `checked ${Math.round(hours / 24 / 7)} week${Math.round(hours / 24 / 7) === 1 ? "" : "s"} ago: may have changed; for prices, hours or availability read the page live (actuent_get_page)`
+}
+
 // The music venue readers' listings (actuent-crawler venue_readers.ts): every one is a concert.
 const MUSIC_DOMAINS = ["vega.dk", "royalarena.dk", "drkoncerthuset.dk", "ab-b.dk", "pumpehuset.dk", "aegpresents.com", "mercuryeastpresents.com", "irvingplaza.com", "livenation.com", "thebellhouseny.com"]
 
@@ -647,6 +655,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
       // Business details: open right now, in the business's own time zone (null when unknown).
       ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)), ...(todayHours(r.business.opening_hours, r.business.address?.country, Number(r.business.geo?.lon)) || {}) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
+      // In plain words, for assistants: how fresh this is, and what to do when it may be out of date.
+      freshness: freshness(r.updated_at ? (now - Date.parse(r.updated_at)) / 3600_000 : null),
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)
     })),
