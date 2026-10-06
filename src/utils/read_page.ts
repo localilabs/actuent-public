@@ -85,6 +85,37 @@ function links(html: string, base: URL) {
   return out
 }
 
+// What a person can do on the page, as actions an assistant can prepare (the user confirms or finishes):
+// booking widgets with their direct link, contact and sign-up forms with their fields, call, email, map.
+const BOOKING: [RegExp, string][] = [
+  [/https?:\/\/(?:www\.)?opentable\.[a-z.]+\/(?:r\/|restref\/|booking\/)[^"'\s<>]+/i, "OpenTable"], [/https?:\/\/(?:www\.)?resy\.com\/cities\/[^"'\s<>]+/i, "Resy"],
+  [/https?:\/\/(?:www\.)?exploretock\.com\/[^"'\s<>]+/i, "Tock"], [/https?:\/\/(?:www\.)?sevenrooms\.com\/reservations\/[^"'\s<>]+/i, "SevenRooms"],
+  [/https?:\/\/(?:book\.)?dinesuperb\.com\/[^"'\s<>]+|https?:\/\/(?:www\.)?dinnerbooking\.com\/[^"'\s<>]+/i, "table booking"], [/https?:\/\/calendly\.com\/[^"'\s<>]+/i, "Calendly"],
+  [/https?:\/\/(?:www\.)?booksy\.com\/[^"'\s<>]+/i, "Booksy"], [/https?:\/\/(?:www\.)?fresha\.com\/[^"'\s<>]+/i, "Fresha"], [/https?:\/\/[a-z0-9-]+\.simplybook\.[a-z.]+[^"'\s<>]*/i, "SimplyBook"]
+]
+function actions(html: string, base: URL) {
+  const out: any[] = [], seen = new Set<string>()
+  const add = (a: any) => { if (!seen.has(a.url || a.type)) { seen.add(a.url || a.type); out.push(a) } }
+  for (const [re, provider] of BOOKING) {
+    const m = html.match(re)
+    if (m) add({ type: "book", provider, name: `Book via ${provider}`, url: decodeEntities(m[0]).replace(/["'].*$/, ""), how: "Open the link; the date, time and party size are chosen there." })
+  }
+  for (const f of html.match(/<form[\s\S]*?<\/form>/gi) || []) {
+    const fields = [...f.matchAll(/<(?:input|textarea|select)[^>]*name=["']([^"']+)["'][^>]*>/gi)].map(m => m[1]).filter(n => !/^(_|csrf|token|nonce|g-recaptcha|honeypot|website_url)/i.test(n)).slice(0, 12)
+    const action = f.match(/action=["']([^"']*)["']/i)?.[1]
+    const kind = /search/i.test(f.match(/<form[^>]*>/i)?.[0] || "") || fields.length === 1 && /^(q|s|search|query)$/i.test(fields[0]) ? null
+      : fields.some(n => /message|comment|enquiry|inquiry|besked/i.test(n)) ? "contact" : fields.some(n => /mail/i.test(n)) && fields.length <= 3 ? "subscribe" : null
+    if (kind) add({ type: kind, name: kind === "contact" ? "Send a message (contact form)" : "Sign up (newsletter)", url: base.href, fields, ...(action ? { form_action: (() => { try { return new URL(decodeEntities(action), base).href } catch { return undefined } })() } : {}), how: "Fill in the form on the page; prepare the text with the user first." })
+  }
+  const tel = html.match(/href=["']tel:([^"']+)["']/i)?.[1]
+  if (tel) add({ type: "call", name: "Call", phone: decodeURIComponent(tel).trim(), url: `tel:${tel.trim()}` })
+  const mail = html.match(/href=["']mailto:([^"'?]+)/i)?.[1]
+  if (mail) add({ type: "email", name: "Email", email: decodeURIComponent(mail).trim(), url: `mailto:${mail.trim()}` })
+  const buy = html.match(/<(?:button|input)[^>]*(?:name=["']add["']|add-to-cart|addtocart|AddToCart)[^>]*>/i)
+  if (buy) add({ type: "buy", name: "Add to cart", url: base.href, how: "Pick the options on the page (or use a variant's cart_url when listed)." })
+  return out
+}
+
 // Shopify product pages publish /products/<handle>.js with every variant: each gets a cart link that
 // opens the shop's cart with that size or colour already in it.
 async function shopifyVariants(url: URL, html: string) {
@@ -159,6 +190,7 @@ export async function readPage(raw: string): Promise<{ ok: boolean, status: numb
       ...(events.length ? { events } : {}),
       ...(business ? { business: { ...business, ...(business.opening_hours?.length ? { open_now: openNow(business.opening_hours, country, new Date(), business.special_hours, lon), ...(todayHours(business.opening_hours, country, lon) || {}) } : {}) } } : {}),
       ...(recipe(ld) ? { recipe: recipe(ld) } : {}), ...(faq(ld) ? { faq: faq(ld) } : {}), ...(article(ld) ? { article: article(ld) } : {}),
+      ...(actions(html, finalUrl).length ? { actions: actions(html, finalUrl) } : {}),
       links: links(html, finalUrl),
       note: "Read live from the page just now. Quote it and link the user to the url to confirm."
     }
