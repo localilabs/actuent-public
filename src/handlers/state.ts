@@ -14,8 +14,10 @@ let cache: { body: unknown, expires: number } | null = null
 // sites timed out and the page showed nothing. Small ones are counted exactly.
 async function count(table: string, filter = "", how: "exact" | "estimated" = "estimated"): Promise<number | null> {
   try {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*${filter ? `&${filter}` : ""}`, {
-      method: "HEAD", headers: { ...HEADERS, "Prefer": `count=${how}`, "Range": "0-0" }, signal: AbortSignal.timeout(8000)
+    // One small column: selecting every column made the count read whole rows (and time out).
+    const column = table === "lawp_sites" ? "domain" : "*"
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${column}${filter ? `&${filter}` : ""}`, {
+      method: "HEAD", headers: { ...HEADERS, "Prefer": `count=${how}`, "Range": "0-0" }, signal: AbortSignal.timeout(12000)
     })
     const total = r.headers.get("content-range")?.split("/")[1]
     return total && total !== "*" ? Number(total) : null
