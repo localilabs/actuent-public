@@ -17,3 +17,7 @@ create table if not exists page_watches (
   unique (api_key, url, watch_for, phrase)
 );
 alter table page_watches enable row level security;
+
+-- The "State of the AI web" page counts sites that publish their own LAWP: a tiny index (only those
+-- rows) makes that instant instead of reading the whole sites table.
+create index if not exists lawp_sites_native_idx on lawp_sites (popularity_rank) where native is true;
