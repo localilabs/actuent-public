@@ -335,6 +335,22 @@ async function search(req: VercelRequest, res: VercelResponse) {
         retry_after_seconds: limit.reset
       })
     }
+    // Abuse that rotates IP addresses: a free-tier allowance per /24 network (5× one IP's), and one
+    // shared allowance for scripts that don't say who they are (python-requests, curl, Go…).
+    // Browsers, AI assistants (via the MCP server) and Actuent's SDKs aren't affected. No blocks, just 429.
+    if (tier === "free") {
+      const ua = String(req.headers["user-agent"] || "")
+      const net = /^\d+\.\d+\.\d+\.\d+$/.test(ip) ? ip.split(".").slice(0, 3).join(".") : null
+      const script = !/actuent/i.test(ua) && (ua === "" ? "none" : ua.match(/^(python-requests|python-urllib|python-httpx|aiohttp|curl|wget|go-http-client|okhttp|java|libwww-perl|ruby|php|scrapy|httpie)/i)?.[1].toLowerCase())
+      const checks: [string, number][] = [...(net ? [[`search:net:${net}`, maxPerMinute * 5] as [string, number]] : []), ...(script ? [[`search:script:${script}`, 300] as [string, number]] : [])]
+      for (const [key, max] of checks) {
+        const shared = await rateLimit(key, max)
+        if (shared.limited) {
+          res.setHeader("Cache-Control", "no-store")
+          return res.status(429).json({ error: "Rate limit exceeded", message: `Too many free searches from your network or tool right now. Please wait ${shared.reset} seconds, or use an API key (Actuent Pro at actuent.ai).`, retry_after_seconds: shared.reset })
+        }
+      }
+    }
   }
 
   const query = req.method === "GET"
