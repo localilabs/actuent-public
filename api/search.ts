@@ -21,6 +21,7 @@ import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/result
 import { splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 import { landmarkHours } from "../src/utils/landmark"
+import { readPage } from "../src/utils/read_page"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -353,6 +354,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+  }
+
+  // ?read=<url>: one page read live and returned as structured data (src/utils/read_page.ts).
+  if (req.query?.read || req.body?.read) {
+    const page = await readPage(String(req.query?.read || req.body?.read))
+    res.setHeader("Cache-Control", "private, no-store")
+    return res.status(page.status).json(page.body)
   }
 
   const query = req.method === "GET"
