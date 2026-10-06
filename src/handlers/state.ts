@@ -10,10 +10,12 @@ const LANGUAGES = ["en", "de", "fr", "es", "nl", "it", "pt", "ja", "da", "sv"]
 
 let cache: { body: unknown, expires: number } | null = null
 
-async function count(table: string, filter = ""): Promise<number | null> {
+// Big tables (sites, products, searches) use Postgres's fast estimate: an exact count over ~100,000
+// sites timed out and the page showed nothing. Small ones are counted exactly.
+async function count(table: string, filter = "", how: "exact" | "estimated" = "estimated"): Promise<number | null> {
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*${filter ? `&${filter}` : ""}`, {
-      method: "HEAD", headers: { ...HEADERS, "Prefer": "count=exact", "Range": "0-0" }
+      method: "HEAD", headers: { ...HEADERS, "Prefer": `count=${how}`, "Range": "0-0" }, signal: AbortSignal.timeout(8000)
     })
     const total = r.headers.get("content-range")?.split("/")[1]
     return total && total !== "*" ? Number(total) : null
@@ -22,15 +24,20 @@ async function count(table: string, filter = ""): Promise<number | null> {
 
 async function build() {
   const week = encodeURIComponent(new Date(Date.now() - 7 * 86400000).toISOString())
-  const [sites, minimal, native, withActions, products, pages, searches, searchesWeek, ...languageCounts] = await Promise.all([
+  const now = encodeURIComponent(new Date().toISOString())
+  const [sites, minimal, native, withActions, products, pages, searches, searchesWeek, events, topNative, withHours, ...languageCounts] = await Promise.all([
     count("lawp_sites"),
     count("lawp_sites", "actions=eq.%5B%5D"),
-    count("lawp_sites", "native=eq.true"),
+    count("lawp_sites", "native=eq.true", "exact"),
     count("lawp_sites", "actions=neq.%5B%5D"),
     count("lawp_items"),
     count("lawp_pages"),
     count("searches"),
-    count("searches", `created_at=gte.${week}`),
+    count("searches", `created_at=gte.${week}`, "exact"),
+    count("lawp_events", `start_date=gte.${now}`, "exact"),
+    // How many of the web's 1,000 best-known sites publish their own LAWP (the AI-ready share).
+    count("lawp_sites", "native=eq.true&popularity_rank=lte.1000", "exact"),
+    count("lawp_sites", "business=not.is.null"),
     ...LANGUAGES.map(l => count("lawp_sites", `language=eq.${l}`))
   ])
 
@@ -57,6 +64,9 @@ async function build() {
     sites_native_lawp: native,
     ai_readable_percent: sites && withActions != null ? Math.round((withActions / sites) * 1000) / 10 : null,
     products_indexed: products,
+    upcoming_events: events,
+    places_with_details: withHours,
+    top_1000_sites_with_own_lawp: topNative,
     pages_indexed: pages,
     searches_total: searches,
     searches_7d: searchesWeek,
