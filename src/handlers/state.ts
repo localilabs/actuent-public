@@ -30,7 +30,7 @@ async function build() {
   const [sites, minimal, native, withActions, products, pages, searches, searchesWeek, events, topNative, withHours, ...languageCounts] = await Promise.all([
     count("lawp_sites"),
     count("lawp_sites", "actions=eq.%5B%5D"),
-    count("lawp_sites", "native=eq.true", "exact"),
+    count("lawp_sites", "native=eq.true"),
     count("lawp_sites", "actions=neq.%5B%5D"),
     count("lawp_items"),
     count("lawp_pages"),
@@ -38,7 +38,7 @@ async function build() {
     count("searches", `created_at=gte.${week}`, "exact"),
     count("lawp_events", `start_date=gte.${now}`, "exact"),
     // How many of the web's 1,000 best-known sites publish their own LAWP (the AI-ready share).
-    count("lawp_sites", "native=eq.true&popularity_rank=lte.1000", "exact"),
+    count("lawp_sites", "native=eq.true&popularity_rank=lte.1000"),
     count("lawp_sites", "business=not.is.null"),
     ...LANGUAGES.map(l => count("lawp_sites", `language=eq.${l}`))
   ])
