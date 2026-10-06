@@ -392,7 +392,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Calls from Actuent's own MCP server come from Vercel's Dublin servers for every MCP user: their IP
   // and IP city say nothing about the person, so no "near me" city or remembered city from them.
   const internal = isInternalCall(req.headers["x-actuent-internal"])
-  const ipCity = internal ? undefined : req.headers["x-vercel-ip-city"] as string | undefined
+  // …but the assistant can say where the user is (near=Copenhagen, or the user's area), for "near me".
+  const nearParam = String(req.query?.near || req.body?.near || "").replace(/[^\p{L}\p{N} ,.'-]/gu, "").trim().slice(0, 60)
+  const ipCity = nearParam ? nearParam.split(",")[0].trim() : internal ? undefined : req.headers["x-vercel-ip-city"] as string | undefined
   const params = readParams(req)
   if (wantsOpen) params.openNow = true
   // A city given as a filter (city=Copenhagen, as assistants send it) is searched in, not only used
@@ -414,7 +416,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const searchedCity = splitCity(searchQuery)?.city
   if (searchedCity && !internal) rememberCity(clientKey, searchedCity)
   const placeSearch = isPlaceSearch(searchQuery)
-  const homeCity = placeSearch && !internal ? recentCity(clientKey) || headerCity(ipCity) : null
+  const homeCity = placeSearch ? (nearParam ? headerCity(ipCity) : !internal ? recentCity(clientKey) || headerCity(ipCity) : null) : null
   res.setHeader("Vary", "Authorization")
   res.setHeader("Cache-Control", req.method === "GET" && !apiKey && localized === typed && !placeSearch
     ? "public, max-age=0, s-maxage=900, stale-while-revalidate=3600"
