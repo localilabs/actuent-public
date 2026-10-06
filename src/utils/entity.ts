@@ -52,7 +52,8 @@ export async function entity(name: string): Promise<any | null> {
     wiki ? json(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wiki)}`) : null,
     domain ? json(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,name,category,business&domain=eq.${encodeURIComponent(domain)}`, HEADERS).then((r: any) => r?.[0] || null) : null,
     json(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,start_date,venue,city,price,currency,url&name=ilike.*${term}*&start_date=gte.${now}&order=start_date.asc&limit=10`, HEADERS),
-    json(`${SUPABASE_URL}/rest/v1/lawp_items?select=name,price,currency,url,domain&name=ilike.*${term}*&price=not.is.null&order=price_eur.asc&limit=8`, HEADERS)
+    // Whole word only ("Hoka", not "Pillars of Ashoka").
+    json(`${SUPABASE_URL}/rest/v1/lawp_items?select=name,price,currency,url,domain&or=${encodeURIComponent(`(name.ilike.${label.replace(/[*,()]/g, "")} *,name.ilike.* ${label.replace(/[*,()]/g, "")} *,name.ilike.* ${label.replace(/[*,()]/g, "")})`)}&price=not.is.null&order=price_eur.asc&limit=8`, HEADERS)
   ])
   const value = {
     id, wikidata: `https://www.wikidata.org/wiki/${id}`, name: label, description: e.descriptions?.en?.value || null,
