@@ -200,7 +200,9 @@ async function upcomingEvents(q: string): Promise<any[]> {
     })
     if (!r.ok) { eventsFailed.add(q); return [] }
     const rows: any[] = await r.json()
-    return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`)).slice(0, 12)
+    // Adult events (fetish, kink, rope bondage, swingers) only when the search asks for them.
+    const ADULT = /\b(kinbaku|shibari|bdsm|fetish|kink[sy]?|swingers?|erotic|erotik|strip ?club|sex ?party|tantra massage)\b/i
+    return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`) && (ADULT.test(q) || !ADULT.test(`${e.name} ${e.venue || ""} ${e.url}`))).slice(0, 12)
       .map(({ description, ...e }) => {
         // Concerts carry "Genre: indie rock, post-punk (rock, indie)." (actuent-crawler genres.ts).
         const genre = String(description || "").match(/Genre: ([^.]+)\./)?.[1]
