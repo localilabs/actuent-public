@@ -22,6 +22,7 @@ import { splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
+import { entity } from "../src/utils/entity"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -362,6 +363,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+  }
+
+  // ?entity=<name>: one thing (band, company, brand, place) with everything Actuent knows about it.
+  if (req.query?.entity || req.body?.entity) {
+    const found = await entity(String(req.query?.entity || req.body?.entity)).catch(() => null)
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+    return res.status(found ? 200 : 404).json(found || { error: "Nothing found by that name" })
   }
 
   // ?read=<url>: one page read live and returned as structured data (src/utils/read_page.ts).
