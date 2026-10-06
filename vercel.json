@@ -123,6 +123,10 @@
       "dest": "/api/badge.ts?format=$1"
     },
     {
+      "src": "/lawp/([a-z0-9.-]+)\\.json",
+      "dest": "/api/site.ts?domain=$1&format=lawp&hosted=1"
+    },
+    {
       "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state|warm|site-search|rates|events|recently-fixed|player|discord/[0-9a-fA-F]{64})|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|share/?|smarter/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
       "dest": "https://bcmwypjrahtxogytsvuc.supabase.co/functions/v1/api/$1",
       "headers": {

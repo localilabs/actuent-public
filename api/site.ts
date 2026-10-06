@@ -649,7 +649,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ?format=lawp: the site's LAWP as a file, ready to publish at /.well-known/lawp.json.
   if (req.query.format === "lawp") {
     res.setHeader("Content-Type", "application/json; charset=utf-8")
-    res.setHeader("Content-Disposition", `attachment; filename="lawp.json"`)
+    // /lawp/<domain>.json: hosted for sites that can't publish files themselves (Squarespace, Wix,
+    // Webflow…); they point to it with <link rel="lawp" href="…"> in their page head.
+    if (req.query.hosted) res.setHeader("Access-Control-Allow-Origin", "*")
+    else res.setHeader("Content-Disposition", `attachment; filename="lawp.json"`)
     res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
     // A site with its own LAWP gets it back as published (endpoints included); others get a starter.
     const file = site.native ? { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions: site.actions || [] } : starterLawp(site, domain)
