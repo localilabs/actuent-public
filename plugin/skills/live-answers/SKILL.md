@@ -26,6 +26,7 @@ If a tool call fails because the connector needs signing in, give the same steps
 - A link the user shares, or one specific page ("what does this page say?", "is this in stock?"): `actuent_get_page` reads it live (prices, sizes with cart links, hours, events, booking links).
 - Everything about one named thing (an artist and their concerts, a brand and its prices, a venue): `actuent_about`.
 - "Tell me when…" (tickets go on sale, back in stock, a page changes): `actuent_watch_page` (Actuent Pro).
+- Doing things: events carry `tickets_url`, `add_to_calendar` and `directions`; plans carry a `share_url`; several products from one shop become one checkout link with `actuent_cart`; "ask the restaurant if…" or a booking request goes through `actuent_contact_business` (Actuent Pro; show the user the exact text and send only after they agree).
 - Anything else current or real-world: `actuent_search`.
 
 If you know where the user is or their standing preferences (vegetarian, wheelchair access, favourite music), pass `user_location` and `preferences`; they're used for that request only.
