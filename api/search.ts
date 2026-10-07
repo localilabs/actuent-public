@@ -25,6 +25,7 @@ import { readPage } from "../src/utils/read_page"
 import { entity } from "../src/utils/entity"
 import { eventIcs } from "../src/utils/ics"
 import { planPage } from "../src/utils/plan_page"
+import { sendEmail } from "../src/utils/email"
 import { sendBusinessMessage, answerMessage, optOut, messageStatus } from "../src/utils/messages"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
@@ -375,6 +376,16 @@ async function search(req: VercelRequest, res: VercelResponse) {
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     res.setHeader("Cache-Control", "no-store")
     return res.status(200).send(`<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Actuent</title><body style="background:#0a0a0a;color:#f0f0f0;font-family:-apple-system,sans-serif;padding:40px;text-align:center"><img src="https://api.actuent.ai/assets/lawpy/lawpy-wave.gif" width="96" alt=""><p style="font-size:18px">${text.replace(/[<>&]/g, "")}</p></body>`)
+  }
+  // Receipt for an action Actuent's MCP server carried out (internal only): who, what, where, result.
+  if (req.query?.op === "receipt") {
+    if (!isInternalCall(req.headers["x-actuent-internal"])) return res.status(403).json({ error: "Only through Actuent's MCP server" })
+    const b = req.body || {}
+    const e = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!))
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(String(b.to || ""))) return res.status(400).json({ error: "Bad address" })
+    const ok = await sendEmail(String(b.to), `Done: ${String(b.action || "action").slice(0, 60)} on ${String(b.domain || "").slice(0, 60)}`,
+      `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:560px"><p>Your AI assistant did this for you through Actuent:</p><p><strong>${e(b.action)}</strong> on <strong>${e(b.domain)}</strong></p>${b.summary ? `<p style="white-space:pre-wrap;color:#444">${e(String(b.summary).slice(0, 1200))}</p>` : ""}<p style="color:#777;font-size:12px">${b.undo ? e(b.undo) : "If this wasn't what you wanted, contact the site directly."} Questions: support@localilabs.com</p></div>`)
+    return res.status(ok ? 200 : 503).json({ sent: ok })
   }
   if (req.query?.op === "message" || req.query?.op === "message_status") {
     if (!isInternalCall(req.headers["x-actuent-internal"])) return res.status(403).json({ error: "Only through Actuent's MCP server" })
