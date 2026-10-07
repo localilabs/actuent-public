@@ -20,7 +20,7 @@ Question: ${query}
 Sources:
 ${sources.map(s => `[${s.n}] ${s.domain}: ${s.text.replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}
 Reply with JSON only: {"answer": "..."}`
-  const out = safeParseJSON(await complete(prompt, 5000, tier) || "")
+  const out = safeParseJSON(await complete(prompt, 9000, tier) || "")
   const text = typeof out?.answer === "string" ? out.answer.trim() : ""
   // Only an answer that actually cites the sources.
   if (!text || !/\[\d\]/.test(text)) return null
