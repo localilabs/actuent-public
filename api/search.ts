@@ -19,7 +19,7 @@ import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
 import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
-import { splitCity, cityCountry } from "../src/utils/local"
+import { WANTS_BEST, splitCity, cityCountry } from "../src/utils/local"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
@@ -497,7 +497,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
   // The deploy is part of it too, so a fix shows up straight away instead of after the cache expires.
-  const key = `${tier}${req.query?.lawpy === "1" ? "+lawpy" : ""}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}${homeCity ? `@${homeCity.toLowerCase()}` : ""}`
+  const key = `${tier}${req.query?.lawpy === "1" ? "+lawpy" : ""}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}${homeCity ? `@${homeCity.toLowerCase()}` : ""}${WANTS_BEST.test(typed) ? "+best" : ""}`
   // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
   // (A memory hit isn't stored again: that would keep an old answer alive for as long as people ask.)
   const inMemory = cacheGet(key)
@@ -582,7 +582,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // nothing was found meant the correction was never offered.
   const spelling = !isDomainQuery && /[a-z]{5,}/i.test(searchQuery) ? suggestSpelling(searchQuery) : Promise.resolve(null)
   // homeCity: the searcher's last searched city, else where they are (Vercel's header).
-  const searchOpts: any = { lite, places, related, didYouMean: nameTypos, homeCity }
+  const searchOpts: any = { lite, places, related, didYouMean: nameTypos, homeCity, best: WANTS_BEST.test(typed) }
   const [results, products, events, dishes] = await Promise.all([
     searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; return r }),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),

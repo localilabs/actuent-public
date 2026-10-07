@@ -443,7 +443,7 @@ const FREE_LLM_PER_MIN = parseInt(process.env.FREE_LLM_PER_MIN || "60")
 // `slow` is set when a database search timed out or failed: the answer is thinner than usual.
 // `homeCity`: where the searcher is (their last searched city, or their location); a search for
 // places that names no city ("cafés") then favours that city, and `nearCity` says it did.
-export type SearchOptions = { lite?: boolean, places?: any[], related?: string[], didYouMean?: string[], slow?: boolean, homeCity?: string | null, nearCity?: string }
+export type SearchOptions = { best?: boolean, lite?: boolean, places?: any[], related?: string[], didYouMean?: string[], slow?: boolean, homeCity?: string | null, nearCity?: string }
 
 export async function searchSites(query: string, tier: Tier = "free", timing: Record<string, number> = {}, notices: Notice[] = [], opts: SearchOptions = {}): Promise<Site[]> {
   const mark = (name: string, since: number) => { timing[name] = (timing[name] || 0) + Date.now() - since }
@@ -624,7 +624,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const place = splitCity(plainQuery)
     const homeLocal = !place && opts.homeCity && [...queryCategories(plainQuery)].some(c => PLACE_KINDS.has(c))
     if (homeLocal) opts.nearCity = opts.homeCity!
-    const best = WANTS_BEST.test(plainQuery)
+    const best = !!opts.best || WANTS_BEST.test(plainQuery)
     const localSearch = place ? localBusinesses(place.what, place.city, 10, best) : homeLocal ? localBusinesses(plainQuery, opts.homeCity!, 10, best) : Promise.resolve([])
     // A name ("localilabs", "british museum", "louvre tickets"): that site first, found directly.
     const name = nameOf(plainQuery, place?.city)
