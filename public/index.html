@@ -745,6 +745,18 @@ function meetLawpy() {
   })
   input.addEventListener("blur", function() { setTimeout(function() { list.style.display = "none" }, 150) })
 })()
+
+// "What your AI learned this week": the weekly email, double opt-in (api.actuent.ai/api/newsletter).
+document.addEventListener("submit", function (ev) {
+  var f = ev.target
+  if (!f || !f.classList || !f.classList.contains("weekly-signup")) return
+  ev.preventDefault()
+  var email = f.querySelector("input").value.trim(), out = f.querySelector(".weekly-msg")
+  fetch("https://api.actuent.ai/api/newsletter", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: email }) })
+    .then(function (r) { out.textContent = r.ok ? "Check your inbox to confirm. Lawpy will write once a week." : "That didn't work. Check the address?" })
+    .catch(function () { out.textContent = "Couldn't reach Actuent. Try again?" })
+})
 </script>
+<div style="max-width:640px;margin:28px auto 0;padding:0 16px"><form class="weekly-signup" style="border:1px solid #2a2a34;border-radius:10px;padding:14px"><strong>What your AI learned this week</strong><div class="muted small" style="margin:4px 0 8px">One short email a week: new things Actuent can do and what's on. One-click unsubscribe.</div><div style="display:flex;gap:8px;flex-wrap:wrap"><input type="email" required placeholder="you@example.com" style="flex:1;min-width:180px;padding:8px;border-radius:6px;border:1px solid #2a2a34;background:#0a0a0a;color:#f0f0f0"><button type="submit" style="background:#ff8a3d;border:0;border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer">Sign me up</button></div><div class="weekly-msg muted small" style="margin-top:6px"></div></form></div>
 </body>
 </html>
