@@ -158,7 +158,7 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
 // Words that say what a place should have or when, not what it is.
 const NEED_WORDS = /\b(open late|late night|late|open now|open|now|tonight|today|tomorrow|this evening|for brunch|for dinner|for lunch|for breakfast|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(dog|pet|kid|family)[- ]friendly|with (a )?(terrace|garden|wifi|wi-fi|outdoor seating)|outdoor( seating)?|terrace|wifi|wi-fi|wheelchair( accessible)?|accessible|step[- ]free|gluten[- ]free|with dogs|for kids|good for groups|for groups|cheap|best|good|nice|cozy|cosy)\b/gi
 const PREBUILT_ALIASES: Record<string, string[]> = {
-  brunch: ["cafe", "restaurant"], breakfast: ["cafe", "bagel"], "coffee shops": ["cafe"], cocktail: ["bar"], "cocktail bar": ["bar"], "wine bar": ["bar"], nightlife: ["bar"],
+  brunch: ["breakfast", "cafe", "restaurant"], breakfast: ["breakfast", "cafe", "bagel"], steakhouse: ["steak"], steakhouses: ["steak"], steaks: ["steak"], "coffee shops": ["cafe"], cocktail: ["bar"], "cocktail bar": ["bar"], "wine bar": ["bar"], nightlife: ["bar"],
   coffee: ["cafe"], "coffee shop": ["cafe"], espresso: ["cafe"], cafes: ["cafe"], café: ["cafe"], restaurants: ["restaurant"], food: ["restaurant"], dinner: ["restaurant"], lunch: ["restaurant"],
   bars: ["bar"], pub: ["bar"], pubs: ["bar"], drinks: ["bar"], cocktails: ["bar"], beer: ["bar"], burgers: ["burger"], tacos: ["taco"], mexican: ["taco"], burrito: ["taco"],
   barber: ["hairdresser"], haircut: ["hairdresser"], "hair salon": ["hairdresser"], groceries: ["supermarket"], "grocery store": ["supermarket"], hotels: ["hotel"],

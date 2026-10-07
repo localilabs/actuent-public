@@ -16,6 +16,9 @@ const CITIES = {
   portland: [45.5152, -122.6784], nashville: [36.1627, -86.7816], "san diego": [32.7157, -117.1611], houston: [29.7604, -95.3698], dallas: [32.7767, -96.7970]
 }
 // Kind → OpenStreetMap tag filter. Cuisines are restaurants/fast food with that cuisine tag.
+// Spread-out cities: a wider circle, or most kinds of place come back thin (a few per kind).
+const SPREAD = { houston: 2.4, dallas: 2.4, "los angeles": 2, miami: 2, atlanta: 2.2, nashville: 2.2, "las vegas": 2, "san diego": 2, denver: 1.8, austin: 1.8, phoenix: 2.4, queens: 1.6, portland: 1.4, washington: 1.3 }
+
 const KINDS = {
   cafe: `["amenity"="cafe"]`, restaurant: `["amenity"="restaurant"]`, bar: `["amenity"~"^(bar|pub)$"]`, bakery: `["shop"="bakery"]`,
   "fast food": `["amenity"="fast_food"]`, pharmacy: `["amenity"="pharmacy"]`, hairdresser: `["shop"~"^(hairdresser|barber)$"]`,
@@ -24,7 +27,7 @@ const KINDS = {
 }
 const CUISINES = {
   burger: "burger", pizza: "pizza", sushi: "sushi", taco: "mexican|taco", ramen: "ramen", thai: "thai", indian: "indian", chinese: "chinese",
-  italian: "italian", bbq: "bbq|barbecue", bagel: "bagel", donut: "donut", pho: "vietnamese", seafood: "seafood|fish", deli: "deli|sandwich", korean: "korean", vegan: null
+  italian: "italian", bbq: "bbq|barbecue", bagel: "bagel", donut: "donut", pho: "vietnamese", seafood: "seafood|fish", deli: "deli|sandwich", korean: "korean", breakfast: "breakfast|brunch", steak: "steak_house|steak", vegan: null
 }
 
 async function overpass(filter, lat, lon, radius) {
@@ -76,12 +79,12 @@ for (const [city, [lat, lon]] of Object.entries(CITIES)) {
   if (only.length && !only.includes(city)) continue
   const kinds = {}
   for (const [kind, filter] of Object.entries(KINDS)) {
-    kinds[kind] = best((await overpass(filter, lat, lon, 2500)).map(e => place(e, city)))
+    kinds[kind] = best((await overpass(filter, lat, lon, Math.round(2500 * (SPREAD[city] || 1)))).map(e => place(e, city)))
     await new Promise(r => setTimeout(r, 2500))
   }
   for (const [cuisine, tag] of Object.entries(CUISINES)) {
     const filter = tag ? `["amenity"~"^(restaurant|fast_food|cafe)$"]["cuisine"~"${tag}",i]` : `["amenity"~"^(restaurant|fast_food|cafe)$"]["diet:vegan"~"^(yes|only)$"]`
-    kinds[cuisine] = best((await overpass(filter, lat, lon, 4000)).map(e => place(e, city)))
+    kinds[cuisine] = best((await overpass(filter, lat, lon, Math.round(4000 * (SPREAD[city] || 1)))).map(e => place(e, city)))
     await new Promise(r => setTimeout(r, 2500))
   }
   // One file per city, written as soon as the city is done (a job that runs out of time keeps what it did).
