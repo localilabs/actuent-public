@@ -42,7 +42,7 @@ async function businessEmail(domain: string, claimedOnly: boolean): Promise<{ em
   if (EMAIL.test(own)) return { email: own, claimed: false }
   const page: any = (await readPage(`https://${domain}/`).catch(() => null))?.body
   const found = (page?.actions || []).find((a: any) => a.type === "email" && EMAIL.test(a.email || ""))?.email
-  if (found && bare(found.split("@")[1]).endsWith(domain)) return { email: found, claimed: false }
+  if (found && (bare(found.split("@")[1]) === domain || bare(found.split("@")[1]).endsWith(`.${domain}`))) return { email: found, claimed: false }
   return null
 }
 

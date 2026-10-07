@@ -134,10 +134,14 @@ async function shopifyVariants(url: URL, html: string) {
 }
 
 // Saved for the next person: the page, and the site queued for a full crawl if it's new to Actuent.
+// Links people paste can be private (password resets, order and account pages, links with tokens):
+// those are read for the user but never saved.
+const PRIVATE = /token|key=|sig=|signature|session|reset|password|passwd|auth|login|logout|account|order|checkout|cart|invoice|receipt|unsubscribe|confirm|verify|invite|share|private|secret|\/me\b|\/my\b|profile|inbox|dashboard/i
 async function remember(url: URL, title: string, content: string) {
   if (!SUPABASE_URL || !KEY) return
+  if (url.search || PRIVATE.test(url.pathname) || url.username || url.password) return
   const domain = url.hostname.replace(/^www\./, "")
-  const path = url.pathname + (url.search.length < 60 ? url.search : "")
+  const path = url.pathname
   await Promise.all([
     fetch(`${SUPABASE_URL}/rest/v1/lawp_pages?on_conflict=full_url`, {
       method: "POST", headers: { ...HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal" },

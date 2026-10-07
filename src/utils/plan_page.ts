@@ -7,7 +7,8 @@ import { createHmac, timingSafeEqual } from "crypto"
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!))
 
 export function planPage(data: string, sig: string): string | null {
-  const want = createHmac("sha256", process.env.ACTUENT_INTERNAL_KEY || "actuent").update(data).digest("base64url").slice(0, 22)
+  if (!process.env.ACTUENT_INTERNAL_KEY) return null
+  const want = createHmac("sha256", process.env.ACTUENT_INTERNAL_KEY).update(data).digest("base64url").slice(0, 22)
   if (sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null
   let plan: { t: string, s: [string, string, string, string, string][] }
   try { plan = JSON.parse(Buffer.from(data, "base64url").toString("utf8")) } catch { return null }

@@ -372,10 +372,19 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Messages to businesses (src/utils/messages.ts): sending and status only from Actuent's MCP server;
   // the Accept/Decline and opt-out links are for the business, by secret token.
   if (req.query?.msg_reply || req.query?.msg_optout) {
-    const text = req.query.msg_reply ? await answerMessage(String(req.query.msg_reply), String(req.query.answer || "")) : await optOut(String(req.query.msg_optout), String(req.query.t || ""))
+    // Email security scanners open links by themselves: a plain visit only shows a button, and only
+    // pressing it (a POST) accepts, declines or opts out.
+    const page = (body: string) => `<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Actuent</title><body style="background:#0a0a0a;color:#f0f0f0;font-family:-apple-system,sans-serif;padding:40px;text-align:center"><img src="https://api.actuent.ai/assets/lawpy/lawpy-wave.gif" width="96" alt="">${body}</body>`
     res.setHeader("Content-Type", "text/html; charset=utf-8")
     res.setHeader("Cache-Control", "no-store")
-    return res.status(200).send(`<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Actuent</title><body style="background:#0a0a0a;color:#f0f0f0;font-family:-apple-system,sans-serif;padding:40px;text-align:center"><img src="https://api.actuent.ai/assets/lawpy/lawpy-wave.gif" width="96" alt=""><p style="font-size:18px">${text.replace(/[<>&]/g, "")}</p></body>`)
+    if (req.method !== "POST") {
+      const what = req.query.msg_optout ? `Stop messages through Actuent for ${String(req.query.msg_optout).replace(/[^a-z0-9.-]/gi, "")}?` : req.query.answer === "accept" ? "Accept this booking request?" : "Decline this booking request?"
+      const label = req.query.msg_optout ? "Yes, stop them" : req.query.answer === "accept" ? "Accept" : "Decline"
+      const qs = new URLSearchParams(Object.entries(req.query).filter(([k]) => ["msg_reply", "msg_optout", "answer", "t"].includes(k)).map(([k, v]) => [k, String(v)])).toString()
+      return res.status(200).send(page(`<p style="font-size:18px">${what}</p><form method="post" action="/api/search?${qs.replace(/"/g, "")}"><button style="background:#ff8a3d;border:0;border-radius:8px;padding:12px 22px;font-size:16px;font-weight:600;cursor:pointer">${label}</button></form>`))
+    }
+    const text = req.query.msg_reply ? await answerMessage(String(req.query.msg_reply), String(req.query.answer || "")) : await optOut(String(req.query.msg_optout), String(req.query.t || ""))
+    return res.status(200).send(page(`<p style="font-size:18px">${text.replace(/[<>&]/g, "")}</p>`))
   }
   // Receipt for an action Actuent's MCP server carried out (internal only): who, what, where, result.
   if (req.query?.op === "receipt") {

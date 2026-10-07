@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { robotsAllows } from "../src/utils/robots"
+import { fetchPublic } from "../src/utils/safe-fetch"
 import { readiness } from "../src/utils/score"
 import { ogImage } from "../src/utils/og"
 import { lawpySvg, seasonHat, HAT_HEIGHT } from "../src/utils/lawpy_frames"
@@ -69,8 +70,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let state = "not found", color = "#6b6b78", actions = 0
     try {
       if (/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain) && await robotsAllows(domain, "/.well-known/lawp.json")) {
-        const r = await fetch(`https://${domain}/.well-known/lawp.json`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "application/json" }, redirect: "follow", signal: AbortSignal.timeout(6000) })
-        if (r.ok) {
+        const r = await fetchPublic(`https://${domain}/.well-known/lawp.json`, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "application/json" }, signal: AbortSignal.timeout(6000) }, 0)
+        if (r?.ok) {
           const d = JSON.parse((await r.text()).slice(0, 2_000_000))
           if (d?.name && Array.isArray(d.actions)) { state = "valid ✓"; color = "#3fb950"; actions = d.actions.length } else { state = "incomplete"; color = "#d29922" }
         }
