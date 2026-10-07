@@ -1,6 +1,6 @@
 import { translateKeywords, queryLanguage } from "./multilingual"
 import { notice, Notice } from "./notices"
-import { splitCity, localBusinesses, osmPlaces, localNeeds, needsFactor, cityCountry, inCountry, COUNTRY_INFO } from "./local"
+import { splitCity, localBusinesses, osmPlaces, WANTS_BEST, localNeeds, needsFactor, cityCountry, inCountry, COUNTRY_INFO } from "./local"
 import { synonymsOf, synonymVariants } from "./rank_extras"
 import { queryCategories, mergeRegional, intentBoost, freshnessBoost, qualityFactor, pageAnswerFirst, diversify } from "./rank_extras"
 import { later } from "./later"
@@ -221,7 +221,7 @@ export async function quickSearch(query: string): Promise<Site[]> {
   const [top, named, local] = await Promise.all([
     topSites(what, synonymVariants(what)).then(rows => rows.map(rowToSite)),
     looksLikeName(name, false) && !generic ? brandSites(name).catch(() => []) : Promise.resolve([]),
-    place ? localBusinesses(place.what, place.city).catch(() => []) : Promise.resolve([])
+    place ? localBusinesses(place.what, place.city, 10, WANTS_BEST.test(query)).catch(() => []) : Promise.resolve([])
   ])
   const seen = new Set<string>()
   return [...named.slice(0, 2).map((x: any) => ({ ...x, matched: "exact name" })), ...local, ...top]
@@ -624,7 +624,8 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     const place = splitCity(plainQuery)
     const homeLocal = !place && opts.homeCity && [...queryCategories(plainQuery)].some(c => PLACE_KINDS.has(c))
     if (homeLocal) opts.nearCity = opts.homeCity!
-    const localSearch = place ? localBusinesses(place.what, place.city) : homeLocal ? localBusinesses(plainQuery, opts.homeCity!) : Promise.resolve([])
+    const best = WANTS_BEST.test(plainQuery)
+    const localSearch = place ? localBusinesses(place.what, place.city, 10, best) : homeLocal ? localBusinesses(plainQuery, opts.homeCity!, 10, best) : Promise.resolve([])
     // A name ("localilabs", "british museum", "louvre tickets"): that site first, found directly.
     const name = nameOf(plainQuery, place?.city)
     const oneGenericWord = name.split(" ").length === 1 && queryCategories(name).size > 0
@@ -695,7 +696,7 @@ export async function searchSites(query: string, tier: Tier = "free", timing: Re
     // queued so Actuent crawls them properly).
     if (place && localSites.length < 3 && opts.places && queryCategories(place.what).size) {
       // At most 3.5 s: a slow OpenStreetMap never makes the whole search slow (built US places are instant).
-      const found = await Promise.race([osmPlaces(place.what, place.city), new Promise<null>(r => setTimeout(() => r(null), 3500))]).catch(() => null)
+      const found = await Promise.race([osmPlaces(place.what, place.city, best), new Promise<null>(r => setTimeout(() => r(null), 3500))]).catch(() => null)
       if (found?.length) {
         opts.places.push(...found)
         const cat = [...queryCategories(place.what)][0]

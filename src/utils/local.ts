@@ -89,7 +89,14 @@ export function splitCity(query: string): { what: string, city: string } | null 
 }
 
 // Indexed websites of businesses in that city (address from schema.org or OpenStreetMap).
-export async function localBusinesses(what: string, city: string, max = 10): Promise<any[]> {
+// "best pizza in Chicago", "top cafés": quality decides, not just what's open right now.
+export const WANTS_BEST = /\b(best|top|top[- ]rated|highly rated|good|great|nicest|favou?rite|recommended|must[- ]try|well[- ]reviewed)\b/i
+// Why a place came out where it did, in a few plain words an assistant can pass on.
+function rankWhy(parts: (string | false | null | undefined)[]): string | undefined {
+  const list = parts.filter(Boolean) as string[]
+  return list.length ? list.join(" · ") : undefined
+}
+export async function localBusinesses(what: string, city: string, max = 10, best = false): Promise<any[]> {
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/search_lawp_businesses`, {
       method: "POST", headers: HEADERS, body: JSON.stringify({ q: what, city, max_results: max }), signal: AbortSignal.timeout(4000)
@@ -102,14 +109,29 @@ export async function localBusinesses(what: string, city: string, max = 10): Pro
     const byDomain = new Map<string, any>(((full.ok ? await full.json() : []) as any[]).map(x => [x.domain, x]))
     const found = rows.map((x: any) => byDomain.get(x.domain)).filter(Boolean)
     // Open right now first, then better rated (schema.org or OpenStreetMap data), then relevance.
+    // "Best …": rating (with enough reviews to mean something) counts most, then listed opening hours
+    // and booking or ordering on the site; whether it's open this minute matters less.
     const score = (x: any, i: number) => {
       const b = x.business || {}
       const open = openNow(b.opening_hours, b.address?.country, new Date(), b.special_hours, Number(b.geo?.lon))
       const rating = Number(b.rating?.value) || 0
       const reviews = Number(b.rating?.count) || 0
-      return (open === true ? 3 : open === false ? -1 : 0) + (reviews >= 5 ? rating / 2.5 : 0) - i * 0.15
+      const hours = Array.isArray(b.opening_hours) && b.opening_hours.length > 0
+      const books = (x.actions || []).some((a: any) => /book|reserv|order|table/i.test(`${a.id} ${a.name}`))
+      if (!best) return (open === true ? 3 : open === false ? -1 : 0) + (reviews >= 5 ? rating / 2.5 : 0) - i * 0.15
+      return (reviews >= 5 ? rating * 1.2 + Math.min(2, Math.log10(reviews)) : 0) + (hours ? 1 : 0) + (books ? 0.7 : 0) + (open === true ? 0.5 : 0) - i * 0.1
     }
-    return found.map((x: any, i: number) => ({ x, s: score(x, i) })).sort((a: any, b: any) => b.s - a.s).map((r: any) => r.x)
+    const why = (x: any) => {
+      const b = x.business || {}, r = b.rating || {}
+      return rankWhy([
+        Number(r.count) >= 5 && `rated ${r.value}${r.best && r.best !== 5 ? `/${r.best}` : "★"} from ${r.count} reviews (its own site)`,
+        "has its own website",
+        Array.isArray(b.opening_hours) && b.opening_hours.length > 0 && "opening hours listed",
+        (x.actions || []).some((a: any) => /book|reserv|order|table/i.test(`${a.id} ${a.name}`)) && "book or order online"
+      ])
+    }
+    return found.map((x: any, i: number) => ({ x, s: score(x, i) })).sort((a: any, b: any) => b.s - a.s)
+      .map((r: any) => best ? { ...r.x, why_ranked: why(r.x) } : r.x)
   } catch { return [] }
 }
 
@@ -144,7 +166,7 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
   if (!list) return null
   const lon0 = Number(list[0]?.lon)
   const needs = localNeeds(what, zoneOf("US", lon0) || "America/New_York")
-  let places = list.map(({ chain, lat, lon, ...p }: any) => {
+  let places = list.map(({ lat, lon, ...p }: any) => {
     const hours = p.opening_hours ? parseOpeningHoursText(p.opening_hours) : []
     return { ...p, lat, lon, hours, open_now: /^24\/7$/.test(p.opening_hours || "") ? true : hours.length ? openNow(hours, "US", new Date(), undefined, lon) : null, ...(todayHours(hours, "US", lon) || {}) }
   })
@@ -154,6 +176,14 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
     .map((p: any) => ({ p, at: /^24\/7$/.test(p.opening_hours || "") ? true : p.hours.length ? openAt(p.hours, needs.day!, needs.minutes!) : null }))
     .filter((x: any) => x.at !== false).sort((a: any, b: any) => (b.at ? 1 : 0) - (a.at ? 1 : 0)).map((x: any) => x.p)
   return places.map(({ hours, ...p }: any) => p).slice(0, 8)
+}
+// OpenStreetMap places for "best …": independents before chains, then listed hours, then a website.
+// OpenStreetMap has no ratings, so the reason says what was used.
+function bestFirst(places: any[]): any[] {
+  const s = (p: any) => (p.chain ? -4 : 0) + (p.opening_hours ? 2 : 0) + (p.website ? 1 : 0) + (p.features?.length ? 0.5 : 0)
+  return places.map((p, i) => ({ p, k: s(p) - i * 0.01 })).sort((a, b) => b.k - a.k).map(({ p }) => ({
+    ...p, why_ranked: rankWhy([p.chain === false && "independent, not a chain", p.chain && "a chain", p.opening_hours && "opening hours listed", p.website && "has its own website", "OpenStreetMap has no ratings, so reviews weren't used"])
+  }))
 }
 // Words that say what a place should have or when, not what it is.
 const NEED_WORDS = /\b(open late|late night|late|open now|open|now|tonight|today|tomorrow|this evening|for brunch|for dinner|for lunch|for breakfast|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(dog|pet|kid|family)[- ]friendly|with (a )?(terrace|garden|wifi|wi-fi|outdoor seating)|outdoor( seating)?|terrace|wifi|wi-fi|wheelchair( accessible)?|accessible|step[- ]free|gluten[- ]free|with dogs|for kids|good for groups|for groups|cheap|best|good|nice|cozy|cosy)\b/gi
@@ -166,14 +196,15 @@ const PREBUILT_ALIASES: Record<string, string[]> = {
   vietnamese: ["pho"], barbecue: ["bbq"], sandwich: ["deli"], sandwiches: ["deli"], "vegan food": ["vegan"], vegetarian: ["vegan"], pharmacies: ["pharmacy"], drugstore: ["pharmacy"]
 }
 
-export async function osmPlaces(what: string, city: string): Promise<any[] | null> {
+export async function osmPlaces(what: string, city: string, best = false): Promise<any[] | null> {
+  const done = (list: any[] | null) => list && (best ? bestFirst(list) : list).map(({ chain, ...p }: any) => p)
   const ready = prebuilt(what, OSM_WORDS[what] || what, city)
-  if (ready?.length) return ready
+  if (ready?.length) return done(ready)
   const key = `${what}|${city}`.toLowerCase(), hit = osmCache.get(key)
-  if (hit && Date.now() - hit.at < 30 * 60000) return hit.list
+  if (hit && Date.now() - hit.at < 30 * 60000) return done(hit.list)
   const list = await osmPlacesLive(what, city)
   if (list?.length) { osmCache.set(key, { at: Date.now(), list }); if (osmCache.size > 500) osmCache.delete(osmCache.keys().next().value!) }
-  return list
+  return done(list)
 }
 async function osmPlacesLive(what: string, city: string): Promise<any[] | null> {
   if (await isRateLimited("osm:search", 30)) return null
@@ -270,7 +301,6 @@ async function overpassLookup(what: string, word: string, city: string): Promise
     // Local places before chains ("best burger": Burgerhead before Burger King), then ones with
     // opening hours and a website (more useful to an assistant).
     .sort((a, b) => (a.chain ? 4 : 0) - (b.chain ? 4 : 0) + (b.opening_hours ? 2 : 0) + (b.website ? 1 : 0) - (a.opening_hours ? 2 : 0) - (a.website ? 1 : 0))
-    .map(({ chain, ...p }) => p)
     .slice(0, 8)
 }
 
