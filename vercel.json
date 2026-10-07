@@ -167,6 +167,86 @@
       "dest": "/api/site.ts?city=$1&category=$2&best=1"
     },
     {
+      "src": "/trends\\.json",
+      "dest": "/api/site.ts?trends=json"
+    },
+    {
+      "src": "/trends/?",
+      "dest": "/api/site.ts?trends=html"
+    },
+    {
+      "src": "/changes\\.rss",
+      "dest": "/api/site.ts?changes=rss"
+    },
+    {
+      "src": "/state/weekly\\.rss",
+      "dest": "/api/site.ts?weekly=rss"
+    },
+    {
+      "src": "/state/weekly/([0-9]{4}-[0-9]{2}-[0-9]{2})/?",
+      "dest": "/api/site.ts?weekly=$1"
+    },
+    {
+      "src": "/state/weekly/?",
+      "dest": "/api/site.ts?weekly=index"
+    },
+    {
+      "src": "/sitemap.xml",
+      "dest": "/api/sitemap.ts"
+    },
+    {
+      "src": "/sitemap-cities\\.xml",
+      "dest": "/api/sitemap.ts?part=cities"
+    },
+    {
+      "src": "/sitemap-sites-([0-9]+)\\.xml",
+      "dest": "/api/sitemap.ts?part=$1"
+    },
+    {
+      "src": "/site/in/([^/?]+)/whats-on\\.ics",
+      "dest": "/api/site.ts?city=$1&events=ics"
+    },
+    {
+      "src": "/site/in/([^/?]+)/whats-on/?",
+      "dest": "/api/site.ts?city=$1&events=page"
+    },
+    {
+      "src": "/site/in/([^/?]+)/([^/?]+)/?",
+      "dest": "/api/site.ts?city=$1&category=$2"
+    },
+    {
+      "src": "/site/in/([^/?]+)/?",
+      "dest": "/api/site.ts?city=$1"
+    },
+    {
+      "src": "/site/?",
+      "dest": "/api/site.ts"
+    },
+    {
+      "src": "/site/([^/?]+)/changes\\.rss",
+      "dest": "/api/site.ts?domain=$1&changes=rss"
+    },
+    {
+      "src": "/site/([^/?]+)/?",
+      "dest": "/api/site.ts?domain=$1"
+    },
+    {
+      "src": "/leaderboard",
+      "dest": "/api/data.ts?op=leaderboard"
+    },
+    {
+      "src": "/.well-known/lawp.json",
+      "dest": "/api/well-known.ts"
+    },
+    {
+      "src": "/badge.json",
+      "dest": "/api/badge.ts?format=json"
+    },
+    {
+      "src": "/badge.svg",
+      "dest": "/api/badge.ts"
+    },
+    {
       "src": "/(api/(?:stats|diff|leaderboard|autocomplete|similar|status|state|warm|site-search|rates|events|recently-fixed|player|discord/[0-9a-fA-F]{64})|trends(?:\\.json|/?)|changes\\.rss|state/weekly(?:\\.rss|/.*)?|sitemap(?:-cities|-sites-[0-9]+)?\\.xml|site(?:/.*)?|leaderboard|status/?|share/?|smarter/?|brand/[^/?]+/?|deals(?:\\.rss|/?)|\\.well-known/lawp\\.json|badge\\.(?:json|svg))",
       "dest": "https://bcmwypjrahtxogytsvuc.supabase.co/functions/v1/api/$1",
       "headers": {
@@ -254,30 +334,6 @@
       "dest": "/api/data.ts?op=indexnow"
     },
     {
-      "src": "/trends\\.json",
-      "dest": "/api/site.ts?trends=json"
-    },
-    {
-      "src": "/trends/?",
-      "dest": "/api/site.ts?trends=html"
-    },
-    {
-      "src": "/changes\\.rss",
-      "dest": "/api/site.ts?changes=rss"
-    },
-    {
-      "src": "/state/weekly\\.rss",
-      "dest": "/api/site.ts?weekly=rss"
-    },
-    {
-      "src": "/state/weekly/([0-9]{4}-[0-9]{2}-[0-9]{2})/?",
-      "dest": "/api/site.ts?weekly=$1"
-    },
-    {
-      "src": "/state/weekly/?",
-      "dest": "/api/site.ts?weekly=index"
-    },
-    {
       "src": "/state",
       "dest": "/public/state.html"
     },
@@ -287,46 +343,6 @@
         "Access-Control-Allow-Origin": "*"
       },
       "dest": "/public/openapi.json"
-    },
-    {
-      "src": "/sitemap.xml",
-      "dest": "/api/sitemap.ts"
-    },
-    {
-      "src": "/sitemap-cities\\.xml",
-      "dest": "/api/sitemap.ts?part=cities"
-    },
-    {
-      "src": "/sitemap-sites-([0-9]+)\\.xml",
-      "dest": "/api/sitemap.ts?part=$1"
-    },
-    {
-      "src": "/site/in/([^/?]+)/whats-on\\.ics",
-      "dest": "/api/site.ts?city=$1&events=ics"
-    },
-    {
-      "src": "/site/in/([^/?]+)/whats-on/?",
-      "dest": "/api/site.ts?city=$1&events=page"
-    },
-    {
-      "src": "/site/in/([^/?]+)/([^/?]+)/?",
-      "dest": "/api/site.ts?city=$1&category=$2"
-    },
-    {
-      "src": "/site/in/([^/?]+)/?",
-      "dest": "/api/site.ts?city=$1"
-    },
-    {
-      "src": "/site/?",
-      "dest": "/api/site.ts"
-    },
-    {
-      "src": "/site/([^/?]+)/changes\\.rss",
-      "dest": "/api/site.ts?domain=$1&changes=rss"
-    },
-    {
-      "src": "/site/([^/?]+)/?",
-      "dest": "/api/site.ts?domain=$1"
     },
     {
       "src": "/og",
@@ -345,20 +361,8 @@
       }
     },
     {
-      "src": "/leaderboard",
-      "dest": "/api/data.ts?op=leaderboard"
-    },
-    {
       "src": "/suggest",
       "dest": "/api/suggest.ts"
-    },
-    {
-      "src": "/.well-known/lawp.json",
-      "dest": "/api/well-known.ts"
-    },
-    {
-      "src": "/badge.json",
-      "dest": "/api/badge.ts?format=json"
     },
     {
       "src": "/badge.js",
@@ -404,10 +408,6 @@
         "Access-Control-Allow-Origin": "*",
         "Content-Disposition": "attachment; filename=\"actuent.postman_collection.json\""
       }
-    },
-    {
-      "src": "/badge.svg",
-      "dest": "/api/badge.ts"
     },
     {
       "src": "/assets/(.*)",
