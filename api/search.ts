@@ -23,7 +23,7 @@ import { comparison, comparisonSides, questionSite, answerFromSite } from "../sr
 import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
 import { entity } from "../src/utils/entity"
-import { eventIcs } from "../src/utils/ics"
+import { eventIcs, googleCalendarUrl } from "../src/utils/ics"
 import { planPage } from "../src/utils/plan_page"
 import { sendEmail } from "../src/utils/email"
 import { sendBusinessMessage, answerMessage, optOut, messageStatus } from "../src/utils/messages"
@@ -406,6 +406,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // ?ics=<event url>: the event as a calendar file ("add to calendar").
   if (req.query?.ics) {
+    if (req.query.to === "google") {
+      const g = await googleCalendarUrl(String(req.query.ics)).catch(() => null)
+      if (!g) return res.status(404).json({ error: "Actuent doesn't know that event" })
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+      return res.redirect(302, g)
+    }
     const ics = await eventIcs(String(req.query.ics)).catch(() => null)
     if (!ics) return res.status(404).json({ error: "Actuent doesn't know that event" })
     res.setHeader("Content-Type", "text/calendar; charset=utf-8")
