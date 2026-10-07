@@ -254,10 +254,16 @@ ${movers.length ? `<h2>Top movers</h2><p class="muted">Sites whose agent-readine
 // /status: 30 days of "does search answer" (hourly checks, uptime_checks) and search speed per day.
 async function statusPage(res: VercelResponse) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString()
-  const [checks, speed] = await Promise.all([
+  const [checks, speed, health] = await Promise.all([
     rows(`uptime_checks?select=*&checked_at=gte.${encodeURIComponent(since)}&order=checked_at.asc&limit=1000`),
-    rpcRows("search_speed_daily", { days: 30 })
+    rpcRows("search_speed_daily", { days: 30 }),
+    // The live traffic light: every part of Actuent checked right now (agents.actuent.ai/health?deep=1).
+    fetch("https://agents.actuent.ai/health?deep=1", { signal: AbortSignal.timeout(15000) }).then(r => r.ok ? r.json() : null).catch(() => null)
   ])
+  const LIGHT: Record<string, string> = { green: "#4ade80", amber: "#ff8a3d", red: "#f87171" }
+  const NAMES: Record<string, string> = { database: "Database", search: "Search", mcp: "AI assistant connection (MCP)", events: "Events", jobs: "Background jobs", claude_chatgpt_allowance: "Claude & ChatGPT capacity" }
+  const healthHtml = health?.checks ? `<h2>Right now: <span style="color:${LIGHT[health.light] || "#a8a8b6"}">● ${health.light === "green" ? "all good" : health.light === "amber" ? "working, something to watch" : "something's wrong"}</span></h2>
+<div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse">${health.checks.map((c: any) => `<tr><td style="padding:5px 0"><span style="color:${LIGHT[c.light] || "#a8a8b6"}">●</span> ${esc(NAMES[c.name] || c.name)}</td><td class="muted" style="text-align:right">${esc(c.name === "jobs" && c.light !== "green" ? "a background job needs a look" : c.detail)}</td></tr>`).join("")}</table></div>` : ""
   const byDay = new Map<string, { ok: number, total: number }>()
   for (const c of checks) { const d = String(c.checked_at).slice(0, 10); const x = byDay.get(d) || { ok: 0, total: 0 }; x.total++; if (c.ok) x.ok++; byDay.set(d, x) }
   const days = Array.from({ length: 30 }, (_, i) => new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10))
@@ -268,6 +274,7 @@ async function statusPage(res: VercelResponse) {
   const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Actuent status</h1>
 <p class="lead">${last ? (last.ok ? "✓ Search is answering." : "Search didn't answer at the last check.") + ` Last checked ${new Date(last.checked_at).toUTCString().slice(17, 22)} UTC.` : "Checks start within the hour."} Checked every hour.</p></div>
 <lawpy-mascot state="${!last || last.ok ? "dance" : "think"}" ${!last || last.ok ? 'loops="2" then="idle"' : ""} scale="4" style="margin-left:auto"></lawpy-mascot></div>
+${healthHtml}
 <h2>Search answering, last 30 days${up != null ? ` · ${up}%` : ""}</h2><div class="card"><div>${days.map(bar).join("")}</div><div class="muted" style="margin-top:6px">Each bar is a day: green all checks answered, orange most, red some failed, grey no data.</div></div>
 ${(() => {
   // The last 24 hours, per part of Actuent (hourly checks): typical and slowest answer times.
@@ -279,7 +286,7 @@ ${(() => {
 })()}
 ${speedRows.length ? `<h2>Search speed per day</h2><div class="card"><table style="width:100%;font-size:13px;border-collapse:collapse"><tr><th style="text-align:left">Day</th><th style="text-align:right">Searches</th><th style="text-align:right">Typical</th><th style="text-align:right">Slowest 5%</th></tr>${speedRows.slice().reverse().slice(0, 14).map((r: any) => `<tr><td>${esc(r.day)}</td><td style="text-align:right">${Number(r.searches).toLocaleString("en")}</td><td style="text-align:right">${(Number(r.median_ms) / 1000).toFixed(1)} s</td><td style="text-align:right">${(Number(r.p95_ms) / 1000).toFixed(1)} s</td></tr>`).join("")}</table></div>` : ""}
 <p class="muted">Busy right now? The live answer is <a href="${BASE}/api/status">api.actuent.ai/api/status</a>.</p>`
-  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300, stale-while-revalidate=600")
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=120, stale-while-revalidate=300")
   return res.status(200).send(layout({ title: "Status — Actuent", description: "Is Actuent search answering, and how fast, over the last 30 days.", canonical: `${BASE}/status`, image: ogImage("Actuent status", "Uptime and search speed, last 30 days", "api.actuent.ai/status", "dance"), body }))
 }
 
