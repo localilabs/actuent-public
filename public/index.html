@@ -258,6 +258,15 @@ function hintsHtml(data) {
 }
 
 // "does basecamp have a free plan": sentences from the site's own pages.
+// "Lawpy says": a short answer written only from the results, with numbered sources (lawpy=1).
+function lawpyHtml(sm) {
+  if (!sm || !sm.text) return ""
+  var src = {}; (sm.sources || []).forEach(function(x) { src[x.n] = x })
+  var text = esc(sm.text).replace(/\[(\d)\]/g, function(m, n) { var x = src[n]; return x ? '<a href="' + safeUrl(x.url) + '" target="_blank" rel="noopener" title="' + esc(x.domain) + '"><sup>[' + n + ']</sup></a>' : "" })
+  return '<div class="box" style="border-color:#ff8a3d"><div class="section">\u2728 Lawpy says</div><p style="margin:6px 0 8px;line-height:1.55">' + text + '</p>' +
+    '<div class="muted small">Written only from the sources below: ' + (sm.sources || []).map(function(x) { return '<a href="' + safeUrl(x.url) + '" target="_blank" rel="noopener">[' + x.n + '] ' + esc(x.domain) + '</a>' }).join(" · ") + '. This is what your AI gets with Actuent.</div></div>'
+}
+
 function answerHtml(a) {
   if (!a || !a.sentences || !a.sentences.length) return ""
   return '<div class="box accent"><div class="section">From ' + esc(a.domain) + '’s own pages</div>' +
@@ -489,7 +498,7 @@ function doSearch() {
   }).catch(function() {})
 
   // GET, so identical searches come straight from the CDN cache on busy days.
-  fetch("https://api.actuent.ai/api/search?q=" + encodeURIComponent(query))
+  fetch("https://api.actuent.ai/api/search?lawpy=1&q=" + encodeURIComponent(query))
   .then(function(r) {
     // Busy or rate-limited answers carry a plain-English message: show it.
     return r.json().catch(function() { return {} }).then(function(data) {
@@ -505,7 +514,7 @@ function doSearch() {
     btn.textContent = t("Search")
     lastNear = data.near || null
     var sites = data.results || []
-    var extras = productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + dishesHtml(data.dishes) + placesHtml(data.places)
+    var extras = lawpyHtml(data.summary) + productCompareHtml(data.product_comparison) + comparisonHtml(data.comparison, data.results) + answerHtml(data.answer) + productsHtml(data.products) + eventsHtml(data.events) + dishesHtml(data.dishes) + placesHtml(data.places)
     var parts = [sites.length ? countOf(sites.length, "site", "sites") : "",
       data.products && data.products.length ? countOf(data.products.length, "product", "products") : "",
       data.events && data.events.length ? countOf(data.events.length, "event", "events") : ""].filter(Boolean)

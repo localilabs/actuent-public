@@ -496,7 +496,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // The price is part of the key: "shoes under 500 dkk" and "shoes" are different searches.
   // The deploy is part of it too, so a fix shows up straight away instead of after the cache expires.
-  const key = `${tier}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}${homeCity ? `@${homeCity.toLowerCase()}` : ""}`
+  const key = `${tier}${req.query?.lawpy === "1" ? "+lawpy" : ""}:${(process.env.VERCEL_GIT_COMMIT_SHA || "").slice(0, 7)}:${cacheKey(cleanQueryKeepPrice(localized))}${homeCity ? `@${homeCity.toLowerCase()}` : ""}`
   // This instance's memory first, then the shared cache every instance writes (list_thirteen.sql).
   // (A memory hit isn't stored again: that would keep an old answer alive for as long as people ask.)
   const inMemory = cacheGet(key)
@@ -613,7 +613,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
   if (definition) results.splice(0, results.length, definition.result as any, ...aboutTheTerm(results, term!).filter((r: any) => r.domain !== "en.wikipedia.org"))
   const answer = self || greeting ? ABOUT_ACTUENT : asked ? await answerFromSite(asked.site, asked.keywords, typed) : definition ? definition.answer : null
   // Pro: a short answer written from the top results, with sources, for question searches.
-  const summary = tier === "pro" && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
+  // Pro gets a short answer written from the sources; so does the humans page ("Ask Lawpy",
+  // lawpy=1), within tight limits so launch traffic can't use up the free AI quota.
+  const lawpyAsked = req.query?.lawpy === "1" && tier !== "pro" && QUESTION.test(typed) && results.length > 0
+  const lawpyAllowed = lawpyAsked && !(await rateLimit(`lawpy:ip:${clientKey}`, 5)).limited && !(await rateLimit("lawpy:all", 30)).limited
+  const summary = (tier === "pro" || lawpyAllowed) && QUESTION.test(typed) && results.length ? await answerSummary(typed, results, answer, tier).catch(() => null) : null
   const firstUp = [...(compared || []), ...(asked ? [asked.site] : [])]
     .map((x: any) => ({ ...x, pages: x.pages || {}, actions: x.actions || [], owner_key: undefined, matched: compared ? "compared site" : "the site the question is about" }))
   if (firstUp.length) {
