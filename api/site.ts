@@ -413,6 +413,32 @@ async function shareEventsPage(res: VercelResponse, cityIn: string, whenIn: stri
 <body style="background:#0a0a0a;color:#f5f5f7;font-family:sans-serif"><p><a href="${esc(target)}" style="color:#ff8a3d">See what's on →</a></p></body></html>`)
 }
 
+// /live — what people are asking their AI through Actuent right now, for launch day. Only questions
+// asked at least twice in the last 24 hours, plain words only (no addresses, emails or numbers), so a
+// one-off personal search never shows. Refreshes itself every 30 seconds.
+async function livePage(res: VercelResponse) {
+  const since = encodeURIComponent(new Date(Date.now() - 86400_000).toISOString())
+  const recent: any[] = await rows(`searches?select=query,domains,created_at&created_at=gte.${since}&tier=neq.test&order=created_at.desc&limit=4000`)
+  const safe = (q: string) => q.length >= 3 && q.length <= 60 && !/[@/:#]|\d{3,}|https?|www\./i.test(q) && q.split(/\s+/).length <= 9
+  const seen = new Map<string, { n: number, last: string, top: string }>()
+  for (const r of recent) {
+    const q = String(r.query || "").toLowerCase().replace(/\s+/g, " ").trim()
+    if (!safe(q)) continue
+    const x = seen.get(q) || { n: 0, last: r.created_at, top: (r.domains || [])[0] || "" }
+    x.n++; seen.set(q, x)
+  }
+  const shown = [...seen.entries()].filter(([, x]) => x.n >= 2).sort((a, b) => b[1].last.localeCompare(a[1].last)).slice(0, 40)
+  const ago = (t: string) => { const m = Math.max(0, Math.round((Date.now() - Date.parse(t)) / 60000)); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago` }
+  const body = `<div style="display:flex;align-items:center;gap:18px"><div><h1>Live: what people ask their AI</h1>
+<p class="lead">${recent.length.toLocaleString("en")} questions in the last 24 hours went through Actuent. Here are the ones asked more than once, newest first. Updates every 30 seconds.</p></div>
+<lawpy-mascot state="dance" loops="2" then="idle" scale="4" style="margin-left:auto"></lawpy-mascot></div>
+<div class="card"><ul class="checks">${shown.map(([q, x]) => `<li><a href="https://humans.actuent.ai/?q=${encodeURIComponent(q)}">${esc(q)}</a> <span class="muted">· ${ago(x.last)}${x.n > 2 ? ` · asked ${x.n}×` : ""}${x.top ? ` · top answer: ${esc(x.top)}` : ""}</span></li>`).join("") || "<li>Quiet right now. Ask your AI something!</li>"}</ul></div>
+<p class="muted">Only questions asked at least twice, with no personal details. Want your AI on this list? <a href="https://docs.actuent.ai/connect">Connect it in 30 seconds</a>.</p>
+<meta http-equiv="refresh" content="30">`
+  res.setHeader("Cache-Control", "public, max-age=0, s-maxage=30")
+  return res.status(200).send(layout({ title: "Live — what people ask their AI | Actuent", description: "Questions people are asking their AI assistants through Actuent right now.", canonical: `${BASE}/live`, image: ogImage("Live on Actuent", "What people are asking their AI right now", "api.actuent.ai/live", "dance"), noindex: true, body }))
+}
+
 // /smarter — "Your AI got smarter this week": what Actuent (and so every AI using it) learned in the
 // last 7 days, from the index and the changelog, in Lawpy's voice. Linked from the weekly email.
 async function smarterPage(res: VercelResponse) {
@@ -636,6 +662,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.query.share != null && req.query.city) return shareEventsPage(res, String(req.query.city), String(req.query.when || "tonight"))
   if (req.query.share != null) return sharePage(res, String(req.query.q || ""))
   if (req.query.smarter != null) return smarterPage(res)
+  if (req.query.live != null) return livePage(res)
   if (req.query.deals) return dealsPage(res, req.query.deals === "rss")
   if (req.query.brand) return brandPage(res, String(req.query.brand))
   if (req.query.city && req.query.new) return newInCity(res, slug(String(req.query.city)), req.query.new === "rss")
