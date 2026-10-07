@@ -6,13 +6,13 @@ const EMAIL_FROM = process.env.EMAIL_FROM || "Actuent <hello@actuent.ai>"
 
 function esc(v: string) { return v.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)) }
 
-export async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+export async function sendEmail(to: string, subject: string, html: string, replyTo = "support@localilabs.com"): Promise<boolean> {
   if (!RESEND_API_KEY || !to) return false
   try {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, reply_to: "support@localilabs.com" })
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, reply_to: replyTo })
     })
     if (!r.ok) console.error("email failed:", r.status, await r.text())
     return r.ok

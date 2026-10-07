@@ -24,6 +24,7 @@ import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
 import { entity } from "../src/utils/entity"
 import { eventIcs } from "../src/utils/ics"
+import { sendBusinessMessage, answerMessage, optOut, messageStatus } from "../src/utils/messages"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -364,6 +365,23 @@ async function search(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+  }
+
+  // Messages to businesses (src/utils/messages.ts): sending and status only from Actuent's MCP server;
+  // the Accept/Decline and opt-out links are for the business, by secret token.
+  if (req.query?.msg_reply || req.query?.msg_optout) {
+    const text = req.query.msg_reply ? await answerMessage(String(req.query.msg_reply), String(req.query.answer || "")) : await optOut(String(req.query.msg_optout), String(req.query.t || ""))
+    res.setHeader("Content-Type", "text/html; charset=utf-8")
+    res.setHeader("Cache-Control", "no-store")
+    return res.status(200).send(`<!DOCTYPE html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Actuent</title><body style="background:#0a0a0a;color:#f0f0f0;font-family:-apple-system,sans-serif;padding:40px;text-align:center"><img src="https://api.actuent.ai/assets/lawpy/lawpy-wave.gif" width="96" alt=""><p style="font-size:18px">${text.replace(/[<>&]/g, "")}</p></body>`)
+  }
+  if (req.query?.op === "message" || req.query?.op === "message_status") {
+    if (!isInternalCall(req.headers["x-actuent-internal"])) return res.status(403).json({ error: "Only through Actuent's MCP server" })
+    const sender = String(req.headers["x-actuent-sender"] || "")
+    if (req.query.op === "message_status") return res.status(200).json(await messageStatus(String(req.query.token || "")))
+    if (!/^[0-9a-f]{64}$/.test(sender)) return res.status(400).json({ error: "Missing sender" })
+    const r = await sendBusinessMessage(req.body || {}, sender)
+    return res.status(r.status).json(r.body)
   }
 
   // ?ics=<event url>: the event as a calendar file ("add to calendar").
