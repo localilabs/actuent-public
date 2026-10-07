@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!row.city || hidden.has(row.category)) continue
       const c = slug(row.city)
       if (!c) continue
-      if (!cities.has(c)) { cities.add(c); urls.push(`  <url><loc>${BASE}/site/in/${xmlEscape(c)}</loc><changefreq>weekly</changefreq></url>`) }
+      if (!cities.has(c)) { cities.add(c); urls.push(`  <url><loc>${BASE}/site/in/${xmlEscape(c)}</loc><changefreq>weekly</changefreq></url>`, `  <url><loc>${BASE}/site/in/${xmlEscape(c)}/whats-on</loc><changefreq>daily</changefreq></url>`) }
       urls.push(`  <url><loc>${BASE}/site/in/${xmlEscape(c)}/${xmlEscape(row.category)}</loc><changefreq>weekly</changefreq></url>`)
     }
     return res.status(200).send(`<?xml version="1.0" encoding="UTF-8"?>

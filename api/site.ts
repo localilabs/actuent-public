@@ -87,10 +87,11 @@ async function eventsPage(res: VercelResponse, citySlug: string, format: "page" 
   const body = `<div class="eyebrow"><a href="${BASE}/site" style="color:inherit;text-decoration:none">Directory</a> · <a href="${BASE}/site/in/${esc(citySlug)}" style="color:inherit;text-decoration:none">${esc(city)}</a></div>
 <h1>What's on in ${esc(city)}</h1>
 <p class="lead">${events.length ? `${events.length} upcoming events` : "No upcoming events yet"} that venues and organisers publish on their own websites. Subscribe in your calendar: <a href="${ics.replace(/^https/, "webcal")}">add to calendar</a> · <code>${esc(ics)}</code></p>
+<div class="card" style="border-color:#ff8a3d"><strong>Ask your AI instead:</strong> "What's on in ${esc(city)} tonight?" or "any jazz this weekend?" Connect Actuent to Claude, ChatGPT or Cursor in 30 seconds (free) and it answers from these same listings, with tickets, calendar and directions links. <a href="https://docs.actuent.ai/connect">Connect your AI →</a></div>
 ${[...byDay.entries()].map(([day, list]) => `<h2>${esc(day)}</h2><div class="card list">${list.map(e => `<a href="${esc(e.url)}" rel="nofollow noopener" target="_blank"><span>${esc(e.name)} <span class="muted">${esc([new Date(e.start_date).toISOString().slice(11, 16) + " UTC", e.venue].filter(Boolean).join(" · "))}</span></span><span>${e.price != null ? `<span class="tag">${esc(e.price)} ${esc(e.currency || "")}</span>` : ""}${e.online ? '<span class="tag">Online</span>' : ""}</span></a>`).join("")}</div>`).join("")}`
   res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400, stale-while-revalidate=604800")
   return res.status(events.length ? 200 : 404).send(layout({
-    title: `What's on in ${city} — Actuent`, description: `Upcoming events in ${city}, from venues' own websites.`, canonical: `${BASE}/site/in/${citySlug}/whats-on`,
+    title: `What's on in ${city} today and this weekend — Actuent`, description: `${events.length} upcoming events in ${city} (concerts, comedy, markets, library and kids' events), from venues' own websites, updated daily.`, canonical: `${BASE}/site/in/${citySlug}/whats-on`,
     image: ogImage(`What's on in ${city}`, "Events from venues' own websites", `api.actuent.ai/site/in/${citySlug}`), noindex: events.length < 3, body
   }))
 }
