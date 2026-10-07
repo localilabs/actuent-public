@@ -655,7 +655,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     else res.setHeader("Content-Disposition", `attachment; filename="lawp.json"`)
     res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
     // A site with its own LAWP gets it back as published (endpoints included); others get a starter.
-    const file = site.native ? { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions: site.actions || [] } : starterLawp(site, domain)
+    const file: any = site.native ? { lawp_version: LAWP_VERSION, domain, name: site.name || domain, language: site.language || "en", pages: site.pages || {}, actions: site.actions || [] } : starterLawp(site, domain)
+    // Hosted files: actions any AI agent can take through Actuent (it delivers them to the business).
+    if (req.query.hosted && Array.isArray(file.actions) && !file.actions.some((a: any) => a?.id === "message_via_actuent")) {
+      file.actions = [...file.actions,
+        { id: "message_via_actuent", name: "Send a message", description: `Ask ${site.name || domain} a question or send a message; it arrives by email and they answer the sender directly.`, intent: ["contact", "question", "message", "ask"], input: { type: "text", required: true }, via: "Actuent MCP server (https://agents.actuent.ai/api/mcp), tool actuent_contact_business", safety: { requires_confirmation: true, costs_money: false, reversible: false, destructive: false } },
+        ...(site.owner_key ? [{ id: "booking_request_via_actuent", name: "Request a booking", description: `Ask ${site.name || domain} for a booking (date, time, party size); they accept or decline and the sender hears back by email.`, intent: ["book", "reserve", "booking", "table", "appointment"], input: { type: "object", required: true }, via: "Actuent MCP server (https://agents.actuent.ai/api/mcp), tool actuent_contact_business with kind booking_request", safety: { requires_confirmation: true, costs_money: false, reversible: true, destructive: false } }] : [])]
+    }
     return res.status(200).send(JSON.stringify(file, null, 2))
   }
   // Search-engine bots crawl tens of thousands of these pages: they get the page without the
