@@ -221,7 +221,7 @@ async function upcomingEvents(q: string): Promise<any[]> {
         // Concerts carry "Genre: indie rock, post-punk (rock, indie)." (actuent-crawler genres.ts).
         const genre = String(description || "").match(/Genre: ([^.]+)\./)?.[1]
         const kind = eventKind(`${e.name} ${description || ""}`)
-        return { ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, ...(genre ? { genre } : {}), ...(kind ? { kind } : {}), visit_url: trackedLink(e.url) }
+        return { ...e, name: decodeEntities(e.name), venue: e.venue ? decodeEntities(e.venue) : e.venue, ...(genre ? { genre } : {}), ...(kind ? { kind } : {}), source: `the listing on ${e.domain || "the venue's site"}`, visit_url: trackedLink(e.url) }
       })
   } catch { eventsFailed.add(q); return [] }
 }
@@ -731,10 +731,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // In plain words, for assistants: how fresh this is, and what to do when it may be out of date.
       freshness: freshness(r.updated_at ? (now - Date.parse(r.updated_at)) / 3600_000 : null),
+      // Where this came from, so the assistant (and the user) can judge it.
+      source: r.native ? "the site's own LAWP file (published by the site)" : /wikipedia\.org$/.test(r.domain) ? "Wikipedia" : r.business?.source === "OpenStreetMap" ? "the site's own pages, with address and hours from OpenStreetMap" : "the site's own pages, read by Actuent",
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)
     })),
-    ...(products.length ? { products: products.map((p: any) => ({ ...p, visit_url: trackedLink(p.url) })) } : {}),
+    ...(products.length ? { products: products.map((p: any) => ({ ...p, source: `${p.domain || "the shop"}'s own product page`, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
     ...(productPair ? { product_comparison: productPair } : {}),
