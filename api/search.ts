@@ -23,6 +23,7 @@ import { comparison, comparisonSides, questionSite, answerFromSite } from "../sr
 import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
 import { entity } from "../src/utils/entity"
+import { eventIcs } from "../src/utils/ics"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
 const SUPABASE_URL = process.env.SUPABASE_URL!
@@ -363,6 +364,16 @@ async function search(req: VercelRequest, res: VercelResponse) {
         }
       }
     }
+  }
+
+  // ?ics=<event url>: the event as a calendar file ("add to calendar").
+  if (req.query?.ics) {
+    const ics = await eventIcs(String(req.query.ics)).catch(() => null)
+    if (!ics) return res.status(404).json({ error: "Actuent doesn't know that event" })
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8")
+    res.setHeader("Content-Disposition", 'attachment; filename="event.ics"')
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
+    return res.status(200).send(ics)
   }
 
   // ?entity=<name>: one thing (band, company, brand, place) with everything Actuent knows about it.
