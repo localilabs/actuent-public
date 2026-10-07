@@ -330,7 +330,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const tier = await verifyApiKey(apiKey) ? "pro" : "free"
   // Our own checks (nightly benchmark, post-deploy smoke test, load tests) are logged as "test", so
   // they don't count as real searches (search trends, ops numbers).
-  const logTier = req.query?.bench === "1" || /^Actuent-(Benchmark|Smoke|LoadTest|Alerts)\//.test(String(req.headers["user-agent"] || "")) ? "test" : tier
+  const logTier = req.query?.bench === "1" || /^Actuent-(Benchmark|Smoke|LoadTest|Alerts|Warm)\//.test(String(req.headers["user-agent"] || "")) ? "test" : tier
   const maxPerMinute = tier === "pro" ? 60 : 20
 
   // The MCP server rate limits its own users, so its calls skip this limit.
