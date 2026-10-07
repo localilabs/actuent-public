@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { verifyAgentRequest } from "../src/utils/verify-actuent"
 import { isRateLimited } from "../src/utils/limits"

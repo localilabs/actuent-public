@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import { translateKeywords } from "../src/utils/multilingual"
 import { searchDishes } from "../src/utils/dishes"
 import { shopFacts } from "../src/utils/shop_facts"

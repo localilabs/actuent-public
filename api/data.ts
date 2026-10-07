@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import stats from "../src/handlers/stats"
 import diff from "../src/handlers/diff"

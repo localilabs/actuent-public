@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { robotsAllows } from "../src/utils/robots"
 import { fetchPublic } from "../src/utils/safe-fetch"

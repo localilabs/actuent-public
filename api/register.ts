@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { sites } from "../src/data/sites"
 import crypto from "crypto"

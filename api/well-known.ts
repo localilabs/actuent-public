@@ -1,3 +1,4 @@
+import "../src/utils/db_guard"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 
 // Actuent's own LAWP. The endpoint on suggest_site makes it executable by agents through
