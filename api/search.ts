@@ -24,6 +24,7 @@ import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
 import { entity } from "../src/utils/entity"
 import { eventIcs } from "../src/utils/ics"
+import { planPage } from "../src/utils/plan_page"
 import { sendBusinessMessage, answerMessage, optOut, messageStatus } from "../src/utils/messages"
 import { answerSummary, QUESTION } from "../src/utils/summary"
 
@@ -382,6 +383,14 @@ async function search(req: VercelRequest, res: VercelResponse) {
     if (!/^[0-9a-f]{64}$/.test(sender)) return res.status(400).json({ error: "Missing sender" })
     const r = await sendBusinessMessage(req.body || {}, sender)
     return res.status(r.status).json(r.body)
+  }
+
+  // ?plan=…&sig=…: a shared plan (signed by Actuent's MCP server).
+  if (req.query?.plan) {
+    const html = planPage(String(req.query.plan), String(req.query.sig || ""))
+    res.setHeader("Content-Type", "text/html; charset=utf-8")
+    res.setHeader("Cache-Control", "public, max-age=0, s-maxage=86400")
+    return res.status(html ? 200 : 404).send(html || "<!DOCTYPE html><p>This plan link isn't valid.</p>")
   }
 
   // ?ics=<event url>: the event as a calendar file ("add to calendar").
