@@ -180,10 +180,27 @@ function prebuilt(what: string, word: string, city: string): any[] | null {
 // OpenStreetMap places for "best …": independents before chains, then listed hours, then a website.
 // OpenStreetMap has no ratings, so the reason says what was used.
 function bestFirst(places: any[]): any[] {
-  const s = (p: any) => (p.chain ? -4 : 0) + (p.opening_hours ? 2 : 0) + (p.website ? 1 : 0) + (p.features?.length ? 0.5 : 0)
+  const s = (p: any) => (p.rating && Number(p.rating.count) >= 5 ? Number(p.rating.value) * 1.2 + Math.min(2, Math.log10(Number(p.rating.count))) : 0)
+    + (p.chain ? -4 : 0) + (p.opening_hours ? 2 : 0) + (p.website ? 1 : 0) + (p.features?.length ? 0.5 : 0)
+  const anyRated = places.some(p => p.rating)
   return places.map((p, i) => ({ p, k: s(p) - i * 0.01 })).sort((a, b) => b.k - a.k).map(({ p }) => ({
-    ...p, why_ranked: rankWhy([p.chain === false && "independent, not a chain", p.chain && "a chain", p.opening_hours && "opening hours listed", p.website && "has its own website", "OpenStreetMap has no ratings, so reviews weren't used"])
+    ...p, why_ranked: rankWhy([
+      p.rating && Number(p.rating.count) >= 5 && `rated ${p.rating.value}★ from ${p.rating.count} reviews (its own site)`,
+      p.chain === false && "independent, not a chain", p.chain && "a chain", p.opening_hours && "opening hours listed", p.website && "has its own website",
+      !anyRated && "no ratings found for these places, so reviews weren't used"])
   }))
+}
+// Ratings the places publish on their own websites (schema.org, from Actuent's index): one lookup for
+// all of them, at most 2 seconds; without it the places come back as they were.
+async function withRatings(places: any[]): Promise<any[]> {
+  const host = (u: unknown) => { try { return new URL(String(u)).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" } }
+  const hosts = [...new Set(places.map(p => host(p.website)).filter(Boolean))].slice(0, 40)
+  if (!hosts.length) return places
+  const list = encodeURIComponent(hosts.flatMap(h => [`"${h}"`, `"www.${h}"`]).join(","))
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_sites?select=domain,rating:business->rating&domain=in.(${list})&business->rating=not.is.null`, { headers: HEADERS, signal: AbortSignal.timeout(2000) }).catch(() => null)
+  const rows: any[] = r?.ok ? await r.json().catch(() => []) : []
+  const byHost = new Map(rows.filter(x => x.rating?.value).map(x => [x.domain.replace(/^www\./, ""), x.rating]))
+  return places.map(p => { const rating = byHost.get(host(p.website)); return rating ? { ...p, rating: { value: rating.value, ...(rating.count ? { count: rating.count } : {}) } } : p })
 }
 // Words that say what a place should have or when, not what it is.
 const NEED_WORDS = /\b(open late|late night|late|open now|open|now|tonight|today|tomorrow|this evening|for brunch|for dinner|for lunch|for breakfast|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(dog|pet|kid|family)[- ]friendly|with (a )?(terrace|garden|wifi|wi-fi|outdoor seating)|outdoor( seating)?|terrace|wifi|wi-fi|wheelchair( accessible)?|accessible|step[- ]free|gluten[- ]free|with dogs|for kids|good for groups|for groups|cheap|best|good|nice|cozy|cosy)\b/gi
@@ -197,7 +214,7 @@ const PREBUILT_ALIASES: Record<string, string[]> = {
 }
 
 export async function osmPlaces(what: string, city: string, best = false): Promise<any[] | null> {
-  const done = (list: any[] | null) => list && (best ? bestFirst(list) : list).map(({ chain, ...p }: any) => p)
+  const done = async (list: any[] | null) => list && (best ? bestFirst(await withRatings(list)) : list).map(({ chain, ...p }: any) => p)
   const ready = prebuilt(what, OSM_WORDS[what] || what, city)
   if (ready?.length) return done(ready)
   const key = `${what}|${city}`.toLowerCase(), hit = osmCache.get(key)
