@@ -389,7 +389,7 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
         // Price history: e.g. -20 means 20% cheaper than before the last change.
         ...(change ? { previous_price_eur: prev, price_change_percent: change, price_changed_at: row.price_changed_at } : {}),
         // The last 90 days of prices (EUR, oldest first), and whether today's is the lowest of them.
-        ...(past.length >= 2 ? { price_history: past, lowest_90_days: now != null && now <= Math.min(...past.map(p => p.price_eur)) } : {}),
+        ...(past.length >= 2 ? { price_history: past, lowest_90_days: now != null && now <= Math.min(...past.map(p => p.price_eur)), ...priceStory(now, past) } : {}),
         // The same product in other shops, cheapest first; this result is the cheapest.
         // Other shops only (the same shop's other colours aren't "other shops"), one entry per shop.
         ...((() => {
@@ -403,4 +403,28 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       }
     })
   } catch { return [] }
+}
+
+// The 90 days in plain words ("Lowest price in 90 days", "€12 above its 90-day low of €128 (6 Sep)")
+// and a small chart to link to (/api/search?chart=…, drawn from these points, no lookup needed).
+export function priceStory(now: number | null, past: { date: string, price_eur: number }[]): { price_note?: string, price_chart?: string } {
+  if (now == null || past.length < 2) return {}
+  const low = past.reduce((a, b) => b.price_eur < a.price_eur ? b : a), high = Math.max(...past.map(p => p.price_eur))
+  const eur = (v: number) => `€${v >= 10 ? Math.round(v) : v.toFixed(2)}`
+  const note = now <= low.price_eur ? (high > now * 1.03 ? `Lowest price in 90 days (it was up to ${eur(high)})` : "Steady price over the last 90 days")
+    : `${eur(now - low.price_eur)} above its 90-day low of ${eur(low.price_eur)} (${new Date(low.date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })})`
+  const points = [...past.map(p => p.price_eur), now].map(v => Math.round(v * 100) / 100).join(",")
+  return { price_note: note, price_chart: `https://api.actuent.ai/api/search?chart=${points}` }
+}
+
+// The chart itself: an SVG line of the prices, lowest point marked, in Actuent's colours.
+export function priceChartSvg(raw: string): string | null {
+  const v = String(raw).split(",").map(Number).filter(x => Number.isFinite(x) && x >= 0).slice(0, 40)
+  if (v.length < 2) return null
+  const W = 320, H = 120, P = 14, min = Math.min(...v), max = Math.max(...v), span = max - min || 1
+  const x = (i: number) => P + (i * (W - 2 * P)) / (v.length - 1), y = (p: number) => H - P - ((p - min) * (H - 2 * P)) / span
+  const line = v.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p).toFixed(1)}`).join(" ")
+  const lo = v.indexOf(min), last = v.length - 1
+  const label = (p: number) => `€${p >= 100 ? Math.round(p) : p.toFixed(2)}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H + 18}" width="${W}" height="${H + 18}" font-family="-apple-system,Segoe UI,sans-serif" font-size="11"><rect width="100%" height="100%" rx="10" fill="#13131a"/><path d="${line}" fill="none" stroke="#ff8a3d" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${x(lo)}" cy="${y(min)}" r="4" fill="#3fb950"/><circle cx="${x(last)}" cy="${y(v[last])}" r="4" fill="#ff8a3d"/><text x="${P}" y="${H + 10}" fill="#a8a8b6">90 days · low ${label(min)} · high ${label(max)} · now ${label(v[last])}</text></svg>`
 }

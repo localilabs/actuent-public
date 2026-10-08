@@ -9,7 +9,7 @@ import { withoutHidden, searchSites, quickSearch, isPlaceSearch, PLACE_KINDS } f
 import { queryCategories } from "../src/utils/rank_extras"
 import { verifyApiKey, bearerKey, isInternalCall, rateLimit, rateLimitHeaders, keyHash, isBlocked, strike, BLOCKED_MESSAGE, hitCounter, ipHash } from "../src/utils/limits"
 import { isExecutable } from "../src/utils/native"
-import { searchProducts } from "../src/utils/products"
+import { priceChartSvg, searchProducts } from "../src/utils/products"
 import { trackedLink } from "../src/utils/links"
 import { fixSpelling } from "../src/utils/spelling"
 import { categoryLeaders } from "../src/utils/leaders"
@@ -426,6 +426,14 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
 
   // ?ics=<event url>: the event as a calendar file ("add to calendar").
+  // ?chart=12.5,13,…: a price chart for a product's price_chart link (src/utils/products.ts).
+  if (req.query?.chart) {
+    const svg = priceChartSvg(String(req.query.chart).slice(0, 600))
+    if (!svg) return res.status(400).json({ error: "chart needs at least two prices" })
+    res.setHeader("Content-Type", "image/svg+xml")
+    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400")
+    return res.status(200).send(svg)
+  }
   if (req.query?.ics) {
     if (req.query.to === "google") {
       const g = await googleCalendarUrl(String(req.query.ics)).catch(() => null)
@@ -607,7 +615,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const pair = await comparingProducts
   const productPair = pair[0] && pair[1] && pair[0].url !== pair[1].url ? pair.map((p: any) => ({
     name: p.name, price: p.price, currency: p.currency, price_eur: p.price_eur, domain: p.domain, url: p.url, image: p.image,
-    ...(p.lowest_90_days != null ? { lowest_90_days: p.lowest_90_days } : {}), ...(p.price_change_percent ? { price_change_percent: p.price_change_percent } : {}),
+    ...(p.lowest_90_days != null ? { lowest_90_days: p.lowest_90_days } : {}), ...(p.price_note ? { price_note: p.price_note, price_chart: p.price_chart } : {}), ...(p.price_change_percent ? { price_change_percent: p.price_change_percent } : {}),
     shops: 1 + (p.other_shops?.length || 0)
   })) : null
   let asked: any = await asking
