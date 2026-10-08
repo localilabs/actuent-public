@@ -20,6 +20,8 @@ import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
 import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
 import { WANTS_BEST, splitCity, cityCountry } from "../src/utils/local"
+import { fallbackSearch } from "../src/utils/fallback"
+import { dbReadOnly } from "../src/utils/db_guard"
 import { comparison, comparisonSides, questionSite, answerFromSite } from "../src/utils/answer"
 import { landmarkHours } from "../src/utils/landmark"
 import { readPage } from "../src/utils/read_page"
@@ -311,6 +313,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     console.error("search failed:", e)
     if (res.headersSent) return
+    // The database failed outright: answer from the built-in copy of the index if it has anything.
+    const q = String(req.query?.q || req.body?.query || "").slice(0, 300)
+    const fb = q ? await fallbackSearch(q, splitCity(q)?.city).catch(() => null) : null
+    if (fb && (fb.results.length || fb.events.length)) {
+      const n = notice("busy_fallback_index", { retryAfter: 60 })
+      res.setHeader("Cache-Control", "no-store")
+      return res.status(200).json({ query: q, count: fb.results.length, results: fb.results, ...(fb.events.length ? { events: fb.events } : {}), from_fallback_index: fb.built_at, notices: [n], message: n.message })
+    }
     const n = notice("busy", { retryAfter: 60 })
     res.setHeader("Cache-Control", "no-store")
     res.setHeader("Retry-After", "60")
@@ -696,6 +706,13 @@ async function search(req: VercelRequest, res: VercelResponse) {
   await later(trackSearch(typed, domains, logTier, trackKey, Date.now() - requestStart, results.length))
 
   if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
+  // The database couldn't answer (busy, down or full): the built-in copy of the index instead.
+  if (!results.length && !products.length && !places.length && !events.length && !isDomainQuery && (dbReadOnly() || notices.some(n => n.code.startsWith("busy")))) {
+    const fb = await fallbackSearch(typed, searchedCity).catch(() => null)
+    if (fb?.results.length) results.push(...fb.results)
+    if (fb?.events.length) events.push(...fb.events)
+    if (fb && (fb.results.length || fb.events.length)) notices.push(notice("busy_fallback_index", { retryAfter: 60 }))
+  }
   // Never a dead end: nothing in the index, no products, places or events → Wikipedia on the search
   // itself ("photosynthesis", "roman empire"), before falling back to "try instead".
   let lastResort: any = null

@@ -1,0 +1,23 @@
+name: Copy Fallback Index
+# Daily, after actuent-crawler builds it: data/fallback.json into this deploy, so search can answer
+# from it when the database is down without fetching anything (src/utils/fallback.ts).
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -fsSL https://raw.githubusercontent.com/alfredmurray-goat/actuent-crawler/main/data/fallback.json -o data/fallback.json.new
+          node -e "const d=require('./data/fallback.json.new'); if(!(d.sites?.length>1000)) process.exit(1)"
+          mv data/fallback.json.new data/fallback.json
+          git config user.name "actuent-bot"
+          git config user.email "bot@actuent.ai"
+          git add data/fallback.json
+          git diff --cached --quiet || (git commit -m "Fallback index refresh" && git pull --rebase --autostash -q && git push)
