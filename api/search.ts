@@ -19,7 +19,7 @@ import { todayHours, openNow, opensNext } from "../src/utils/business"
 import { notice, Notice, DEGRADED } from "../src/utils/notices"
 import { later } from "../src/utils/later"
 import { cleanQuery, cleanQueryKeepPrice, cacheKey, nearMe, wantsProducts } from "../src/utils/query"
-import { cleanName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
+import { cleanName, nonLatinName, snippet, notAResult, nearlyEmpty } from "../src/utils/results"
 import { WANTS_BEST, splitCity, cityCountry } from "../src/utils/local"
 import { fallbackSearch } from "../src/utils/fallback"
 import { dbReadOnly } from "../src/utils/db_guard"
@@ -740,6 +740,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     results: results.map(({ contentHash, ownerKey, productsCrawledAt, rank, _score, ...r }: any, i: number) => ({
       ...r,
       name: cleanName(r.name, r.domain),
+      ...(nonLatinName(String(r.name || "")) && cleanName(r.name, r.domain) !== String(r.name).trim() ? { local_name: String(r.name).trim().slice(0, 100) } : {}),
       // The sentence that best answers the search, and how strong the match is (0-100, top = 100).
       snippet: snippet(r, searchQuery),
       score: _score ? Math.max(1, Math.round((Number(_score) / topScore) * 100)) : Math.max(1, 100 - i * 5),

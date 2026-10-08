@@ -21,7 +21,24 @@ export function cleanName(name: string, domain: string): string {
     if (own) n = own
     else if (n.length > 50) n = parts[0]
   }
-  return n.slice(0, 100)
+  return latinName(n, domain).slice(0, 100)
+}
+
+// Names in another script for a Latin-letter domain ("宜家家居" for ikea.cn, "Яндекс" for yandex.ru):
+// the Latin brand name inside it when there is one ("IKEA"), else the domain's own name ("Yandex").
+// The original stays available as local_name (nonLatinName).
+const LETTERS = /\p{L}/gu, LATIN = /\p{Script=Latin}/gu
+export function nonLatinName(name: string): boolean {
+  const all = (name.match(LETTERS) || []).length
+  return all > 0 && (name.match(LATIN) || []).length / all <= 0.5
+}
+function latinName(n: string, domain: string): string {
+  if (!nonLatinName(n)) return n
+  const label = domain.split("/")[0].replace(/^www\./, "").split(".")[0]
+  if (!/^[a-z0-9-]{2,}$/i.test(label)) return n
+  const flat = label.toLowerCase().replace(/[^a-z0-9]/g, "")
+  const inside = (n.match(/[A-Za-z0-9][A-Za-z0-9 &'.-]*[A-Za-z0-9]/g) || []).find(x => { const w = x.toLowerCase().replace(/[^a-z0-9]/g, ""); return w.length >= 2 && (w === flat || flat.startsWith(w) || w.startsWith(flat)) })
+  return inside || (label.length <= 3 ? label.toUpperCase() : label.charAt(0).toUpperCase() + label.slice(1))
 }
 
 const ERROR_PAGE = /\b(404|page not found|not found|access denied|forbidden|just a moment|checking your browser|attention required|enable javascript and cookies|captcha|site can'?t be reached|account suspended|bandwidth limit exceeded)\b/i
