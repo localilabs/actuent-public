@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
+import { mergeDuplicates } from "../utils/event_merge"
 import { tonightWindow, zoneForCity, localTime } from "../utils/tonight"
 
 // GET /api/tonight?city=Copenhagen — events tonight (until 5 am local) that websites publish, with
@@ -27,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const pattern = encodeURIComponent(`*${city.replace(/ /g, "*")}*`)
   const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,domain,start_date,end_date,venue,city,price,currency,online&or=(city.ilike.${pattern},venue.ilike.${pattern})&start_date=gte.${encodeURIComponent(from.toISOString())}&start_date=lte.${encodeURIComponent(to.toISOString())}&order=start_date.asc&limit=80`, { headers: HEADERS, signal: AbortSignal.timeout(5000) }).catch(() => null)
   if (!r?.ok) { res.setHeader("Cache-Control", "no-store"); return res.status(503).json({ error: "Too many people are exploring with Lawpy right now! Give him a minute to catch his breath." }) }
-  const rows: any[] = await r.json()
+  const rows: any[] = mergeDuplicates(await r.json())
   const domains = [...new Set(rows.map(e => e.domain))]
   const hidden = new Set<string>()
   if (domains.length) {

@@ -1,4 +1,5 @@
 import "../src/utils/db_guard"
+import { mergeDuplicates } from "../src/utils/event_merge"
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import { changesFeed } from "../src/utils/feeds"
 import { searchTrends } from "../src/utils/trends"
@@ -66,7 +67,7 @@ async function eventsPage(res: VercelResponse, citySlug: string, format: "page" 
   const known = (await cityList()).find(c => slug(c.city) === citySlug)?.city
   const city = known || cityName(citySlug)
   const pattern = encodeURIComponent(city.replace(/[*,()]/g, "").replace(/ /g, "*"))
-  const events = await rows(`lawp_events?select=name,url,domain,start_date,end_date,description,venue,price,currency,online&city=ilike.${pattern}&start_date=gte.${encodeURIComponent(new Date(Date.now() - 3 * 3600_000).toISOString())}&order=start_date.asc&limit=300`)
+  const events = mergeDuplicates(await rows(`lawp_events?select=name,url,domain,start_date,end_date,description,venue,price,currency,online&city=ilike.${pattern}&start_date=gte.${encodeURIComponent(new Date(Date.now() - 3 * 3600_000).toISOString())}&order=start_date.asc&limit=300`))
   if (format === "ics") {
     const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//localilabs//Actuent//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${icsText(`What's on in ${city} (Actuent)`)}`, "X-PUBLISHED-TTL:PT12H"]
     for (const e of events) {

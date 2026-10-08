@@ -1,4 +1,5 @@
 import "../src/utils/db_guard"
+import { mergeDuplicates } from "../src/utils/event_merge"
 import { translateKeywords } from "../src/utils/multilingual"
 import { searchDishes } from "../src/utils/dishes"
 import { shopFacts } from "../src/utils/shop_facts"
@@ -216,7 +217,7 @@ async function upcomingEvents(q: string): Promise<any[]> {
       headers: { "apikey": SUPABASE_SERVICE_KEY, "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}` }, signal: AbortSignal.timeout(4000)
     })
     if (!r.ok) { eventsFailed.add(q); return [] }
-    const rows: any[] = await r.json()
+    const rows: any[] = mergeDuplicates(await r.json())
     // Adult events (fetish, kink, rope bondage, swingers) only when the search asks for them.
     const ADULT = /\b(kinbaku|shibari|bdsm|fetish|kink[sy]?|swingers?|erotic|erotik|strip ?club|sex ?party|tantra massage)\b/i
     return rows.filter(e => !/\b(betting|odds|prediction|casino|bookmaker|prognoz)\b|прогноз|ставк/i.test(`${e.name} ${e.url}`) && (ADULT.test(q) || !ADULT.test(`${e.name} ${e.venue || ""} ${e.url}`))).slice(0, 12)
