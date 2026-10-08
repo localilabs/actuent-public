@@ -450,7 +450,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // ?read=<url>: one page read live and returned as structured data (src/utils/read_page.ts).
   if (req.query?.read || req.body?.read) {
-    const page = await readPage(String(req.query?.read || req.body?.read))
+    const page = await readPage(String(req.query?.read || req.body?.read), { size: String(req.query?.size || req.body?.size || "").slice(0, 20) || undefined })
     res.setHeader("Cache-Control", "private, no-store")
     return res.status(page.status).json(page.body)
   }

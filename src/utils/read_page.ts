@@ -128,9 +128,33 @@ async function shopifyVariants(url: URL, html: string) {
     name: text(p.title), brand: text(p.vendor) || undefined, price: Number(p.price) / 100,
     variants: p.variants.slice(0, 30).map((v: any) => ({
       name: text(v.title), price: Number(v.price) / 100, in_stock: v.available !== false,
-      cart_url: `${url.origin}/cart/${v.id}:1`
+      cart_url: `${url.origin}/cart/${v.id}:1`, id: v.id
     }))
   }
+}
+
+// "Is it in stock in a store near me?": Shopify shops with physical stores show store pickup on the
+// product page, from /variants/<id>/?section_id=pickup-availability (the same request the page
+// itself makes in a browser). Each store and whether that size or colour can be picked up there.
+async function storePickup(origin: string, variantId: number | string): Promise<{ store: string, available: boolean, note?: string }[] | undefined> {
+  const r = await fetchPublic(`${origin}/variants/${variantId}/?section_id=pickup-availability`, { headers: { "User-Agent": USER_AGENT, "Accept": "text/html" }, signal: AbortSignal.timeout(3000) }).catch(() => null)
+  if (!r?.ok) return undefined
+  const html = (await r.text().catch(() => "")).slice(0, 200_000)
+  if (!/pickup/i.test(html)) return undefined
+  const stores: { store: string, available: boolean, note?: string }[] = []
+  // Most themes: one list item per store, with the store's name in a heading and a status line.
+  for (const item of html.split(/<li[^>]*pickup-availability-list__item[^>]*>/i).slice(1)) {
+    const name = text((item.match(/<h[2-6][^>]*>([\s\S]*?)<\/h[2-6]>/i) || [])[1] || "")
+    const status = text((item.match(/<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1] || "")
+    if (name) stores.push({ store: name.slice(0, 80), available: !/unavailable|not available|ikke tilgængelig|nicht verfügbar/i.test(status), ...(status ? { note: status.slice(0, 80) } : {}) })
+  }
+  // Themes without the list: the one-line summary ("Pickup available at Brooklyn").
+  if (!stores.length) {
+    const t = text(html)
+    const at = t.match(/pickup (currently )?(un)?available at ([^.]{2,60})/i)
+    if (at) stores.push({ store: at[3].trim(), available: !at[2] })
+  }
+  return stores.length ? stores.slice(0, 15) : undefined
 }
 
 // Saved for the next person: the page, and the site queued for a full crawl if it's new to Actuent.
@@ -155,7 +179,7 @@ async function remember(url: URL, title: string, content: string) {
   ])
 }
 
-export async function readPage(raw: string): Promise<{ ok: boolean, status: number, body: any }> {
+export async function readPage(raw: string, opts: { size?: string } = {}): Promise<{ ok: boolean, status: number, body: any }> {
   let url: URL
   try { url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`) } catch { return { ok: false, status: 400, body: { error: "That isn't a web address" } } }
   if (!/^https?:$/.test(url.protocol)) return { ok: false, status: 400, body: { error: "Only http(s) pages" } }
@@ -180,6 +204,15 @@ export async function readPage(raw: string): Promise<{ ok: boolean, status: numb
   const [variants] = await Promise.all([shopifyVariants(finalUrl, html), remember(finalUrl, title, content)])
   const prods: any[] = products(ld, finalUrl.href)
   // Shopify: the variants (sizes, colours) with a cart link each; the product itself when the page has no product data.
+  // Store pickup for the size asked for (or the first one in stock), when the shop has stores.
+  let inStores: any = undefined
+  if (variants && /pickup-availability/i.test(html)) {
+    const want = String(opts.size || "").toLowerCase().trim()
+    const v = (want && variants.variants.find((x: any) => String(x.name).toLowerCase().split(/\s*\/\s*|\s+/).includes(want) || String(x.name).toLowerCase() === want)) || variants.variants.find((x: any) => x.in_stock)
+    const stores = v ? await storePickup(finalUrl.origin, v.id) : undefined
+    if (stores) inStores = { variant: v.name, stores, note: "Store pickup as the shop's own product page shows it right now." }
+  }
+  if (variants) for (const v of variants.variants) delete v.id
   if (variants) {
     if (prods[0]) prods[0].variants = variants.variants
     else prods.push({ name: variants.name, brand: variants.brand, price: variants.price, currency: null, in_stock: variants.variants.some((v: any) => v.in_stock), url: finalUrl.href, variants: variants.variants })
@@ -191,6 +224,7 @@ export async function readPage(raw: string): Promise<{ ok: boolean, status: numb
       title, ...(description ? { description } : {}), ...(language ? { language } : {}),
       text: content.slice(0, 6000), ...(content.length > 6000 ? { text_truncated: true } : {}),
       ...(prods.length ? { products: prods } : {}),
+      ...(inStores ? { in_stores: inStores } : {}),
       ...(events.length ? { events } : {}),
       ...(business ? { business: { ...business, ...(business.opening_hours?.length ? { open_now: openNow(business.opening_hours, country, new Date(), business.special_hours, lon), ...(todayHours(business.opening_hours, country, lon) || {}) } : {}) } } : {}),
       ...(recipe(ld) ? { recipe: recipe(ld) } : {}), ...(faq(ld) ? { faq: faq(ld) } : {}), ...(article(ld) ? { article: article(ld) } : {}),
