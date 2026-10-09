@@ -577,7 +577,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
   ]).catch(() => [])
   // Rewritten searches (list_thirteen.sql): what this client searched just before, and what people
   // usually rewrite this search to (shown as related searches).
-  noteReformulation(clientKey, typed)
+  // MCP calls all come from the MCP server: it says who the searcher is (an opaque id), or nobody.
+  const mcpClient = internal ? String(req.headers["x-actuent-client"] || "").replace(/[^a-z0-9]/gi, "").slice(0, 32) : ""
+  if (!internal || mcpClient) noteReformulation(internal ? `mcp:${mcpClient}` : clientKey, typed)
   const rewritesTo = usualRewrites(typed)
   // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
