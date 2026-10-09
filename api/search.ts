@@ -1,4 +1,5 @@
 import "../src/utils/db_guard"
+import crypto from "crypto"
 import { mergeDuplicates } from "../src/utils/event_merge"
 import { translateKeywords } from "../src/utils/multilingual"
 import { searchDishes } from "../src/utils/dishes"
@@ -342,11 +343,20 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const tier = await verifyApiKey(apiKey) ? "pro" : "free"
   // Our own checks (nightly benchmark, post-deploy smoke test, load tests) are logged as "test", so
   // they don't count as real searches (search trends, ops numbers).
-  const logTier = req.query?.bench === "1" || /^Actuent-(Benchmark|Smoke|LoadTest|Alerts|Warm)\//.test(String(req.headers["user-agent"] || "")) ? "test" : tier
+  // A signed load test (actuent-crawler bench/load.ts, from GitHub): this minute (or the one before),
+  // signed with the service key both sides have. It skips the rate limit and is logged as a test.
+  const loadTest = (() => {
+    const [minute, sig] = String(req.headers["x-actuent-loadtest"] || "").split(".")
+    const now = Math.floor(Date.now() / 60000), m = Number(minute)
+    if (!sig || !SUPABASE_SERVICE_KEY || !(m === now || m === now - 1)) return false
+    const want = crypto.createHmac("sha256", SUPABASE_SERVICE_KEY).update(`loadtest:${m}`).digest("hex").slice(0, 32)
+    return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))
+  })()
+  const logTier = loadTest || req.query?.bench === "1" || /^Actuent-(Benchmark|Smoke|LoadTest|Alerts|Warm)\//.test(String(req.headers["user-agent"] || "")) ? "test" : tier
   const maxPerMinute = tier === "pro" ? 60 : 20
 
   // The MCP server rate limits its own users, so its calls skip this limit.
-  if (!isInternalCall(req.headers["x-actuent-internal"])) {
+  if (!isInternalCall(req.headers["x-actuent-internal"]) && !loadTest) {
     const ip = (req.headers["x-forwarded-for"] as string || "unknown").split(",")[0].trim()
     if (await isBlocked(ip, tier === "pro" ? apiKey : undefined)) { res.setHeader("Cache-Control", "no-store"); return res.status(403).json(BLOCKED_MESSAGE) }
     const limitKey = tier === "pro" ? `search:key:${keyHash(apiKey)}` : `search:ip:${ip}`
