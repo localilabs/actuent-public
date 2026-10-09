@@ -14,6 +14,7 @@ export type Business = {
   geo?: { lat: number, lon: number }, opening_hours?: OpeningHours[]
   rating?: { value: number, count?: number, best?: number, source?: string }
   special_hours?: SpecialHours[]
+  closure_notice?: { text: string, closed: boolean }
   offers?: Offer[]
   // From OpenStreetMap: "vegan", "vegetarian", "gluten_free", "wheelchair", "outdoor_seating", "wifi", "dogs", "kids"; hotel stars.
   features?: string[]
@@ -92,6 +93,25 @@ function flatten(node: any, out: any[]) {
   if (node["@graph"]) flatten(node["@graph"], out)
 }
 
+// Notices on the page about not being open as usual: "temporarily closed", "closed for renovation",
+// "closed until 3 November", holiday hours. The sentence is kept (an assistant should pass it on);
+// closed: true only for a plain "closed now / until" notice, never for one that's about the past.
+const CLOSED = /(?<!\p{L})(temporarily closed|closed for (renovation|refurbishment|the season|winter|summer|holidays?|maintenance)|closed until|currently closed|we are closed|we're closed|midlertidigt lukket|lukket indtil|lukket for sæsonen|vorübergehend geschlossen|geschlossen bis|wegen renovierung geschlossen|tijdelijk gesloten|gesloten tot|tillfälligt stängt|stängt till)(?!\p{L})/iu
+const HOLIDAY = /(?<!\p{L})(holiday (opening )?hours|christmas (opening )?hours|easter (opening )?hours|åbningstider (i|til|over) (jul|påske|ferien)|öffnungszeiten (an|zu|über) (weihnachten|ostern|feiertagen)|openingstijden (rond|met|tijdens) (kerst|pasen|feestdagen))(?!\p{L})/iu
+export function closureNotice(html: string): { text: string, closed: boolean } | undefined {
+  const body = html.replace(/<(script|style|noscript|svg)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").slice(0, 30000)
+  for (const re of [CLOSED, HOLIDAY]) {
+    const m = body.match(re)
+    if (!m || m.index == null) continue
+    const start = Math.max(body.lastIndexOf(". ", m.index) + 2, m.index - 120), end = body.indexOf(". ", m.index)
+    const sentence = body.slice(start < 0 ? 0 : start, end > 0 && end - m.index < 200 ? end + 1 : m.index + 160).trim()
+    // About the past ("was closed for renovation in 2019", "reopened"): not a notice.
+    if (/\b(was|were|had been|reopened|genåbnet|wiedereröffnet|heropend)\b|\b(19|20)[0-2]\d\b/i.test(sentence) && !/\b2026|2027\b/.test(sentence)) continue
+    return { text: sentence.slice(0, 200), closed: re === CLOSED && !/\b(on|på|am|op) (mondays?|sundays?|mandag|søndag|montags?|sonntags?|maandag|zondag)\b/i.test(sentence) }
+  }
+  return undefined
+}
+
 export function extractBusiness(html: string): Business | null {
   const nodes: any[] = []
   for (const m of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
@@ -153,6 +173,7 @@ export function extractBusiness(html: string): Business | null {
     geo: Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : undefined,
     opening_hours: opening.length ? opening : undefined,
     special_hours: special.length ? special : undefined,
+    closure_notice: closureNotice(html),
     rating,
     offers: priced.length ? priced : undefined
   }

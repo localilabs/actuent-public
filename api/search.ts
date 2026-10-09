@@ -762,6 +762,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
       last_updated: r.updated_at || null,
       // Business details: open right now, in the business's own time zone (null when unknown).
       ...(r.business ? { open_now: openNow(r.business.opening_hours, r.business.address?.country, new Date(), r.business.special_hours, Number(r.business.geo?.lon)), ...(todayHours(r.business.opening_hours, r.business.address?.country, Number(r.business.geo?.lon)) || {}) } : {}),
+      // A notice on the site itself ("temporarily closed for renovation"): passed on, and it wins over the usual hours.
+      ...(r.business?.closure_notice ? { closure_notice: r.business.closure_notice.text, ...(r.business.closure_notice.closed ? { open_now: false } : {}) } : {}),
       age_hours: r.updated_at ? Math.max(0, Math.round((now - Date.parse(r.updated_at)) / 3600_000)) : null,
       // In plain words, for assistants: how fresh this is, and what to do when it may be out of date.
       freshness: freshness(r.updated_at ? (now - Date.parse(r.updated_at)) / 3600_000 : null),

@@ -226,7 +226,7 @@ export async function readPage(raw: string, opts: { size?: string } = {}): Promi
       ...(prods.length ? { products: prods } : {}),
       ...(inStores ? { in_stores: inStores } : {}),
       ...(events.length ? { events } : {}),
-      ...(business ? { business: { ...business, ...(business.opening_hours?.length ? { open_now: openNow(business.opening_hours, country, new Date(), business.special_hours, lon), ...(todayHours(business.opening_hours, country, lon) || {}) } : {}) } } : {}),
+      ...(business ? { business: { ...business, ...(business.opening_hours?.length ? { open_now: openNow(business.opening_hours, country, new Date(), business.special_hours, lon), ...(todayHours(business.opening_hours, country, lon) || {}) } : {}), ...(business.closure_notice?.closed ? { open_now: false } : {}) } } : {}),
       ...(recipe(ld) ? { recipe: recipe(ld) } : {}), ...(faq(ld) ? { faq: faq(ld) } : {}), ...(article(ld) ? { article: article(ld) } : {}),
       ...(actions(html, finalUrl).length ? { actions: actions(html, finalUrl) } : {}),
       links: links(html, finalUrl),
