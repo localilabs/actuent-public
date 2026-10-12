@@ -8,7 +8,11 @@ function nameKey(name: string): string {
     .split(/\s+(?:[-–—+|:]|w\/|with|support|feat\.?|ft\.?|presents|live at|at)\s+/)[0]
     .normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/\b(live|concert|koncert|tickets?|billetter|tour \d{4}|\d{4} tour)\b/g, " ").replace(/[^a-z0-9]+/g, "")
 }
+// Cancelled events are left out; sold-out ones say so (the words venues use in several languages).
+const CANCELLED = /\b(cancel+ed|aflyst|abgesagt|geannuleerd|inställt|avlyst|annulé|cancelado)\b/i
+const SOLD_OUT = /\b(sold[ -]?out|udsolgt|ausverkauft|uitverkocht|slutsåld|utsolgt|complet)\b/i
 export function mergeDuplicates(rows: any[]): any[] {
+  rows = rows.filter(e => !CANCELLED.test(`${e.name} ${e.description || ""}`)).map(e => SOLD_OUT.test(`${e.name} ${e.description || ""}`) ? { ...e, sold_out: true } : e)
   const out: any[] = [], byKey = new Map<string, any[]>()
   const own = (e: any) => { const root = String(e.domain || "").replace(/^www\./, "").split(".")[0].replace(/[^a-z0-9]/g, ""); return root.length >= 4 && String(e.venue || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes(root) }
   const filled = (e: any) => ["price", "description", "venue", "city", "end_date"].filter(k => e[k] != null && e[k] !== "").length
