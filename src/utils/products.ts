@@ -363,6 +363,18 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       if (g && !g.some(x => x.url === o.url) && (maxEur == null || (o.price_eur != null && Number(o.price_eur) <= maxEur))) g.push(o)
     }
 
+    // Prices that are clearly wrong (0, a few cents, or far off the same product's price in other shops)
+    // are hidden rather than shown, and never make a product "the cheapest".
+    for (const g of groups.values()) {
+      const valid = g.map(x => Number(x.price_eur)).filter(v => Number.isFinite(v) && v >= 0.5).sort((a, b) => a - b)
+      const median = valid.length >= 3 ? valid[Math.floor(valid.length / 2)] : null
+      for (const x of g) {
+        const v = Number(x.price_eur)
+        if (x.price_eur == null && x.price == null) continue
+        const wrong = (x.price != null && Number(x.price) <= 0) || (x.price_eur != null && v < 0.5) || (median != null && x.price_eur != null && (v < median / 5 || v > median * 5))
+        if (wrong) Object.assign(x, { price: null, price_eur: null, previous_price_eur: null, price_hidden: "The price on the shop's page looks wrong, so it isn't shown: check it on the shop's site" })
+      }
+    }
     // "cheapest …": the cheapest of the matching products first (each group's lowest price).
     const lowest = (g: any[]) => Math.min(...g.map(x => x.price_eur == null ? Infinity : Number(x.price_eur)))
     const ordered = WANTS_CHEAPEST.test(query) ? [...groups.values()].sort((a, b) => lowest(a) - lowest(b)) : [...groups.values()]
@@ -378,7 +390,7 @@ export async function searchProducts(query: string, tier: Tier, max: number, cou
       const change = prev && now != null ? Math.round(((now - prev) / prev) * 1000) / 10 : null
       return {
         name: names[i], original_name: names[i] !== row.name ? row.name : undefined,
-        price: row.price, currency: row.currency, price_eur: row.price_eur,
+        price: row.price, currency: row.currency, price_eur: row.price_eur, ...(row.price_hidden ? { price_note: row.price_hidden } : {}),
         url: sizeVariant.has(row.url) ? `${row.url}${row.url.includes("?") ? "&" : "?"}variant=${sizeVariant.get(row.url)}` : row.url, domain: row.domain, image: row.image, available: row.available,
         ...(sizes.has(row.url) ? { sizes_in_stock: sizes.get(row.url) } : {}),
         ...(asked.size && sizeVariant.has(row.url) ? { size: asked.size } : {}),
