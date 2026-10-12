@@ -16,7 +16,11 @@ async function find(url: string): Promise<any | null> {
   const now = encodeURIComponent(new Date(Date.now() - 6 * 3600_000).toISOString())
   const r = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=name,url,start_date,end_date,venue,city,description&url=eq.${encodeURIComponent(url)}&or=(start_date.gte.${now},end_date.gte.${now})&order=start_date.asc&limit=1`, { headers: HEADERS, signal: AbortSignal.timeout(5000) }).catch(() => null)
   const [e] = r?.ok ? await r.json() : []
-  return e?.start_date ? e : { over: true }
+  if (e?.start_date) return e
+  // Not on again: "over" only if Actuent knew this event (it may already have been cleared out).
+  const k = await fetch(`${SUPABASE_URL}/rest/v1/lawp_events?select=url&url=eq.${encodeURIComponent(url)}&limit=1`, { headers: HEADERS, signal: AbortSignal.timeout(5000) }).catch(() => null)
+  const [known] = k?.ok ? await k.json() : []
+  return known ? { over: true } : null
 }
 export const isOver = (e: any) => !!e?.over
 // Listings with only a date (no time) become all-day calendar entries.
