@@ -307,6 +307,23 @@ async function suggestSpelling(q: string): Promise<string | null> {
   } catch { return null }
 }
 
+// When the database is struggling (recent searches here took over 8 s, or it's read-only), a search
+// that isn't back in 3 s is answered from the built-in copy of the index instead (src/utils/fallback.ts);
+// the full search still finishes and is cached for next time.
+const recentSitesMs: number[] = []
+function noteSitesTime(ms: number) { recentSitesMs.push(ms); if (recentSitesMs.length > 6) recentSitesMs.shift() }
+const struggling = () => dbReadOnly() || recentSitesMs.filter(ms => ms > 8000).length >= 2
+async function sitesOrFallback(full: Promise<any[]>, typed: string, city: string | undefined, notices: any[]): Promise<any[]> {
+  if (!struggling()) return full
+  const late = Symbol("late")
+  const first = await Promise.race([full, new Promise<typeof late>(r => setTimeout(() => r(late), 3000))])
+  if (first !== late) return first as any[]
+  const fb = await fallbackSearch(typed, city).catch(() => null)
+  if (!fb?.results.length) return full
+  notices.push(notice("busy_fallback_index", { retryAfter: 60 }))
+  return fb.results.map((r: any) => ({ ...r, pages: { "/": { title: r.name, content: r.snippet || "" } }, actions: [] }))
+}
+
 // Never an empty 500: anything unexpected (overloaded database, timeouts) becomes a 503 with a
 // plain-English message and Retry-After, so people and agents know to try again shortly.
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -619,7 +636,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // homeCity: the searcher's last searched city, else where they are (Vercel's header).
   const searchOpts: any = { lite, places, related, didYouMean: nameTypos, homeCity, best: WANTS_BEST.test(typed) }
   const [results, products, events, dishes] = await Promise.all([
-    searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; return r }),
+    sitesOrFallback(searchSites(searchQuery, tier, timing, notices, searchOpts).then(r => { sitesMs = Date.now() - t0; noteSitesTime(sitesMs); return r }), typed, searchedCity, notices),
     productSearch.then(r => { productsMs = Date.now() - t0; return r }),
     isDomainQuery ? Promise.resolve([]) : upcomingEvents(searchQuery),
     // Dishes and services with prices from local businesses' own menus.
