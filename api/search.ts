@@ -470,6 +470,22 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
 
   // ?ics=<event url>: the event as a calendar file ("add to calendar").
+  // ?relay=<url>: for Actuent's own crawler only (signed like load tests, with the service key), and
+  // only Eventbrite's public city pages: they turn GitHub's servers away but answer Vercel's. Returns the
+  // page as it is. Never an open proxy: any other address, or no valid signature, is refused.
+  if (req.query?.relay) {
+    const [minute, sig] = String(req.headers["x-actuent-relay"] || "").split(".")
+    const now = Math.floor(Date.now() / 60000), m = Number(minute)
+    const want = SUPABASE_SERVICE_KEY && (m === now || m === now - 1) ? crypto.createHmac("sha256", SUPABASE_SERVICE_KEY).update(`relay:${m}`).digest("hex").slice(0, 32) : ""
+    if (!want || !sig || sig.length !== want.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return res.status(403).json({ error: "Not allowed" })
+    let target: URL
+    try { target = new URL(String(req.query.relay)) } catch { return res.status(400).json({ error: "Bad URL" }) }
+    if (target.protocol !== "https:" || !/^www\.eventbrite\.(co\.uk|de|nl|com|fr|es|it|ie|dk|se)$/.test(target.hostname) || !target.pathname.startsWith("/d/")) return res.status(403).json({ error: "Not allowed" })
+    const page = await fetch(target.href, { headers: { "User-Agent": "Mozilla/5.0 (compatible; Actuent/1.0; +https://docs.actuent.ai/bot)", "Accept": "text/html" }, signal: AbortSignal.timeout(15000) }).catch(() => null)
+    if (!page) return res.status(502).json({ error: "Couldn't reach it" })
+    res.setHeader("Content-Type", "text/html; charset=utf-8"); res.setHeader("Cache-Control", "no-store")
+    return res.status(page.status).send((await page.text()).slice(0, 3_000_000))
+  }
   // ?chart=12.5,13,…: a price chart for a product's price_chart link (src/utils/products.ts).
   if (req.query?.chart) {
     const svg = priceChartSvg(String(req.query.chart).slice(0, 600))
