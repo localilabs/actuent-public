@@ -560,6 +560,19 @@ async function search(req: VercelRequest, res: VercelResponse) {
     asTyped = `${asTyped} in ${params.city}`
     params.city = undefined
   }
+  // "What's open near me right now?", "anything open in Copenhagen?": no kind of place named, so the
+  // kind that's most likely open at this hour there (cafés in the morning, restaurants through the day,
+  // bars late), open now only. Otherwise "open" and "now" match websites with those words.
+  const anyOpen = asTyped.match(/^(?:so\s+)?(?:what'?s|whats|what is|anything|is anything|is there anything|where'?s|what places are)\s+(?:still\s+)?open\b(.*)$/i)
+  if (anyOpen) {
+    const rest = anyOpen[1].replace(/\b(right now|now|at the moment|currently|today|tonight|still|near me|nearby|around me|close by|around here|in|near|around|\?)\b/gi, " ").replace(/[?!.]/g, " ").replace(/\s+/g, " ").trim()
+    const where = splitCity(`x in ${rest}`)?.city || (rest ? rest : null)
+    const zone = cityCountry(where || ipCity || "") === "us" ? "America/New_York" : "Europe/Copenhagen"
+    const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", hour12: false }).format(new Date())) % 24
+    const kind = hour >= 5 && hour < 11 ? "cafes" : hour >= 11 && hour < 22 ? "restaurants" : "bars"
+    asTyped = where ? `${kind} in ${where}` : `${kind} near me`
+    params.openNow = true
+  }
   const localized = nearMe(asTyped, ipCity)
   const searchQuery = cleanQuery(localized)
 
