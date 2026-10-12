@@ -620,7 +620,11 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // Software and services ("best crm", "vpn") aren't shopping either.
   // …and neither are events ("comedy in los angeles", "concerts this weekend").
   const productSearch = isDomainQuery || GREETING.test(typed.trim()) || lookingForPlace || EVENTY.test(typed) || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
-    searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
+    // Model names typed without a space ("se3", "pro2"): asked again as "se 3" when nothing matches.
+    searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry).then(found => {
+      const spaced = productText.replace(/\b([a-z]{2,})(\d{1,2})\b/gi, "$1 $2")
+      return found.length || spaced === productText ? found : searchProducts(spaced, tier, tier === "pro" ? 20 : 5, shopperCountry)
+    }),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
   // Rewritten searches (list_thirteen.sql): what this client searched just before, and what people
