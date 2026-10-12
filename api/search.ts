@@ -445,13 +445,17 @@ async function search(req: VercelRequest, res: VercelResponse) {
     return res.status(200).send(svg)
   }
   if (req.query?.ics) {
+    // An event that's over: a short page saying so (people tap these links), never an old date.
+    const over = () => { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600"); return res.status(410).send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>This event is over</title><body style="font-family:-apple-system,sans-serif;background:#0a0a0a;color:#f0f0f0;max-width:480px;margin:18vh auto;padding:0 16px;line-height:1.6"><h2>This event is over</h2><p>It has already happened, so there's nothing to add to your calendar. Ask your AI what's on next.</p><p><a style="color:#ff8a3d" href="https://humans.actuent.ai">See what's on with Actuent →</a></p></body>`) }
     if (req.query.to === "google") {
       const g = await googleCalendarUrl(String(req.query.ics)).catch(() => null)
+      if (g && typeof g === "object") return over()
       if (!g) return res.status(404).json({ error: "Actuent doesn't know that event" })
       res.setHeader("Cache-Control", "public, max-age=0, s-maxage=3600")
       return res.redirect(302, g)
     }
     const ics = await eventIcs(String(req.query.ics)).catch(() => null)
+    if (ics && typeof ics === "object") return over()
     if (!ics) return res.status(404).json({ error: "Actuent doesn't know that event" })
     res.setHeader("Content-Type", "text/calendar; charset=utf-8")
     res.setHeader("Content-Disposition", 'attachment; filename="event.ics"')
