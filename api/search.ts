@@ -635,6 +635,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
   // Software and services ("best crm", "vpn") aren't shopping either.
   // …and neither are events ("comedy in los angeles", "concerts this weekend").
+  // A product lookup that ran out of time: that answer isn't cached (the next one may well have products).
+  let productsTimedOut = false
   const productSearch = isDomainQuery || GREETING.test(typed.trim()) || lookingForPlace || EVENTY.test(typed) || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     // Model names typed without a space ("se3", "pro2"): asked again as "se 3" when nothing matches.
     // (Both at once, so the second never runs out the time limit.)
@@ -645,7 +647,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
       const second = searchProducts(spaced, tier, tier === "pro" ? 20 : 5, shopperCountry).catch(() => [])
       return Promise.all([first, second]).then(([a, b]) => a.length ? a : b)
     })(),
-    new Promise<any[]>(r => setTimeout(() => r([]), 2500))
+    new Promise<any[]>(r => setTimeout(() => { productsTimedOut = true; r([]) }, 2500))
   ]).catch(() => [])
   // Rewritten searches (list_thirteen.sql): what this client searched just before, and what people
   // usually rewrite this search to (shown as related searches).
@@ -872,12 +874,12 @@ async function search(req: VercelRequest, res: VercelResponse) {
   }
   // A busy-time answer isn't cached anywhere: a retry a minute later should get the full search.
   const eventsMissing = eventsFailed.delete(searchQuery)
-  if (degraded || eventsMissing) res.setHeader("Cache-Control", "no-store")
+  if (degraded || eventsMissing || (productsTimedOut && !products.length)) res.setHeader("Cache-Control", "no-store")
   else if (results.length > 0 || products.length > 0) {
     cacheSet(key, body)
     // Only full answers are shared for 30 minutes: a thin one may be a slow moment in the database.
     // …and never one from a slow moment (a search timed out, or "A vs B" couldn't find both sites).
-    const thin = searchOpts.slow || (!compared && !isDomainQuery && !!comparisonSides(typed))
+    const thin = searchOpts.slow || productsTimedOut || (!compared && !isDomainQuery && !!comparisonSides(typed))
     if ((results.length >= 3 || isDomainQuery) && !thin) await later(sharedCacheSet(key, body))
   }
   res.setHeader("X-Search-Time", String(Date.now() - requestStart))
