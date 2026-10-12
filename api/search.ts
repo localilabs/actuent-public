@@ -307,6 +307,23 @@ async function suggestSpelling(q: string): Promise<string | null> {
   } catch { return null }
 }
 
+// The same place once: a place whose website is already a result above, with its hours, isn't listed
+// again, and the same name at the same address (or the same map entry) counts once.
+function uniquePlaces(places: any[], results: any[]): any[] {
+  const host = (u: unknown) => { try { return new URL(String(u)).hostname.toLowerCase().replace(/^www\./, "") } catch { return "" } }
+  // Only results that already carry the place's hours: ones added from OpenStreetMap don't.
+  const shown = new Set(results.filter((r: any) => r.business?.opening_hours?.length).map((r: any) => String(r.domain || "").replace(/^www\./, "")))
+  const key = (p: any) => `${String(p.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "")}|${String(p.address || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 16)}`
+  const seen = new Set<string>(), maps = new Set<string>()
+  return places.filter(p => {
+    const h = host(p.website), k = key(p)
+    if (h && shown.has(h)) return false
+    if (seen.has(k) || (p.map && maps.has(p.map))) return false
+    seen.add(k); if (p.map) maps.add(p.map)
+    return true
+  })
+}
+
 // When the database is struggling (recent searches here took over 8 s, or it's read-only), a search
 // that isn't back in 3 s is answered from the built-in copy of the index instead (src/utils/fallback.ts);
 // the full search still finishes and is cached for next time.
@@ -805,7 +822,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
     })),
     ...(products.length ? { products: products.map((p: any) => ({ ...p, source: `${p.domain || "the shop"}'s own product page`, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
-    ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: places } } : {}),
+    ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: uniquePlaces(places, results) } } : {}),
     ...(productPair ? { product_comparison: productPair } : {}),
     ...(compared ? { comparison: { sites: compared.map((x: any) => x.domain), ...(facts[0] || facts[1] ? { shops: Object.fromEntries(compared.map((x: any, i: number) => [x.domain, facts[i]])) } : {}), tip: "Both sites are the first two results. The actuent_compare tool (MCP) lines them up side by side." } } : {}),
     ...(summary ? { summary: { ...summary, note: "Written by AI from the sources listed; check them before relying on it." } } : {}),
