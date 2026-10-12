@@ -571,7 +571,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const cached = inMemory ?? await sharedCacheGet(key)
   if (cached) {
     if (!inMemory) cacheSet(key, cached)
-    await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), logTier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length))
+    await later(trackSearch(typed, (cached as any).results.map((r: any) => r.domain), logTier, tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null, Date.now() - requestStart, (cached as any).results.length + ((cached as any).events?.length || 0) + ((cached as any).products?.length || 0) + ((cached as any).places?.items?.length || 0)))
     res.setHeader("X-Search-Time", String(Date.now() - requestStart))
     return res.status(200).json(present({ ...(cached as any), query: typed }, params))
   }
@@ -619,7 +619,7 @@ async function search(req: VercelRequest, res: VercelResponse) {
   const lookingForPlace = wantsOpen || (() => { const p = splitCity(searchQuery); return !!p && [...queryCategories(p.what)].some(c => PLACE_KINDS.has(c)) && !/\b(buy|beans?|shoes?|clothes|order online|delivery)\b/i.test(p.what) })()
   // Software and services ("best crm", "vpn") aren't shopping either.
   // …and neither are events ("comedy in los angeles", "concerts this weekend").
-  const productSearch = isDomainQuery || lookingForPlace || EVENTY.test(typed) || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
+  const productSearch = isDomainQuery || GREETING.test(typed.trim()) || lookingForPlace || EVENTY.test(typed) || !!categoryLeaders(searchQuery) || !wantsProducts(searchQuery, typed) ? Promise.resolve([]) : Promise.race([
     searchProducts(productText, tier, tier === "pro" ? 20 : 5, shopperCountry),
     new Promise<any[]>(r => setTimeout(() => r([]), 2500))
   ]).catch(() => [])
@@ -627,7 +627,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
   // usually rewrite this search to (shown as related searches).
   // MCP calls all come from the MCP server: it says who the searcher is (an opaque id), or nobody.
   const mcpClient = internal ? String(req.headers["x-actuent-client"] || "").replace(/[^a-z0-9]/gi, "").slice(0, 32) : ""
-  if (!internal || mcpClient) noteReformulation(internal ? `mcp:${mcpClient}` : clientKey, typed)
+  // Our own checks (benchmark, warm-up, smoke and load tests) never count as people searching again.
+  if (logTier !== "test" && (!internal || mcpClient)) noteReformulation(internal ? `mcp:${mcpClient}` : clientKey, typed)
   const rewritesTo = usualRewrites(typed)
   // "notion vs obsidian" → both sites; "does basecamp have a free plan" → the site and an answer.
   const comparing = isDomainQuery ? Promise.resolve(null) : comparison(typed).catch(() => null)
@@ -762,7 +763,8 @@ async function search(req: VercelRequest, res: VercelResponse) {
 
   // MCP calls are already logged per key by actuent-private, so don't attribute them to the key twice.
   const trackKey = tier === "pro" && !isInternalCall(req.headers["x-actuent-internal"]) ? apiKey : null
-  await later(trackSearch(typed, domains, logTier, trackKey, Date.now() - requestStart, results.length))
+  // "Found something" counts events, products, places and greetings too, not only websites.
+  await later(trackSearch(typed, domains, logTier, trackKey, Date.now() - requestStart, results.length + events.length + products.length + places.length + (GREETING.test(typed.trim()) ? 1 : 0)))
 
   if (searchedFor) notices.splice(0, notices.length, ...notices.filter(n => n.code !== "no_results" && n.code !== "busy_no_results"))
   // The database couldn't answer (busy, down or full): the built-in copy of the index instead.
@@ -820,6 +822,9 @@ async function search(req: VercelRequest, res: VercelResponse) {
       // Give this link to the user: it lets the site's owner see visits that came from AI agents.
       visit_url: trackedLink(`https://${r.domain}`, typed)
     })),
+    // Asked where to buy something cheaply, but Actuent has no live prices for it: say so plainly,
+    // so the answer isn't a list of websites pretending to be prices.
+    ...(!products.length && /\b(cheap|cheapest|cheep|price|prices|buy|deal|deals|discount|for sale|in stock|best price)\b/i.test(typed) && wantsProducts(searchQuery, typed) ? { shopping_note: `Actuent doesn't have live prices for "${typed.slice(0, 60)}" yet. Say so plainly, then point to the shops below (the brand's own store first) and suggest checking the price there; you can read one shop's product page live with actuent_get_page.` } : {}),
     ...(products.length ? { products: products.map((p: any) => ({ ...p, source: `${p.domain || "the shop"}'s own product page`, visit_url: trackedLink(p.url) })) } : {}),
     // Local searches with no indexed websites yet: places from OpenStreetMap (not indexed sites).
     ...(places.length ? { places: { source: "OpenStreetMap", attribution: "© OpenStreetMap contributors, ODbL", items: uniquePlaces(places, results) } } : {}),

@@ -528,6 +528,8 @@ function doSearch() {
     lawpy(data.answer || data.comparison ? "talk" : sites.length || extras ? "dance" : "idle", 2)
 
     var note = data.message ? '<div class="empty" style="padding:0 0 14px">' + esc(data.message) + '</div>' : ""
+    // "cheap X" with no live prices yet: say so, instead of letting the websites look like prices.
+    if (data.shopping_note && !(data.products || []).length) note += '<div class="empty" style="padding:0 0 14px">' + esc(t("No live prices for this yet. These shops sell it, so check the price there (the brand's own store is usually first).")) + '</div>'
     if (!sites.length && !extras) {
       results.innerHTML = '<div class="empty"><lawpy-mascot state="think" scale="4" style="display:block;margin:0 auto 12px"></lawpy-mascot>' + esc(data.message || t('Nothing found for “{q}” yet.', { q: query })) + '</div>' + hintsHtml(data)
       return
